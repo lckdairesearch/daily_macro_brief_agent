@@ -1,0 +1,45 @@
+{
+  "_note": "Sample evidence fixture — not real sourced content. Used for local/demo mode only.",
+  "source": "fixture",
+  "cards": [
+    {
+      "id": "ev_001",
+      "scout": "news",
+      "title": "Fed officials signal patience on rate cuts after strong payrolls",
+      "source_name": "Sample News Source",
+      "source_url": "https://example.com/placeholder",
+      "published_at": "2026-05-07T22:00:00Z",
+      "summary": "Multiple Fed officials reiterated a data-dependent stance following the April payrolls beat. No urgency to cut in the near term. Market-implied cuts pushed out.",
+      "theme_tags": ["us_policy_rates"],
+      "portfolio_relevance": ["usdjpy_long", "em_debt_basket"],
+      "so_what": "Front-end rates holding higher; USD/JPY supported. EM debt faces duration headwind.",
+      "confidence": "fixture"
+    },
+    {
+      "id": "ev_002",
+      "scout": "central_bank",
+      "title": "BOJ board member flags wage-inflation link as condition for further tightening",
+      "source_name": "Sample Central Bank Source",
+      "source_url": "https://example.com/placeholder",
+      "published_at": "2026-05-07T23:30:00Z",
+      "summary": "BOJ board member cited sustained wage growth as a prerequisite for additional rate hikes. Divergence with Fed policy path remains wide.",
+      "theme_tags": ["usd_jpy_divergence"],
+      "portfolio_relevance": ["usdjpy_long"],
+      "so_what": "Policy divergence narrative intact; supports USD/JPY long.",
+      "confidence": "fixture"
+    },
+    {
+      "id": "ev_003",
+      "scout": "research",
+      "title": "Gold consolidating near highs as real-yield support holds",
+      "source_name": "Sample Research Note",
+      "source_url": "https://example.com/placeholder",
+      "published_at": "2026-05-07T18:00:00Z",
+      "summary": "Research note argues gold's floor is supported by sticky real yields and persistent central bank demand. Near-term catalyst needed for breakout above 2350.",
+      "theme_tags": ["gold_hedge"],
+      "portfolio_relevance": ["gold_overweight"],
+      "so_what": "Overweight gold position supported; watch real-yield move today for directional signal.",
+      "confidence": "fixture"
+    }
+  ]
+}

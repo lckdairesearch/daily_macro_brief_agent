@@ -1,0 +1,46 @@
+name: Daily Macro Brief
+
+on:
+  schedule:
+    # 07:15 HKT Mon–Fri = 23:15 UTC Sun–Thu
+    - cron: "15 23 * * 0-4"
+  workflow_dispatch:  # allow manual trigger
+
+jobs:
+  run-brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e '.[dev]'
+
+      - name: Run brief (live mode)
+        env:
+          OPENAI_API_KEY:          ${{ secrets.OPENAI_API_KEY }}
+          ALPHA_VANTAGE_API_KEY:   ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          DATABENTO_API_KEY:       ${{ secrets.DATABENTO_API_KEY }}
+          FRED_API_KEY:            ${{ secrets.FRED_API_KEY }}
+          XAI_API_KEY:             ${{ secrets.XAI_API_KEY }}
+          LISTEN_NOTES_API_KEY:    ${{ secrets.LISTEN_NOTES_API_KEY }}
+          GEMINI_API_KEY:          ${{ secrets.GEMINI_API_KEY }}
+          SENDGRID_API_KEY:        ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_FROM_EMAIL:     ${{ secrets.SENDGRID_FROM_EMAIL }}
+          SENDGRID_TO_EMAIL:       ${{ secrets.SENDGRID_TO_EMAIL }}
+          ENABLE_EMAIL_DELIVERY:   "true"
+        run: python -m app.main --mode live
+
+      - name: Upload output artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-outputs-${{ github.run_id }}
+          path: outputs/
+          retention-days: 30

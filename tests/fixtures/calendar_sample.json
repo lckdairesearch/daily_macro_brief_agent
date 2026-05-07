@@ -1,0 +1,59 @@
+{
+  "_note": "Sample calendar fixture — not real event data. Used for local/demo mode only.",
+  "date": "2026-05-08",
+  "source": "fixture",
+  "events": [
+    {
+      "time": "08:30",
+      "timezone": "America/New_York",
+      "country": "US",
+      "session": "US",
+      "event": "Initial Jobless Claims",
+      "importance": "medium",
+      "previous": "225K",
+      "consensus": "222K",
+      "consensus_source": "fixture",
+      "actual": null,
+      "notes": "Weekly claims; watch for labor market softening"
+    },
+    {
+      "time": "10:00",
+      "timezone": "America/New_York",
+      "country": "US",
+      "session": "US",
+      "event": "Fed Chair Powell speaks",
+      "importance": "high",
+      "previous": null,
+      "consensus": null,
+      "consensus_source": null,
+      "actual": null,
+      "notes": "Policy path framing; watch for rate cut timeline signals"
+    },
+    {
+      "time": "08:00",
+      "timezone": "Europe/Berlin",
+      "country": "DE",
+      "session": "EU",
+      "event": "German CPI (Final, YoY)",
+      "importance": "medium",
+      "previous": "2.2%",
+      "consensus": "2.2%",
+      "consensus_source": "fixture",
+      "actual": null,
+      "notes": "Confirm or revise preliminary print"
+    },
+    {
+      "time": "09:30",
+      "timezone": "Asia/Tokyo",
+      "country": "JP",
+      "session": "Asia",
+      "event": "BOJ Summary of Opinions",
+      "importance": "high",
+      "previous": null,
+      "consensus": null,
+      "consensus_source": null,
+      "actual": null,
+      "notes": "Policy divergence signal; USD/JPY sensitivity"
+    }
+  ]
+}

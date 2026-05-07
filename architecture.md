@@ -1,0 +1,1581 @@
+# architecture.md — Daily Macro Brief Agent
+
+## 1. Architecture goal
+
+This document translates `spec.md` into the system shape for V1.
+
+The product is a scheduled Python pipeline that produces a PM-facing Daily Macro Brief before the market day starts. The system should be simple enough to finish as a 7-day case-study prototype, but structured enough that sources, prompts, models, and delivery providers can be replaced later.
+
+Core architectural answer:
+
+> Collect real market/calendar/source evidence, normalize it into typed objects, rank what matters, use the LLM only for grounded synthesis, validate the output, render it, and deliver it by email.
+
+## 2. Architectural principles
+
+1. **Numbers come from data sources, not the LLM**\
+   Market prices, returns, yields, spreads, calendar times, previous values, and consensus/forecast values must come from APIs, scraping/backend endpoints, cached data, explicit fixtures, or deterministic computation from sourced input values.
+
+2. **LLM is a synthesis layer, not a data source**\
+   The LLM may summarize, rank, write, critique, and run a narrow consensus-enrichment scout when Investing.com is missing a forecast. It must not invent data, links, consensus values, or source claims. For consensus enrichment, the LLM scout may search/extract candidate consensus from public sources, but the accepted value must either be source-backed or deterministically computed from source-backed raw values.
+
+3. **Typed boundaries between stages**\
+   Each stage passes structured models such as `MarketSnapshot`, `CalendarEvent`, `EvidenceCard`, `BriefItem`, and `RunMetadata`.
+
+4. **Provider-specific code is isolated**\
+   Alpha Vantage, Databento, Investing.com, Grok/xAI, and SendGrid integrations should sit behind small wrappers. For LLM model providers specifically, use one thin project wrapper around LiteLLM instead of writing separate wrappers for Azure OpenAI, OpenAI, Anthropic, Gemini, Bedrock, etc.
+
+5. **Cache first, scrape/call politely**\
+   Calendar/source fetching should cache daily results and avoid repeated unnecessary endpoint calls.
+
+6. **Fail soft for optional discovery, warn on stale critical data**\
+   Optional scouts can fail without killing the run. If live market data is unavailable, use the latest cached market snapshot with a clear warning.
+
+7. **Config over code edits**\
+   Watchlists, portfolio assumptions, themes, source toggles, chart templates, thresholds, and delivery settings should live in YAML config where practical.
+
+8. **Prompts are centralized, business logic is not**\
+   Long-form LLM prompts should live under `app/llm/prompts/**`. Source-specific scout behavior stays in `app/discovery/scouts/**`, and synthesis behavior stays in `app/synthesis/**`. Prompt text should be easy to edit without hunting through Python files.
+
+9. **Demo mode must always run**\
+   A local sample mode should work without paid credentials using fixture data and sample evidence.
+
+## 3. High-level system flow
+
+```text
+GitHub Actions / local CLI
+        |
+        v
+app/main.py
+        |
+        v
+app/pipeline.py
+        |
+        +--> load settings + YAML configs
+        |
+        +--> fetch market data
+        |       Alpha Vantage primary
+        |       Databento supplemental
+        |       latest cache fallback with warning
+        |
+        +--> fetch economic calendar
+        |       Investing.com backend endpoint
+        |       daily cache
+        |
+        +--> enrich missing consensus (high-importance events only)
+        |       LLM scout searches public sources for consensus value
+        |       accepted only if source-backed or deterministically computed
+        |       leaves blank + sets missing_consensus=true if unresolved
+        |
+        +--> discover source evidence
+        |       news / central bank / research / podcast / Grok-xAI-X scout
+        |
+        +--> normalize to typed models
+        |       MarketSnapshot / CalendarEvent / EvidenceCard
+        |
+        +--> dedupe + rank
+        |
+        +--> write grounded brief with LLM
+        |       LiteLLM-backed app/llm/provider.py
+        |       centralized prompts from app/llm/prompts/
+        |
+        +--> validate output
+        |
+        +--> render HTML, text, chart
+        |
+        +--> deliver through SendGrid if enabled
+        |
+        +--> save artifacts + run metadata
+```
+
+## 4. Runtime modes
+
+### 4.1 Sample mode
+
+Purpose: make the repo runnable for reviewers without live credentials.
+
+Behavior:
+
+- Uses fixture market data.
+- Uses fixture calendar data.
+- Uses fixture source/evidence items.
+- Can either call the configured LLM or use a deterministic sample writer, depending on config.
+- Always produces `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
+
+Suggested command:
+
+```bash
+make run-sample
+```
+
+### 4.2 Live mode
+
+Purpose: run the actual scheduled brief.
+
+Behavior:
+
+- Pulls market data from Alpha Vantage first.
+- Pulls supplemental market data from Databento where configured.
+- Pulls calendar data from the Investing.com backend calendar endpoint.
+- Uses cached calendar/market data if live calls fail according to reliability rules.
+- Runs discovery scouts.
+- Calls the configured model through the LiteLLM-backed `app/llm/provider.py` wrapper for synthesis.
+- Sends email via SendGrid when delivery is enabled.
+
+Suggested command:
+
+```bash
+make run-live
+```
+
+### 4.3 Dry-run mode
+
+Purpose: validate the full pipeline without sending email.
+
+Behavior:
+
+- Runs live or cached data collection.
+- Generates outputs.
+- Skips delivery.
+- Useful for local testing and GitHub Actions debugging.
+
+Suggested command:
+
+```bash
+make dry-run
+```
+
+## 5. Repository and module responsibilities
+
+Use the approved starting structure.
+
+```text
+daily-macro-brief/
+  README.md
+  costs.md
+  pyproject.toml
+  .env.example
+  .env
+  .gitignore
+  Makefile
+
+  AGENTS.md
+  CLAUDE.md
+  GEMINI.md
+  spec.md
+  architecture.md
+  plan.md
+
+  app/
+    __init__.py
+    main.py
+    pipeline.py
+    settings.py
+    models.py
+
+    config/
+      app.yaml
+      portfolio.yaml
+      themes.yaml
+      sources.yaml
+      chart_templates.yaml
+
+    llm/
+      __init__.py
+      provider.py
+      prompt_registry.py
+      prompts/
+        brief_writer.md
+        critic.md
+        scouts/
+          news_search.md
+          central_bank_extract.md
+          research_search.md
+          podcast_extract.md
+          x_narrative_search.md
+          consensus_enrichment.md
+
+    data/
+      market.py
+      calendar.py
+
+    discovery/
+      orchestrator.py
+      scouts/
+        __init__.py
+        base.py
+        news.py
+        central_bank.py
+        research.py
+        podcast.py
+        x.py
+        consensus.py  # optional if calendar enrichment becomes non-trivial
+
+    synthesis/
+      deduper.py
+      ranker.py
+      writer.py
+      validator.py
+
+    render/
+      charts.py
+      email.py
+      templates/
+        brief_template.html
+
+    delivery.py
+
+  outputs/
+    sample_brief.html
+    sample_brief.txt
+    sample_chart.png
+
+  tests/
+    fixtures/
+      market_sample.json
+      calendar_sample.json
+      evidence_sample.json
+    test_config.py
+    test_llm.py
+    test_market.py
+    test_calendar.py
+    test_deduper.py
+    test_ranker.py
+    test_validator.py
+    test_render.py
+    test_pipeline_sample.py
+
+  memo/
+    memo.md
+    memo.pdf
+
+  .github/
+    workflows/
+      daily_brief.yml
+```
+
+The `app/llm/` folder is now part of the approved V1 structure, not a later optional addition. It should remain narrow: shared LLM infrastructure, a thin LiteLLM-backed provider wrapper, prompt loading, prompt files, structured-output helpers, retries, and token/cost metadata.
+
+Do not move scout or synthesis business logic into `app/llm/`. Scouts stay under `app/discovery/scouts/`; the final brief writer and validator stay under `app/synthesis/`.
+
+Avoid adding heavier ML/data-science folders unless the implementation actually needs them.
+
+## 6. Entry points
+
+### 6.1 `app/main.py`
+
+Role:
+
+- CLI entry point.
+- Parses mode: `sample`, `live`, or `dry-run`.
+- Loads settings.
+- Calls `run_pipeline()`.
+- Returns non-zero exit code on hard failures.
+
+Suggested commands:
+
+```bash
+python -m app.main --mode sample
+python -m app.main --mode live
+python -m app.main --mode dry-run
+```
+
+### 6.2 `app/pipeline.py`
+
+Role:
+
+- Owns the run orchestration.
+- Does not contain provider-specific logic.
+- Calls data, discovery, synthesis, render, delivery, and metadata components in order.
+
+Key function:
+
+```python
+def run_pipeline(mode: RunMode, settings: Settings) -> PipelineResult:
+    ...
+```
+
+The pipeline should remain boring and readable. It should show the whole product flow at a glance.
+
+### 6.3 `Makefile`
+
+Role:
+
+- Standardizes commands for the developer and coding agents.
+- Assumes local development uses a project-level `.venv` virtual environment.
+
+Suggested targets:
+
+```makefile
+venv
+install
+format
+lint
+test
+run-sample
+run-live
+dry-run
+render-memo
+```
+
+The `venv`/`install` targets should create or use `.venv` and avoid relying on global Python packages.
+
+## 7. Configuration architecture
+
+### 7.1 `app/settings.py`
+
+Role:
+
+- Reads environment variables.
+- Loads YAML configs and merges them into one runtime `Settings` object.
+- Keeps secrets out of YAML files.
+- Allows environment variables to override YAML defaults only for deployment-specific values.
+
+Boundary:
+
+- `app/config/app.yaml` is the source of truth for non-secret defaults such as timezone, cutoff time, output directory, cache directory, and default delivery toggle.
+- `settings.py` is the source of truth for secrets, provider credentials, deployment-specific overrides, and final runtime validation.
+
+Likely environment variables:
+
+```text
+APP_MODE optional override
+
+# LLM — required for all modes
+OPENAI_API_KEY                  synthesis model, web-search scouts, Whisper transcription
+GEMINI_API_KEY                  podcast Gemini fallback (audio + YouTube)
+XAI_API_KEY                     X scout via Grok
+
+# LLM optional overrides
+LLM_SCOUT_MODEL                 default: openai/gpt-5
+LLM_X_SCOUT_MODEL               default: xai/grok-3
+LLM_SYNTHESIS_MODEL             default: openai/gpt-5
+LLM_TEMPERATURE                 default: 0.2
+
+# Market data — required for live/dry-run
+ALPHA_VANTAGE_API_KEY
+DATABENTO_API_KEY
+FRED_API_KEY                    free at fred.stlouisfed.org
+
+# Discovery — required for live/dry-run
+LISTEN_NOTES_API_KEY            podcast scout
+
+# Delivery — required for live email send
+SENDGRID_API_KEY
+SENDGRID_FROM_EMAIL
+SENDGRID_TO_EMAIL               comma-separated list accepted
+ENABLE_EMAIL_DELIVERY           optional override, default false
+
+# Optional
+AZURE_OPENAI_API_KEY            if routing through Azure via LiteLLM
+AZURE_OPENAI_ENDPOINT
+AZURE_OPENAI_DEPLOYMENT
+CACHE_DIR                       optional override
+OUTPUT_DIR                      optional override
+```
+
+### 7.2 `app/config/app.yaml`
+
+Role:
+
+- Non-secret runtime behavior.
+
+Likely contents:
+
+```yaml
+timezone: Asia/Hong_Kong
+data_cutoff_hkt: "06:45"
+send_time_hkt: "07:15"
+default_mode: sample
+output_dir: outputs
+cache_dir: .cache
+email_enabled: false
+max_discovery_items: 30
+max_theme_radar_items: 3
+```
+
+### 7.3 `app/config/portfolio.yaml`
+
+Role:
+
+- Encodes synthetic book assumptions used for `so what` mapping.
+
+Initial assumptions:
+
+```yaml
+book_assumptions:
+  - name: Long USD/JPY
+    sensitivity: Japan policy divergence, US yields, dollar liquidity
+  - name: Overweight gold
+    sensitivity: real yields, USD, geopolitical risk, central bank demand
+  - name: EM debt basket
+    sensitivity: dollar liquidity, US rates, China demand, credit stress
+```
+
+These are demo assumptions, not real client positions.
+
+### 7.4 `app/config/themes.yaml`
+
+Role:
+
+- Defines macro themes, keywords, watchlist mappings, and ranking hints.
+
+Initial themes:
+
+```yaml
+themes:
+  - id: us_policy_path
+    name: US policy path and front-end rates
+  - id: dollar_liquidity
+    name: Dollar liquidity and USD/JPY policy divergence
+  - id: gold_hedge
+    name: Gold as real-rate/geopolitical hedge
+  - id: china_asia
+    name: China/Asia demand and spillovers to EM credit
+  - id: credit_stress
+    name: Credit stress and risk appetite
+  - id: oil_inflation
+    name: Oil/commodity inflation risk
+```
+
+### 7.5 `app/config/sources.yaml`
+
+Role:
+
+- Controls source providers and toggles.
+
+Likely contents:
+
+```yaml
+market_data:
+  primary: alpha_vantage
+  supplemental:
+    - databento       # FESX (Euro Stoxx 50), FGBL (German Bund), VX (VIX)
+    - fred            # BAMLH0A0HYM2 (HY OAS)
+    - yfinance        # ^MOVE (MOVE index, low_reliability)
+  cache_fallback: true
+
+calendar:
+  provider: investing_backend
+  cache_daily: true
+  consensus_enrichment: true
+
+llm:
+  provider: litellm
+  scout_model: openai/gpt-5        # news, central_bank, research scouts (web search)
+  x_scout_model: xai/grok-3        # X scout — swap model here without code changes
+  synthesis_model: openai/gpt-5    # brief writer, critic, ranker
+  temperature: 0.2
+  max_tokens: 2000
+
+podcast:
+  provider: listen_notes
+  transcription: openai_whisper
+  transcription_fallback: gemini   # handles both audio URLs and YouTube
+  lookback_hours: 24
+
+social:
+  x_provider: grok_prompted
+  direct_x_api: false              # V2: direct X API ingestion
+
+delivery:
+  provider: sendgrid
+  enabled: false
+```
+
+### 7.6 `app/config/chart_templates.yaml`
+
+Role:
+
+- Defines chart candidates and required fields.
+- Keeps chart selection configurable.
+
+## 8. Data models and contracts
+
+All major boundaries should use typed models in `app/models.py`. Pydantic is the preferred choice.
+
+### 8.1 `MarketSnapshot`
+
+Represents one instrument observation for the dashboard.
+
+Key fields:
+
+```text
+as_of
+instrument_id
+display_name
+asset_class
+region
+last_price_or_level
+one_day_change
+one_day_change_unit
+one_day_zscore or threshold_flag
+five_day_change optional
+five_day_change_unit optional
+source
+source_url optional
+freshness_status
+warning optional
+```
+
+### 8.2 `CalendarEvent`
+
+Represents one economic/policy calendar event.
+
+Key fields:
+
+```text
+event_time_local
+event_time_hkt
+session
+country_or_region
+event_name
+importance
+consensus optional
+consensus_source optional
+consensus_source_url optional
+consensus_confidence optional
+consensus_method optional: investing_forecast | source_extracted | computed_from_source
+consensus_formula optional
+consensus_inputs optional
+previous optional
+missing_consensus optional
+source
+source_url optional
+why_it_matters optional
+```
+
+### 8.3 `EvidenceCard`
+
+Represents one normalized source item for ranking/synthesis.
+
+Key fields:
+
+```text
+id
+title
+source_name
+source_type
+url
+published_at
+retrieved_at
+author optional
+summary_raw optional
+thesis
+evidence
+macro_relevance
+portfolio_relevance
+novelty_score optional
+confidence
+tags
+```
+
+### 8.4 `BriefItem`
+
+Represents an item included in the final brief.
+
+Key fields:
+
+```text
+section
+headline
+body
+so_what
+supporting_market_ids
+supporting_evidence_ids
+confidence
+validation_flags
+```
+
+### 8.5 `BriefDraft`
+
+Represents the structured brief before rendering.
+
+Suggested fields:
+
+```text
+run_metadata
+overnight_dashboard
+three_things
+todays_calendar
+chart
+radar_items
+contrarian_corner
+warnings
+```
+
+### 8.6 `RunMetadata`
+
+Represents audit information for each run.
+
+Key fields:
+
+```text
+run_id
+run_started_at
+data_cutoff_at
+timezone
+config_hash
+git_commit optional
+llm_provider
+llm_model
+prompt_versions optional
+token_usage
+estimated_cost_usd
+warnings
+failed_sources
+delivery_status
+output_paths
+```
+
+## 9. Market data architecture
+
+File: `app/data/market.py`
+
+### 9.1 Provider priority and instrument map
+
+Confirmed V1 provider assignments:
+
+| Instrument | Ticker/Symbol | Provider | Notes |
+|---|---|---|---|
+| S&P 500 | SPY | Alpha Vantage | ETF proxy |
+| Nasdaq 100 | QQQ | Alpha Vantage | ETF proxy |
+| Euro Stoxx 50 | FESX (front month) | Databento (XEUR.EOBI) | Actual EU session close |
+| US 2Y Yield | TREASURY_YIELD maturity=2year | Alpha Vantage | |
+| US 10Y Yield | TREASURY_YIELD maturity=10year | Alpha Vantage | |
+| German 10Y (Bund) | FGBL (front month) | Databento (XEUR.EOBI) | No Alpha Vantage equivalent |
+| DXY | UUP | Alpha Vantage | ETF proxy — label clearly |
+| USD/JPY | USDJPY | Alpha Vantage | Forex API |
+| EUR/USD | EURUSD | Alpha Vantage | Forex API |
+| USD/CNH | USDCNH | Alpha Vantage | Forex API |
+| Gold | GOLD or XAU | Alpha Vantage | Commodities API |
+| WTI Crude | WTI | Alpha Vantage | Commodities API |
+| Brent Crude | BRENT | Alpha Vantage | Commodities API |
+| Copper | COPPER | Alpha Vantage | Commodities API |
+| VIX | VX (front month) | Databento (GLBX.MDP3/CFE) | No reliable Alpha Vantage index |
+| HY OAS | BAMLH0A0HYM2 | FRED | Free; history capped at 3Y from Apr 2026 |
+| MOVE Index | ^MOVE | yfinance | No official API; mark `low_reliability` |
+| BTC | BTC | Alpha Vantage | Crypto API |
+
+Databento VX and FGBL/FESX wrappers must handle front-month roll logic.
+
+Fixture data is used for sample/demo tests only.
+
+### 9.2 Provider interface
+
+Use a small common interface:
+
+```python
+class MarketDataProvider(Protocol):
+    def fetch_watchlist(self, watchlist: list[InstrumentConfig], as_of: datetime) -> list[MarketSnapshot]:
+        ...
+```
+
+Provider-specific classes:
+
+```text
+AlphaVantageMarketProvider    primary — equities, FX, commodities, yields, crypto
+DatabentoMarketProvider       FESX, FGBL, VX — includes front-month roll logic
+FredMarketProvider            HY OAS (BAMLH0A0HYM2)
+YfinanceMarketProvider        MOVE index (^MOVE) — low_reliability flag
+FixtureMarketProvider         sample/demo mode only
+```
+
+### 9.3 Normalization
+
+Each provider should normalize raw responses into `MarketSnapshot`. The rest of the app should not depend on raw Alpha Vantage or Databento payloads.
+
+### 9.4 Move detection
+
+Market move detection should be deterministic.
+
+Inputs:
+
+- Current level/price.
+- Prior close.
+- 5D reference level where available.
+- Configured threshold or estimated 1D standard deviation.
+
+Outputs:
+
+- Dashboard rows.
+- Notable move flags.
+- Candidate catalysts for discovery/ranking.
+
+### 9.5 Cache fallback
+
+If live market data fails:
+
+1. Load latest cached market snapshot.
+2. Mark each stale item with `freshness_status=stale_cache`.
+3. Add a warning to `RunMetadata`.
+4. Display a clear warning in the rendered brief.
+5. If no cache exists, fail loudly in live mode.
+
+## 10. Calendar architecture
+
+File: `app/data/calendar.py`
+
+### 10.1 V1 source
+
+Use Investing.com’s ungated backend economic-calendar endpoint as the V1 prototype source.
+
+Important constraints:
+
+- This is not an official paid data partnership.
+- Endpoint stability is not guaranteed.
+- Request volume must be conservative.
+- Daily caching is required.
+- Future production should move to a licensed/paid economic-calendar API with institutional-grade consensus data.
+
+### 10.2 Calendar fetch flow
+
+```text
+Build HKT start/end datetime
+        |
+        v
+Request Investing.com calendar endpoint
+        |
+        v
+Save raw cached response
+        |
+        v
+Normalize events to CalendarEvent
+        |
+        v
+Filter by configured countries/sessions/importance
+        |
+        v
+Mark missing consensus/forecast fields
+```
+
+### 10.3 Consensus handling
+
+Investing.com forecast fields should be treated as consensus when present.
+
+If a high-importance event is missing forecast/consensus, invoke a narrow LLM-powered consensus-enrichment scout. This is the only permitted exception to the rule that the LLM is not involved in data collection, and it is limited to finding or extracting consensus values from public sources.
+
+Accepted consensus methods:
+
+1. `investing_forecast`: use the Investing.com forecast field directly.
+2. `source_extracted`: the LLM scout finds a public source that explicitly states consensus/forecast; attach `consensus_source`, `consensus_source_url`, and `consensus_confidence`.
+3. `computed_from_source`: when consensus is not directly available but can be mechanically derived from sourced raw forecast values, compute it deterministically in code and store `consensus_formula` and `consensus_inputs`. Example: if a source gives a next-month raw forecast and the needed YoY figure can be derived from this-year forecast divided by last-year value, compute the YoY consensus rather than asking the LLM to infer it.
+
+If no reliable source or computable input values are found, leave consensus blank and set `missing_consensus=true`. Never infer, estimate, or invent consensus values from model knowledge.
+
+Implementation options:
+
+- Keep the orchestration in `calendar.py` for V1 if the enrichment path is short.
+- Store the enrichment prompt at `app/llm/prompts/scouts/consensus_enrichment.md`.
+- Move reusable enrichment logic into `discovery/scouts/consensus.py` only if the flow becomes non-trivial or needs its own tests.
+- In all cases, the prompt text is centralized; calendar/scout modules own the business logic.
+
+### 10.4 Manual override
+
+Allow manual YAML overrides for known important events where the endpoint is missing or wrong.
+
+Suggested file later if needed:
+
+```text
+app/config/calendar_overrides.yaml
+```
+
+Do not add this file unless the implementation needs it.
+
+## 11. Discovery architecture
+
+Directory: `app/discovery/`
+
+### 11.1 `orchestrator.py`
+
+Role:
+
+- Runs enabled scouts.
+- Applies per-scout limits and timeouts.
+- Converts outputs into `EvidenceCard` objects.
+- Records failed scouts in `RunMetadata` without killing the run unless a required source fails.
+
+Suggested function:
+
+```python
+def discover_evidence(context: DiscoveryContext) -> list[EvidenceCard]:
+    ...
+```
+
+### 11.2 Scout responsibilities
+
+```text
+news.py
+  Uses OpenAI GPT-5 with web search to find catalysts for large market moves.
+  Useful for confirming why a price move happened overnight.
+  Prompt: app/llm/prompts/scouts/news_search.md
+
+central_bank.py
+  Uses OpenAI GPT-5 with web search to find speeches, statements, minutes,
+  policy releases, and official remarks from central banks.
+  Highest trust source type for policy interpretation.
+  Prompt: app/llm/prompts/scouts/central_bank_extract.md
+
+research.py
+  Uses OpenAI GPT-5 with web search to find longform/research-like material.
+  Favors non-mainstream sources for Theme Radar over generic financial media.
+  Prompt: app/llm/prompts/scouts/research_search.md
+
+podcast.py
+  See §11.3 for full flow. Uses Listen Notes API + Whisper/Gemini.
+  Prompt: app/llm/prompts/scouts/podcast_extract.md
+
+x.py
+  Uses Grok/xAI specifically for privileged X content access.
+  Model is configurable via x_scout_model in sources.yaml — swapping is a
+  one-line config change through LiteLLM. Direct X API ingestion deferred to V2.
+  Prompt: app/llm/prompts/scouts/x_narrative_search.md
+
+base.py
+  Shared scout dataclasses, timeout/retry helpers, prompt loading helpers,
+  and EvidenceCard conversion utilities.
+
+consensus.py optional
+  Narrow consensus-enrichment scout if calendar enrichment grows beyond
+  simple V1 logic.
+```
+
+### 11.3 Podcast scout
+
+File: `app/discovery/scouts/podcast.py`
+
+V1 behavior:
+
+1. Query Listen Notes API (free tier) for episodes published in the last 24 hours, from curated channels or by topic search aligned to configured macro themes.
+2. LLM ranks and filters candidates against macro themes, portfolio assumptions, and watchlist. Gate question: "Is there a tradeable or portfolio-relevant thesis here?" Do not summarize every episode.
+3. For matched episodes:
+   - If transcribable audio URL exists: transcribe via OpenAI Whisper API.
+   - If no transcribable URL: search YouTube and use Gemini API to summarize the video directly. Gemini also serves as the fallback when Whisper fails or the audio URL is inaccessible.
+4. Extract from transcript/summary: speaker's core thesis, evidence/argument, why it matters now, one-line "what this means for our book."
+5. Return structured `EvidenceCard` objects for ranking. Output flows into Theme Radar.
+
+Required keys: `LISTEN_NOTES_API_KEY`, `OPENAI_API_KEY` (Whisper), `GEMINI_API_KEY` (fallback).
+
+### 11.4 Grok/xAI X scout
+
+File: `app/discovery/scouts/x.py`
+
+V1 behavior:
+
+- Prompt Grok/xAI to identify relevant X narratives, posts, and sentiment clusters tied to configured macro themes and overnight market moves.
+- Load prompt text from `app/llm/prompts/scouts/x_narrative_search.md`.
+- Ask for source links/handles where possible.
+- Convert results into candidate `EvidenceCard` objects.
+- Treat Grok output as discovery, not final truth. Corroborate high-impact claims through another source before strong use.
+- Model is configurable via `x_scout_model` in `sources.yaml` — a one-line change routes through any LiteLLM-supported model.
+
+Future behavior (V2):
+
+- Direct X API ingestion with archival and more controlled query construction.
+
+### 11.4 Evidence quality metadata
+
+Every `EvidenceCard` should carry:
+
+- Source type.
+- Source URL.
+- Retrieval time.
+- Confidence.
+- Tags/themes.
+- Portfolio relevance.
+
+This allows ranker/writer/validator to reason about source quality.
+
+## 12. Synthesis architecture
+
+Directory: `app/synthesis/`
+
+### 12.1 `deduper.py`
+
+Role:
+
+- Remove duplicate or near-duplicate evidence items.
+- Prefer primary/official sources over summaries.
+- Preserve alternate perspectives when they genuinely differ.
+
+Possible V1 approach:
+
+- URL canonicalization.
+- Title similarity.
+- Source/time/title keying.
+- Optional embedding similarity only if quick and available.
+
+### 12.2 `ranker.py`
+
+Role:
+
+- Score market moves, calendar events, and evidence cards.
+- Select candidates for `three things`, `theme radar`, chart, and contrarian corner.
+
+Suggested ranking factors:
+
+```text
+portfolio_relevance
+asset_move_magnitude
+freshness
+source_quality
+novelty
+cross_asset_confirmation
+calendar_importance
+theme_match
+confidence
+```
+
+Output:
+
+```text
+RankedBriefContext
+  dashboard_rows
+  top_market_moves
+  top_calendar_events
+  ranked_evidence_cards
+  proposed_three_things
+  proposed_theme_radar
+  proposed_chart_candidate
+  proposed_contrarian_corner_seed
+```
+
+### 12.3 `writer.py`
+
+Role:
+
+- Calls the LLM with structured context.
+- Produces a structured `BriefDraft`.
+- Keeps output concise and grounded.
+
+Writer should use `app/llm/prompt_registry.py` to load `app/llm/prompts/brief_writer.md` for the main brief-writing prompt.
+
+Prompt rules:
+
+- Use only supplied market/calendar/source evidence.
+- Include `so what` tied to portfolio/theme config.
+- Do not invent numbers or links.
+- Say `no confirmed fresh catalyst` when relevant.
+- Obey word limits.
+
+### 12.4 `validator.py`
+
+Role:
+
+- Deterministic checks after LLM writing.
+- Optional critic pass can suggest revisions, but deterministic validation is the final gate.
+
+Validator checks:
+
+- All required sections present.
+- No unsupported numbers.
+- No unsupported links.
+- No consensus values without source metadata unless from cached Investing.com payload.
+- Computed consensus values must include formula, source-backed inputs, and method `computed_from_source`.
+- LLM-enriched consensus must include source URL and confidence metadata.
+- `Three things` items are no more than 80 words.
+- Theme radar summaries are 60–100 words.
+- Chart caption is no more than 30 words.
+- Contrarian corner is 50–100 words.
+- Each `so what` maps to configured portfolio/themes.
+- Warnings are rendered when stale/cached data is used.
+
+Validation behavior:
+
+- In sample mode: fail tests if validation fails.
+- In dry-run/live mode: attempt one rewrite/repair pass, then fail or send with warnings depending on severity.
+
+## 13. LLM architecture
+
+The `app/llm/` folder should stay intentionally small. It exists only for shared LLM call mechanics, the LiteLLM-backed provider boundary, token/cost logging, retries, structured-output helpers, prompt loading, and versioned prompt files. Business logic stays in `discovery/` and `synthesis/`.
+
+Core decision:
+
+> Use LiteLLM for provider compatibility, but keep one thin project wrapper for Daily Macro Brief-specific behavior.
+
+LiteLLM replaces raw per-model SDK adapters. It should not replace the project boundary.
+
+Recommended folder:
+
+```text
+app/llm/
+  __init__.py
+  provider.py
+  prompt_registry.py
+  prompts/
+    brief_writer.md
+    critic.md
+    scouts/
+      news_search.md
+      central_bank_extract.md
+      research_search.md
+      podcast_extract.md
+      x_narrative_search.md
+      consensus_enrichment.md
+```
+
+### 13.1 Dependency choice
+
+Use LiteLLM as the common LLM provider layer.
+
+`pyproject.toml` should pin an exact version rather than using a floating dependency. Initial V1 pin:
+
+```toml
+litellm = "==1.83.14"
+```
+
+Before final submission, verify the chosen version and avoid known compromised versions. In particular, do not use `1.82.7` or `1.82.8`.
+
+### 13.2 Why use LiteLLM
+
+LiteLLM gives one OpenAI-style interface across many model providers, including OpenAI, Azure OpenAI, Anthropic, Gemini/Vertex, Bedrock, and local/OpenAI-compatible endpoints.
+
+This matters for the case study because model choice should be replaceable through config rather than code edits. The X scout model (`x_scout_model`) in particular is designed to be swapped trivially — changing `xai/grok-3` to any other LiteLLM model string is the only change needed.
+
+Confirmed V1 model defaults:
+
+```yaml
+llm:
+  provider: litellm
+  scout_model: openai/gpt-5        # news, central_bank, research — web search capable
+  x_scout_model: xai/grok-3        # X scout — Grok for privileged X access
+  synthesis_model: openai/gpt-5    # brief writer, critic, ranker
+  temperature: 0.2
+  max_tokens: 2000
+```
+
+The split between `scout_model` and `synthesis_model` allows using different models for retrieval vs writing without changing any code — only config. Both default to GPT-5 in V1 but can be diverged independently (e.g. a cheaper model for synthesis in future cost-optimization).
+
+Do not create these unless a real provider-specific need appears:
+
+```text
+AzureOpenAIProvider
+OpenAIProvider
+AnthropicProvider
+GeminiProvider
+BedrockProvider
+```
+
+### 13.3 Why still keep our own wrapper
+
+The project still needs a small wrapper at `app/llm/provider.py` because LiteLLM does not know the Daily Macro Brief contract.
+
+Our wrapper owns:
+
+- structured output parsing into Pydantic models
+- consistent return objects for `RunMetadata`
+- token, latency, model, and estimated-cost metadata
+- retry and timeout policy hooks
+- prompt registry integration
+- consistent exception boundaries for `pipeline.py`
+- deterministic fake/stub behavior for sample tests
+
+The wrapper should be thin. It should not contain prompt text or macro/business logic.
+
+Suggested interface:
+
+```python
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass
+from typing import Any, Generic, TypeVar
+
+from litellm import completion
+from pydantic import BaseModel, ValidationError
+
+T = TypeVar("T", bound=BaseModel)
+
+
+@dataclass(frozen=True)
+class LLMConfig:
+    model: str
+    temperature: float = 0.2
+    max_tokens: int = 2000
+    timeout_seconds: int = 60
+
+
+@dataclass(frozen=True)
+class LLMUsage:
+    model: str
+    latency_seconds: float
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    estimated_cost_usd: float | None = None
+
+
+@dataclass(frozen=True)
+class LLMResult(Generic[T]):
+    output: T
+    usage: LLMUsage
+    raw_text: str
+
+
+class LLMClient:
+    """Small project wrapper around LiteLLM."""
+
+    def __init__(self, config: LLMConfig) -> None:
+        self.config = config
+
+    def generate_structured(
+        self,
+        *,
+        system_prompt: str,
+        user_payload: dict[str, Any],
+        schema: type[T],
+    ) -> LLMResult[T]:
+        started = time.perf_counter()
+        response = completion(
+            model=self.config.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+            ],
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+            timeout=self.config.timeout_seconds,
+            response_format={"type": "json_object"},
+        )
+        latency = time.perf_counter() - started
+
+        raw_text = response.choices[0].message.content or "{}"
+        try:
+            parsed = schema.model_validate_json(raw_text)
+        except ValidationError:
+            parsed = schema.model_validate(json.loads(raw_text))
+
+        usage_obj = getattr(response, "usage", None)
+        usage = LLMUsage(
+            model=getattr(response, "model", self.config.model),
+            latency_seconds=latency,
+            prompt_tokens=getattr(usage_obj, "prompt_tokens", None),
+            completion_tokens=getattr(usage_obj, "completion_tokens", None),
+            total_tokens=getattr(usage_obj, "total_tokens", None),
+        )
+        return LLMResult(output=parsed, usage=usage, raw_text=raw_text)
+```
+
+### 13.4 Prompt registry
+
+File: `app/llm/prompt_registry.py`
+
+Role:
+
+- Load prompt markdown files from `app/llm/prompts/**`.
+- Prevent path traversal.
+- Cache prompt reads.
+- Make prompt names stable for tests and run metadata.
+
+Suggested implementation:
+
+```python
+from __future__ import annotations
+
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+PROMPT_ROOT = Path(__file__).resolve().parent / "prompts"
+
+
+@dataclass(frozen=True)
+class PromptTemplate:
+    name: str
+    path: Path
+    text: str
+
+
+@lru_cache(maxsize=64)
+def load_prompt(name: str) -> PromptTemplate:
+    safe_name = name.removesuffix(".md")
+    path = (PROMPT_ROOT / f"{safe_name}.md").resolve()
+
+    if not str(path).startswith(str(PROMPT_ROOT.resolve())):
+        raise ValueError(f"Invalid prompt path: {name}")
+    if not path.exists():
+        raise FileNotFoundError(f"Prompt not found: {path}")
+
+    return PromptTemplate(name=safe_name, path=path, text=path.read_text(encoding="utf-8"))
+```
+
+### 13.5 Prompt versioning
+
+The V1 prompt set should include:
+
+- `brief_writer.md` for final grounded brief drafting.
+- `critic.md` for the optional rewrite/repair critique.
+- `scouts/news_search.md` for market-move catalyst discovery.
+- `scouts/central_bank_extract.md` for policy-source extraction.
+- `scouts/research_search.md` for non-mainstream research/theme discovery.
+- `scouts/podcast_extract.md` for transcript/podcast-style evidence extraction.
+- `scouts/x_narrative_search.md` for X narrative discovery through Grok/xAI or another configured model.
+- `scouts/consensus_enrichment.md` for narrow calendar consensus enrichment.
+
+Prompts should be saved as files, not buried in Python strings.
+
+Benefits:
+
+- Easier review.
+- Easier prompt iteration.
+- Easier citation in memo/design explanation.
+- Easier rollback.
+- Easier testing of prompt existence and loading.
+
+### 13.6 Scout usage pattern
+
+A scout should own the source-specific context and normalization. It should load prompt text from the registry and send structured input to `LLMClient`.
+
+```python
+from app.llm.prompt_registry import load_prompt
+
+prompt = load_prompt("scouts/x_narrative_search")
+result = llm.generate_structured(
+    system_prompt=prompt.text,
+    user_payload=context.model_dump(mode="json"),
+    schema=XScoutOutput,
+)
+```
+
+The prompt registry owns text. The LLM client owns the provider call. The scout owns source-specific behavior and `EvidenceCard` normalization.
+
+### 13.7 Critic pass
+
+Use a critic prompt after initial drafting to check:
+
+- Missing `so what`.
+- Unsupported market claims.
+- Generic news-regurgitation language.
+- Word limit violations.
+- Missing warnings.
+- Weak or unsubstantiated contrarian framing.
+
+The critic should suggest minimal changes. The deterministic validator remains the final gate.
+
+## 14. Rendering architecture
+
+Directory: `app/render/`
+
+### 14.1 `charts.py`
+
+Role:
+
+- Select or build one chart worth seeing.
+- Use real or fixture data.
+- Save chart to `outputs/sample_chart.png` or run-specific output path.
+
+V1 charting:
+
+- Use matplotlib or Plotly static export.
+- Prefer simple line/bar/scatter chart.
+- Keep chart tied to the selected theme.
+- Do not overbuild interactive dashboards.
+
+### 14.2 `email.py`
+
+Role:
+
+- Render `BriefDraft` into HTML and plain text.
+- Use `render/templates/brief_template.html` for HTML layout.
+- Include warnings near the top when stale/cache fallback data is used.
+
+### 14.3 HTML template
+
+The template should prioritize readability:
+
+- Compact header with run timestamp and data cutoff.
+- Dashboard table.
+- Three short selected items.
+- Calendar table.
+- One chart with caption.
+- Theme radar.
+- Contrarian corner.
+- Source/failure warnings if applicable.
+
+## 15. Delivery architecture
+
+File: `app/delivery.py`
+
+### 15.1 Provider
+
+Use SendGrid as the V1 default delivery provider because the developer has more experience with it.
+
+Keep the delivery layer replaceable so Azure Communication Services can be added later if desired.
+
+### 15.2 Delivery interface
+
+Suggested interface:
+
+```python
+class DeliveryProvider(Protocol):
+    def send(self, message: EmailMessage) -> DeliveryResult:
+        ...
+```
+
+Provider classes:
+
+```text
+SendGridDeliveryProvider
+NoopDeliveryProvider
+```
+
+### 15.3 Delivery behavior
+
+- `sample` mode: never send real email.
+- `dry-run` mode: never send real email.
+- `live` mode: send only if `ENABLE_EMAIL_DELIVERY=true` and recipients are configured.
+- `SENDGRID_TO_EMAIL` accepts a comma-separated list for multiple recipients.
+- Always save output artifacts even if email fails.
+- Record delivery status in `RunMetadata`.
+
+Validation and delivery interaction:
+
+- **Critical failures** (missing required sections, market numbers without source metadata): hard fail, no email sent, failure logged to `RunMetadata`.
+- **Minor failures** (word limit violations, weak `so_what`, missing stale-data warning): email is sent with a validation warning banner rendered at the top of the HTML and text outputs. Recipients can judge the output themselves.
+- Warning banner format: `[VALIDATION WARNINGS: <list of flags>]` rendered before the market dashboard section.
+
+## 16. Caching and artifacts
+
+Suggested cache layout:
+
+```text
+.cache/
+  market/
+    latest.json
+    market_YYYY-MM-DD.json
+  calendar/
+    calendar_YYYY-MM-DD.json
+  discovery/
+    evidence_YYYY-MM-DD.json
+```
+
+Suggested output layout:
+
+```text
+outputs/
+  sample_brief.html
+  sample_brief.txt
+  sample_chart.png
+  runs/
+    YYYY-MM-DD_HHMM_HKT/
+      brief.html
+      brief.txt
+      chart.png
+      run_metadata.json
+      market_snapshot.json
+      calendar.json
+      evidence_cards.json
+```
+
+The committed repo should include sample outputs, not private live outputs unless scrubbed.
+
+## 17. Scheduling architecture
+
+File: `.github/workflows/daily_brief.yml`
+
+### 17.1 Schedule
+
+Target send time:
+
+```text
+07:15 HKT, Monday–Friday
+```
+
+GitHub Actions cron:
+
+```yaml
+on:
+  schedule:
+    - cron: "15 23 * * 0-4"
+  workflow_dispatch:
+```
+
+This cron runs at 23:15 UTC on Sunday–Thursday, corresponding to 07:15 HKT Monday–Friday.
+
+### 17.2 Workflow behavior
+
+Workflow steps:
+
+1. Checkout repo.
+2. Set up Python.
+3. Install dependencies.
+4. Run tests or at least a smoke validation.
+5. Run `make run-live` or `make dry-run` depending on secrets/config.
+6. Upload output artifacts.
+
+Secrets needed:
+
+```text
+ALPHA_VANTAGE_API_KEY
+DATABENTO_API_KEY optional
+AZURE_OPENAI_API_KEY or OPENAI_API_KEY
+AZURE_OPENAI_ENDPOINT optional
+AZURE_OPENAI_DEPLOYMENT optional
+SENDGRID_API_KEY
+SENDGRID_FROM_EMAIL
+SENDGRID_TO_EMAIL
+```
+
+## 18. Testing architecture
+
+Directory: `tests/`
+
+### 18.1 Minimum tests
+
+```text
+test_config.py
+  settings/config load successfully from fixtures/env defaults
+
+test_market.py
+  provider normalization from fixture payloads
+  stale cache fallback behavior
+
+test_calendar.py
+  Investing.com payload normalization
+  forecast-as-consensus mapping
+  missing-consensus flag
+  high-importance LLM consensus enrichment stub
+  computed consensus from source-backed raw inputs
+
+test_llm.py
+  prompt registry loads expected prompt files
+  prompt registry blocks path traversal
+  LLMClient parses structured JSON into Pydantic models using a fake LiteLLM response
+
+test_ranker.py
+  ranks portfolio-relevant evidence above generic news
+  selects market moves above thresholds
+
+test_validator.py
+  catches unsupported numbers
+  catches unsupported links
+  catches missing so-what
+  catches word-limit violations
+  catches missing stale-data warning
+
+test_render.py
+  HTML/text outputs include all required sections
+  chart path/caption rendered correctly
+
+test_pipeline_sample.py
+  sample mode creates expected output files
+```
+
+### 18.2 Testing priorities
+
+Highest value tests for this project:
+
+1. Validation against hallucinated/unsupported numbers.
+2. Calendar consensus behavior.
+3. Stale market cache warning behavior.
+4. Output section completeness.
+5. Prompt registry and structured LLM output wrapper behavior.
+6. Sample mode end-to-end run.
+
+### 18.3 CI gate
+
+Minimum CI gate:
+
+```bash
+make lint
+make test
+make run-sample
+```
+
+If time is short, keep `run-sample` as the core smoke test.
+
+## 19. Cost and observability architecture
+
+### 19.1 Runtime metadata
+
+Every run should record:
+
+- Run ID.
+- Mode.
+- Start/end time.
+- Data cutoff.
+- Source calls attempted.
+- Source calls failed.
+- Cache fallbacks used.
+- LLM provider.
+- LLM model.
+- Prompt names/versions used.
+- Token usage.
+- Estimated LLM cost.
+- Delivery status.
+- Output paths.
+
+### 19.2 `costs.md`
+
+`costs.md` should summarize estimated daily cost:
+
+```text
+LLM tokens and estimated cost by configured LiteLLM model
+LiteLLM package/version assumption
+Alpha Vantage plan/free-tier assumptions
+Databento assumptions
+GitHub Actions cost assumption
+SendGrid cost assumption
+Any future paid calendar API assumption
+```
+
+For the case study, cost numbers can be approximate, but assumptions should be explicit.
+
+## 20. Failure handling matrix
+
+| Failure                                                                              | V1 behavior                                                                                                                                 |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Alpha Vantage market call fails                                                      | Try supplemental provider if configured; otherwise use latest cached snapshot with warning.                                                 |
+| Databento supplemental call fails                                                    | Continue without supplemental data; record warning.                                                                                         |
+| No cached market snapshot exists in live mode                                        | Fail loudly; do not ask LLM to fill numbers.                                                                                                |
+| Investing.com calendar endpoint fails                                                | Use latest same-day or most recent cache if acceptable; otherwise use fixture only in sample mode and warn/fail in live depending severity. |
+| Investing.com missing forecast                                                       | Use narrow LLM consensus-enrichment scout for high-importance events; otherwise flag `missing_consensus`.                                   |
+| Consensus is not directly stated but source-backed raw forecast inputs are available | Compute consensus deterministically in code, store formula/inputs, and mark method `computed_from_source`.                                  |
+| Consensus scout finds no reliable source or computable inputs                        | Leave consensus blank and flag `missing_consensus`.                                                                                         |
+| Optional discovery scout fails                                                       | Continue and record failed source.                                                                                                          |
+| Grok/xAI returns unverifiable claim                                                  | Keep as weak candidate or discard unless corroborated.                                                                                      |
+| LiteLLM/model provider call fails                                                    | Retry according to wrapper policy; in sample mode fall back to deterministic sample writer if configured; in live mode fail or send warning depending on severity. |
+| LLM output fails validation                                                          | Attempt one repair pass; fail if critical validation still fails.                                                                           |
+| SendGrid delivery fails                                                              | Save artifacts and record failed delivery status.                                                                                           |
+
+## 21. Local development environment
+
+- Local development uses a repo-level `.venv` virtual environment.
+- `Makefile` targets should assume `.venv` where practical.
+- `.venv/` must be ignored by git and never committed.
+- GitHub Actions should create its own clean Python environment rather than depending on `.venv`.
+
+## 22. Security and source-use boundaries
+
+- Never commit API keys or secrets.
+- Keep `.env.example` complete but secret-free.
+- Treat portfolio assumptions as synthetic demo data.
+- Do not scrape restricted paid content.
+- Use the Investing.com backend endpoint politely and cache results.
+- Do not over-call Grok/xAI, market APIs, or calendar endpoints.
+- Prefer official sources for central bank/policy material.
+- Pin LLM infrastructure dependencies exactly and review supply-chain notices before updating LiteLLM.
+- Do not use known compromised LiteLLM versions such as `1.82.7` or `1.82.8`.
+
+## 23. What is intentionally not built in V1
+
+- No trading execution.
+- No portfolio optimizer.
+- No full data warehouse.
+- No fine-tuning/training loop.
+- No complex dashboard UI.
+- No direct X API ingestion.
+- No licensed institutional calendar API integration yet.
+- No broad autonomous web-browsing agent without source constraints.
+- No heavy notebook/ML experiment structure.
+
+## 24. Architecture open questions
+
+These are implementation-planning questions, not product/spec blockers.
+
+1. Which exact Databento datasets/symbols should be used as supplemental sources in V1?
+2. Should FRED be included in V1 for rates/credit proxies, or deferred unless Alpha Vantage/Databento coverage is insufficient?
+3. Should the consensus-enrichment scout stay inside `calendar.py` for speed, or move to `discovery/scouts/consensus.py` once it needs separate tests?
+4. Should the sample writer avoid LLM calls entirely for deterministic tests, or should it call the configured LLM in sample mode when credentials exist?
+5. Which LiteLLM model string should be the default for the final submission environment: Azure OpenAI deployment, OpenAI direct model, or Grok/xAI-compatible endpoint for scout-only use?
+

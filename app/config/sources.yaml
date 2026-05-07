@@ -1,0 +1,40 @@
+# app/config/sources.yaml — data source toggles and scout settings
+
+market:
+  primary: alpha_vantage
+  supplemental: databento
+  move_index: yfinance  # low_reliability flag applied automatically
+  hy_oas: fred
+
+calendar:
+  provider: investing_com
+  cache_daily: true
+  filter_countries: ["US", "EU", "DE", "JP", "CN", "GB"]
+  filter_importance: ["high", "medium"]
+
+scouts:
+  news:
+    enabled: true
+    model: "gpt-4o"  # via LiteLLM
+
+  central_bank:
+    enabled: true
+    model: "gpt-4o"
+
+  research:
+    enabled: true
+    model: "gpt-4o"
+
+  x:
+    enabled: true
+    x_scout_model: "xai/grok-2"  # via LiteLLM — change here to swap model
+
+  podcast:
+    enabled: true
+    transcription_model: "whisper-1"
+    video_fallback_model: "gemini/gemini-1.5-pro"
+    listen_notes_lookback_hours: 24
+
+delivery:
+  provider: sendgrid
+  default_enabled: false  # overridden by ENABLE_EMAIL_DELIVERY env var

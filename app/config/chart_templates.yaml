@@ -1,0 +1,28 @@
+# app/config/chart_templates.yaml — chart candidates for "One chart worth seeing"
+# The ranker selects the most relevant candidate based on the day's market moves.
+
+templates:
+  - id: cross_asset_risk
+    label: "Cross-asset risk move"
+    instruments: ["SPY", "GLD", "UUP", "VIX"]
+    theme_tags: ["credit_stress", "us_policy_rates"]
+
+  - id: rates_fx_divergence
+    label: "Rates / FX divergence"
+    instruments: ["US2Y", "US10Y", "USD/JPY"]
+    theme_tags: ["usd_jpy_divergence", "us_policy_rates"]
+
+  - id: gold_real_yield
+    label: "Gold vs real-yield proxy"
+    instruments: ["GLD", "US10Y"]
+    theme_tags: ["gold_hedge"]
+
+  - id: vix_move_stress
+    label: "VIX / MOVE stress comparison"
+    instruments: ["VIX", "MOVE"]
+    theme_tags: ["credit_stress"]
+
+  - id: commodity_basket
+    label: "Commodity basket"
+    instruments: ["WTI", "Gold", "Copper"]
+    theme_tags: ["commodity_inflation"]

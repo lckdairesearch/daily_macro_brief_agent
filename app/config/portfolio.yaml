@@ -1,0 +1,31 @@
+# app/config/portfolio.yaml — assumed PM book (synthetic/demo)
+# These are prototype assumptions, not real client positions.
+# Replace with actual exposures before using in a live PM context.
+
+disclaimer: "Synthetic demo assumptions. Not real client data."
+
+positions:
+  - id: usdjpy_long
+    label: "Long USD/JPY"
+    instrument: "USD/JPY"
+    direction: long
+    sensitivity_tags: ["usd", "jpy", "us_rates", "boj_policy"]
+
+  - id: gold_overweight
+    label: "Overweight gold"
+    instrument: "Gold"
+    direction: long
+    sensitivity_tags: ["gold", "real_rates", "geopolitical", "usd"]
+
+  - id: em_debt_basket
+    label: "EM debt basket"
+    instrument: "EM_DEBT"
+    direction: long
+    sensitivity_tags: ["em_credit", "usd_liquidity", "china_growth", "risk_appetite"]
+
+macro_sensitivities:
+  - us_rates
+  - usd_liquidity
+  - china_asia_growth
+  - commodity_shocks
+  - credit_stress

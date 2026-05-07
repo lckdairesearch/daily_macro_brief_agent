@@ -1,0 +1,26 @@
+# app/config/themes.yaml — macro themes to track and rank evidence against
+
+themes:
+  - id: us_policy_rates
+    label: "US policy path and front-end rates"
+    keywords: ["Fed", "FOMC", "fed funds", "front-end", "US rates", "Treasury", "2Y", "10Y"]
+
+  - id: usd_jpy_divergence
+    label: "Dollar liquidity and USD/JPY policy divergence"
+    keywords: ["USD/JPY", "DXY", "BOJ", "dollar liquidity", "yen", "divergence"]
+
+  - id: gold_hedge
+    label: "Gold as real-rate and geopolitical hedge"
+    keywords: ["gold", "real yields", "TIPS", "geopolitical", "safe haven"]
+
+  - id: china_asia_em
+    label: "China/Asia demand and spillovers to EM credit"
+    keywords: ["China", "PBOC", "Asia", "EM", "emerging markets", "CNH", "growth"]
+
+  - id: credit_stress
+    label: "Credit stress and risk appetite"
+    keywords: ["HY", "IG", "credit spreads", "OAS", "VIX", "risk off", "risk on"]
+
+  - id: commodity_inflation
+    label: "Oil/commodity inflation risk"
+    keywords: ["oil", "WTI", "Brent", "copper", "commodities", "inflation", "CPI"]
