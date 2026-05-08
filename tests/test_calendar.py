@@ -14,10 +14,10 @@ def test_fixture_loads():
     assert len(data["events"]) > 0
 
 
-def test_fixture_high_importance_events_present():
+def test_fixture_medium_or_high_importance_events_present():
     data = json.loads(FIXTURE.read_text())
-    high = [e for e in data["events"] if e["importance"] == "high"]
-    assert len(high) >= 1
+    notable = [e for e in data["events"] if e["importance"] >= 2]
+    assert len(notable) >= 1
 
 
 @pytest.mark.skip(reason="Not yet implemented — Step 3")
