@@ -1000,24 +1000,41 @@ else:
 
 **Files to modify:**
 
+- `app/models.py` — add `BriefWriterOutput` model
 - `app/synthesis/writer.py`
 - `app/llm/prompts/brief_writer.md`
-- `tests/test_writer.py` if useful
+- `app/pipeline.py`
+- `tests/test_writer.py`
 
 **Implementation notes:**
 
-- Load prompt through prompt registry.
-- Send market snapshots, calendar events, evidence cards, themes, portfolio assumptions, and warnings as structured JSON.
-- Produce a `BriefDraft` object.
-- Support deterministic sample writer when LLM calls are disabled in sample mode.
+- Add `BriefWriterOutput` to `app/models.py`: contains only the LLM-written fields — `three_things: list[BriefItem]`, `radar_items: list[BriefItem]`, `contrarian_corner: BriefItem | None`, `chart_caption: str | None`, `warnings: list[str]`. The LLM does not reproduce dashboard or calendar data; the pipeline assembles the final `BriefDraft` by merging `BriefWriterOutput` with the market snapshots and calendar events already in the pipeline.
+- Load prompt through prompt registry (`brief_writer.md`).
+- Send market snapshots, calendar events, evidence cards, themes, portfolio assumptions, and warnings as a single structured JSON payload.
+- Make one LiteLLM call via `app/llm/provider.py` requesting structured JSON output; parse response into `BriefWriterOutput`, then assemble `BriefDraft`.
+- One shot only — the full brief is produced in a single call, not one call per section.
+- Default to LiteLLM; switch to OpenAI SDK directly only if structured output is not performing.
+- Sample mode uses the same LLM path with fixture data as input — `OPENAI_API_KEY` is required even in sample mode. Document this in settings validation and `.env.example`.
+- Wire the writer call into `app/pipeline.py` after the ranking step so `make run-sample` produces a real `BriefDraft`.
+
+**`brief_writer.md` must include:**
+
+- Hard constraint: use only supplied data; never invent prices, yields, links, authors, or consensus values; write `no confirmed fresh catalyst` when no catalyst is confirmed.
+- Exact word limits per section: `three_things` body ≤ 80 words each; `radar_items` body 60–100 words each; `contrarian_corner` body 50–100 words; `chart_caption` ≤ 30 words.
+- `so_what` in every `three_things` and `radar_items` item must reference a specific position or theme from supplied `portfolio_context`.
+- `radar_items` must summarise the author's thesis and evidence, not just the abstract; prefer non-mainstream sources (central bank speeches, research notes, Substacks, podcasts, X threads, buy-side letters) over mainstream financial media.
+- `contrarian_corner` must be framed as "the market is not pricing X, worth watching because Y"; return null if no genuine mispricing narrative is supported by the evidence — do not force one.
+- Sparse evidence: if fewer than three high-quality evidence cards exist, produce only as many `three_things` items as are genuinely supported and add a warning.
+- Stale data: any section referencing a `freshness_status=STALE_CACHE` instrument must note it inline (e.g. `note: price data is stale`).
 
 **Human input needed:** Review wording and whether the brief has a point of view without overclaiming.
 
 **Acceptance checks:**
 
-- Sample writer returns all six required sections.
-- LLM writer path can be tested with mocked structured output.
+- `make run-sample` produces a populated `BriefDraft` with all six required sections.
+- LLM writer path can be tested with mocked LiteLLM structured output.
 - No writer path invents data outside supplied context.
+- `contrarian_corner` is null when no supporting evidence is provided.
 
 ### 10.2 Implement deterministic validator
 
@@ -1026,80 +1043,99 @@ else:
 **Files to modify:**
 
 - `app/synthesis/validator.py`
+- `app/pipeline.py`
 - `tests/test_validator.py`
 
-**Validator checks:**
+**Validator failure severity:**
 
-- All required sections present.
-- No unsupported market numbers.
-- No unsupported links.
-- No consensus values without source metadata unless directly from cached Investing.com payload.
-- Computed consensus includes formula and inputs.
-- LLM-enriched consensus includes source URL and confidence.
-- Three-things items are no more than 80 words.
-- Theme radar summaries are 60–100 words.
-- Chart caption is no more than 30 words.
-- Contrarian corner is 50–100 words.
-- Each `so what` maps to configured portfolio/themes.
-- Stale/cache warnings are rendered when needed.
+Critical failures hard-fail the run and suppress delivery:
 
-**Human input needed:** Confirm whether validator failures should hard-fail live mode or allow send-with-warning for non-critical issues.
+- Any required section missing.
+- Market number present without source metadata.
+- Link present without source metadata.
+- Consensus value present without source metadata and not directly from cached Investing.com payload.
 
-**Acceptance checks:**
+Minor failures attach a warning banner to the brief but allow delivery:
 
-- Tests cover unsupported number, unsupported link, missing `so what`, word-limit violation, missing stale warning, and missing source metadata.
-
-### 10.3 Implement optional critic/repair pass
-
-**Agent objective:** Add one LLM-assisted repair attempt before final deterministic validation failure.
-
-**Files to modify:**
-
-- `app/synthesis/writer.py`
-- `app/synthesis/validator.py` if needed
-- `app/llm/prompts/critic.md`
-- `tests/test_writer.py` or `tests/test_validator.py`
+- Three-things item exceeds 80 words.
+- Theme radar summary outside 60–100 words.
+- Chart caption exceeds 30 words.
+- Contrarian corner outside 50–100 words.
+- A `so what` line does not map to configured portfolio/themes.
+- Stale/cache warning not rendered when stale data is present.
+- Computed consensus missing formula or inputs.
+- LLM-enriched consensus missing source URL or confidence.
 
 **Implementation notes:**
 
-- Critic suggests minimal edits only.
-- Deterministic validator remains the final gate.
-- Do not let the critic add unsupported facts.
-
-**Human input needed:** Confirm whether this is needed for V1 or can be deferred after deterministic validator is working.
+- Wire the validator call into `app/pipeline.py` immediately after the writer step.
+- Critical failures exit non-zero and set `PipelineResult` to failed; minor failures populate `RunMetadata.warnings`.
 
 **Acceptance checks:**
 
-- Failed first draft can be repaired in a mocked test.
-- Still fails when repaired output violates critical rules.
+- Tests cover each critical rule (unsupported number, unsupported link, missing section, missing source metadata).
+- Tests cover each minor rule (word-limit violation, missing `so what`, missing stale warning).
+- Critical failure exits non-zero; minor failure produces a non-empty warnings list and does not exit non-zero.
+
+### 10.3 Critic/repair pass — deferred to V2
 
 ---
 
 ## Step 11 — Rendering and charting
 
-### 11.1 Implement chart builder
+### 11.1 Implement chart builder (LLM-driven code generation)
 
-**Agent objective:** Generate one chart for the brief from real or fixture data.
+**Agent objective:** Generate one chart per brief by having an LLM write matplotlib code on the fly, validated by subprocess execution. Replaces the static template approach with a flexible, dual-axis-capable renderer.
 
-**Files to modify:**
+**Files to create / modify:**
 
-- `app/render/charts.py`
+- `app/data/market.py` — add `fetch_chart_series()` + `FixtureChartSeriesProvider`
+- `app/render/charts.py` — entry point: `build_chart(draft, output_path, sample_mode) -> ChartSpec`
+- `app/render/chart_codegen.py` — series selection, data prep, LLM call, subprocess execution, retry + fallback
+- `app/llm/prompts/chart_codegen.md` — **already created** (prompt spec below)
+- `app/models.py` — add `code_generated: bool = False` to `ChartSpec`
 - `tests/test_render.py`
 
-**Implementation notes:**
+**Historical data layer (`app/data/market.py`):**
 
-- Use fixture data in sample mode.
-- Save sample chart to `outputs/sample_chart.png`.
-- Keep chart simple and tied to a selected theme.
-- Caption must be no more than 30 words.
+New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sample_mode)` routes each instrument ID to the correct existing raw fetch function using the already-defined metadata tables (`_AV_INSTRUMENT_META`, `_DB_INSTRUMENT_META`, `_YF_INSTRUMENT_META`, `_FRED_INSTRUMENT_META`). Returns `dict[str, list[dict]]` — `{instrument_id: [{date, close}, ...]}` sorted ascending. Default lookback: 30 calendar days.
 
-**Human input needed:** Choose the best sample chart candidate: cross-asset risk move, rates/FX divergence, gold versus real-yield proxy, VIX/MOVE stress, or calendar/policy path.
+`FixtureChartSeriesProvider`: deterministic synthetic time-series (seeded random walk per instrument name) — no API calls, no new fixture file.
+
+**Series selection — hybrid with fallback:**
+
+1. Primary: match dominant theme from `BriefDraft.three_things[0]` against `chart_templates.yaml` theme_tags → use template's `instruments` list.
+2. Fallback (no match): pass all `overnight_dashboard` instrument IDs to LLM; it picks 2–4.
+3. LLM can only reference injected data — cannot invent values.
+
+**Code generation & validation:**
+
+1. Call `fetch_chart_series()` with selected instruments.
+2. Inject data as Python dict literals + calendar events from `BriefDraft.todays_calendar` (dates within range).
+3. Call LLM via `app/llm/client.py` (LiteLLM; model `gpt-4o` or project default) using `chart_codegen.md` prompt.
+4. Execute in subprocess (`timeout=30s`); check exit code and PNG exists.
+5. On failure: inject stderr, retry once.
+6. On second failure: hardcoded bar chart of `one_day_change` for dashboard instruments.
+
+**Prompt spec (`app/llm/prompts/chart_codegen.md` — already written):**
+
+- `figsize=(10, 3.5)` → ~500×175px displayed in email (1/3 screen height, 3/4 column width)
+- White bg `#FFFFFF`, axes `#FAFAFA`, subtle grey gridlines
+- Dual y-axis: price/% left, index/bps right; single axis if all series share unit type
+- Asset-class colors: equity `#2563EB`, rates `#EA580C`, vol `#DC2626`, FX `#16A34A`, commodity `#D97706`
+- Calendar events → vertical dashed grey lines + rotated labels; LLM may add ≤2 from data context
+- Bold title + grey date-range subtitle; legend `loc="best"`; `tight_layout(pad=1.5)`
+- Output: `plt.savefig(output_path, dpi=150, bbox_inches="tight")`
 
 **Acceptance checks:**
 
-- Chart file is created.
-- Caption passes validator.
-- Chart data is traceable to fixture or source data.
+- `outputs/sample_chart.png` is created with fixture data (`make run-sample`).
+- PNG dimensions are wide and short (~10:3.5 aspect ratio).
+- Subprocess executes without error; file is a valid image.
+- Caption passes validator (≤30 words).
+- Dual-axis renders correctly when series scales differ by > 10×.
+- Hardcoded fallback produces a PNG when codegen fails twice.
+- Chart data is traceable to fixture or `overnight_dashboard` source data.
 
 ### 11.2 Implement HTML and text rendering
 

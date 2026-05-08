@@ -45,6 +45,28 @@ class LLMClient:
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
 
+    def generate_text(
+        self,
+        *,
+        system_prompt: str,
+        user_message: str,
+    ) -> str:
+        """Generate free-form text (e.g. Python code). No schema validation."""
+        if self.config.fake_response is not None:
+            return _fake_response_text(self.config.fake_response)
+
+        response = litellm.completion(
+            model=self.config.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+            timeout=self.config.timeout_seconds,
+        )
+        return _extract_text(response)
+
     def generate_structured(
         self,
         *,

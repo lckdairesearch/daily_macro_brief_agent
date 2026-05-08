@@ -18,6 +18,7 @@ class TinyAnswer(BaseModel):
 
 EXPECTED_PROMPTS = [
     "brief_writer",
+    "chart_codegen",
     "critic",
     "scouts/news_search",
     "scouts/central_bank_extract",
@@ -34,7 +35,7 @@ def test_prompt_registry_loads_all_prompts():
         prompt = load_prompt(name)
         assert prompt.name == name
         assert prompt.path.name.endswith(".md")
-        assert any(phrase in prompt.text for phrase in ("Do not invent", "do not invent", "do not fabricate", "fabricate"))
+        assert any(phrase in prompt.text for phrase in ("Do not invent", "do not invent", "Never invent", "never invent", "do not fabricate", "fabricate"))
         assert "source" in prompt.text.lower()
 
 

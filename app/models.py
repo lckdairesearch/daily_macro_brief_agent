@@ -145,7 +145,7 @@ class EvidenceCard(BaseModel):
 
 class BriefItem(BaseModel):
     """Item included in the final brief."""
-    
+
     section: BriefSection
     headline: str
     body: str
@@ -156,15 +156,39 @@ class BriefItem(BaseModel):
     validation_flags: list[str] = Field(default_factory=list)
 
 
+class WriterItem(BaseModel):
+    """LLM-produced brief item before section assignment. No section field so the LLM
+    cannot return an invalid enum value; the writer assigns section after parsing."""
+
+    headline: str
+    body: str
+    so_what: str | None = None
+    supporting_market_ids: list[str] = Field(default_factory=list)
+    supporting_evidence_ids: list[str] = Field(default_factory=list)
+    confidence: float | None = None
+
+
+class BriefWriterOutput(BaseModel):
+    """LLM output: only the sections the writer generates.
+    Dashboard and calendar are pipeline pass-throughs and are NOT reproduced here."""
+
+    three_things: list[WriterItem] = Field(default_factory=list)
+    radar_items: list[WriterItem] = Field(default_factory=list)
+    contrarian_corner: WriterItem | None = None
+    chart_caption: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ChartSpec(BaseModel):
     """Chart specification for the brief."""
-    
+
     title: str
     caption: str
     chart_type: str  # "line", "bar", "scatter", etc.
     data_source: str
     file_path: str | None = None
     themes: list[str] = Field(default_factory=list)
+    code_generated: bool = False
 
 
 class BriefDraft(BaseModel):

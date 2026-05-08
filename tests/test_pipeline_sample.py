@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from unittest.mock import patch
+
+import pytest
 
 from app.data.market import FixtureMarketProvider
 from app.discovery.scouts.base import DiscoveryContext, FixtureDiscoveryScout
-from app.models import DeliveryStatus, PipelineResult, RunMode
+from app.models import (
+    BriefDraft,
+    BriefItem,
+    BriefSection,
+    DeliveryStatus,
+    LLMUsage,
+    PipelineResult,
+    RunMode,
+)
 from app.pipeline import (
     _load_fixture_calendar,
     run_pipeline,
@@ -14,21 +25,63 @@ from app.pipeline import (
 from app.settings import Settings
 
 
-def test_sample_pipeline_returns_pipeline_result():
+def _mock_write_brief(ranked_context, settings, run_date, mode=None):
+    """Return a minimal valid BriefDraft without making any LLM call."""
+    snap = ranked_context.dashboard_rows[0] if ranked_context.dashboard_rows else None
+    three_things = BriefItem(
+        section=BriefSection.THREE_THINGS,
+        headline="Metals complex gains",
+        body="Gold moved higher as real yields softened. Supporting the monetary debasement thesis with central bank buying continuing at elevated pace.",
+        so_what="Supports long metals complex position.",
+        supporting_market_ids=[snap.instrument_id] if snap else [],
+    )
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Fiscal Dominance Thesis — Research Note",
+        body=(
+            "Author argues that fiscal dominance is now the primary driver of long yields. "
+            "Evidence includes widening deficits and sustained Treasury issuance. "
+            "Central banks are losing credibility as inflation anchors. "
+            "Historical parallels to the 1940s yield curve control era are noted."
+        ),
+        so_what="What this means for our book: reinforces short duration positioning.",
+        supporting_evidence_ids=["ev_001"],
+    )
+    draft = BriefDraft(
+        run_metadata={},
+        overnight_dashboard=ranked_context.dashboard_rows,
+        three_things=[three_things],
+        todays_calendar=ranked_context.top_calendar_events,
+        radar_items=[radar],
+        contrarian_corner=None,
+        warnings=[],
+    )
+    usage = LLMUsage(model="mock", latency_seconds=0.0)
+    return draft, usage
+
+
+@pytest.fixture(autouse=False)
+def mock_writer():
+    """Patch write_brief for pipeline smoke tests — no real LLM call needed."""
+    with patch("app.synthesis.writer.write_brief", side_effect=_mock_write_brief):
+        yield
+
+
+def test_sample_pipeline_returns_pipeline_result(mock_writer):
     """run_pipeline(sample) returns a PipelineResult instance."""
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert isinstance(result, PipelineResult)
 
 
-def test_sample_pipeline_success():
+def test_sample_pipeline_success(mock_writer):
     """run_pipeline(sample) returns success=True."""
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.success is True
 
 
-def test_sample_pipeline_run_metadata_populated():
+def test_sample_pipeline_run_metadata_populated(mock_writer):
     """RunMetadata has required fields populated."""
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
@@ -40,7 +93,7 @@ def test_sample_pipeline_run_metadata_populated():
     assert meta.llm_provider == "litellm"
 
 
-def test_sample_pipeline_no_email_sent():
+def test_sample_pipeline_no_email_sent(mock_writer):
     """Sample mode delivery status is never SUCCESS — email must not be sent."""
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)

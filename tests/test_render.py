@@ -1,18 +1,345 @@
-"""Tests for HTML/text rendering (Step 6)."""
+"""Tests for chart generation (Step 11.1)."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from app.data.market import FixtureChartSeriesProvider, fetch_chart_series
+from app.models import (
+    AssetClass,
+    BriefDraft,
+    BriefItem,
+    BriefSection,
+    CalendarEvent,
+    ChartSpec,
+    FreshnessStatus,
+    MarketSnapshot,
+)
+from app.render.chart_codegen import (
+    build_data_preamble,
+    execute_chart_code,
+    select_instruments,
+)
+from app.render.charts import _hardcoded_fallback
 
-@pytest.mark.skip(reason="Not yet implemented — Step 6")
-def test_html_output_contains_all_six_sections():
-    pass
+_AS_OF = datetime(2026, 5, 9, 6, 45, tzinfo=timezone.utc)
 
 
-@pytest.mark.skip(reason="Not yet implemented — Step 6")
-def test_text_output_contains_all_six_sections():
-    pass
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+def _snapshot(iid: str, display: str, asset_class: AssetClass, change: float, flagged: bool = False) -> MarketSnapshot:
+    return MarketSnapshot(
+        as_of=_AS_OF,
+        instrument_id=iid,
+        display_name=display,
+        asset_class=asset_class,
+        region="US",
+        last_price_or_level=100.0,
+        one_day_change=change,
+        one_day_change_unit="%",
+        one_day_zscore=change,
+        threshold_flag=flagged,
+        source="fixture",
+        freshness_status=FreshnessStatus.FRESH,
+    )
 
 
-@pytest.mark.skip(reason="Not yet implemented — Step 6")
-def test_chart_png_saved():
-    pass
+def _make_draft(supporting_market_ids: list[str] | None = None, with_calendar: bool = False) -> BriefDraft:
+    dashboard = [
+        _snapshot("SPY", "S&P 500 (proxy)", AssetClass.EQUITY, -1.2),
+        _snapshot("VIX", "VIX", AssetClass.VOLATILITY, 8.0, flagged=True),
+        _snapshot("MOVE", "MOVE Index", AssetClass.VOLATILITY, 3.0, flagged=True),
+        _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+        _snapshot("GOLD", "Gold (spot)", AssetClass.COMMODITY, 0.5),
+    ]
+    three_things = []
+    if supporting_market_ids:
+        three_things = [
+            BriefItem(
+                section=BriefSection.THREE_THINGS,
+                headline="Test headline",
+                body="Test body",
+                so_what="Test so_what",
+                supporting_market_ids=supporting_market_ids,
+            )
+        ]
+    calendar: list[CalendarEvent] = []
+    if with_calendar:
+        calendar = [
+            CalendarEvent(
+                event_time_local=datetime(2026, 5, 9, 14, 0, tzinfo=timezone.utc),
+                event_time_hkt=datetime(2026, 5, 9, 14, 0, tzinfo=timezone.utc),
+                session="US",
+                country_or_region="US",
+                event_name="FOMC Minutes",
+                importance=3,
+                source="fixture",
+            )
+        ]
+    return BriefDraft(
+        run_metadata={},
+        overnight_dashboard=dashboard,
+        three_things=three_things,
+        todays_calendar=calendar,
+        chart=ChartSpec(
+            title="VIX / MOVE stress comparison",
+            caption="Volatility spike signals stress",
+            chart_type="line",
+            data_source="fixture",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# select_instruments
+# ---------------------------------------------------------------------------
+
+def test_select_instruments_matches_vix_move_template():
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    label, instruments = select_instruments(draft)
+    assert "VIX" in instruments
+    assert "MOVE" in instruments
+    assert "stress" in label.lower() or "VIX" in label or "MOVE" in label
+
+
+def test_select_instruments_uses_threshold_flagged_items():
+    draft = _make_draft()  # VIX, MOVE, US10Y are flagged
+    label, instruments = select_instruments(draft)
+    # vix_move_stress or rates_fx_divergence should match
+    assert len(instruments) > 0
+
+
+def test_select_instruments_fallback_returns_all_dashboard_ids():
+    draft = _make_draft(supporting_market_ids=[])
+    # Remove flagged status from all dashboard items so nothing scores
+    dashboard = [s.model_copy(update={"threshold_flag": False}) for s in draft.overnight_dashboard]
+    draft = draft.model_copy(update={"overnight_dashboard": dashboard, "three_things": []})
+    label, instruments = select_instruments(draft)
+    assert label == "Market overview"
+    assert set(instruments) == {"SPY", "VIX", "MOVE", "US10Y", "GOLD"}
+
+
+# ---------------------------------------------------------------------------
+# FixtureChartSeriesProvider
+# ---------------------------------------------------------------------------
+
+def test_fixture_provider_returns_rows_for_all_instruments():
+    provider = FixtureChartSeriesProvider()
+    result = provider.fetch(["SPY", "VIX", "US10Y"], lookback_days=30, as_of=_AS_OF)
+    assert set(result.keys()) == {"SPY", "VIX", "US10Y"}
+
+
+def test_fixture_provider_row_count():
+    provider = FixtureChartSeriesProvider()
+    result = provider.fetch(["SPY"], lookback_days=30, as_of=_AS_OF)
+    assert len(result["SPY"]) == 31  # inclusive of both endpoints
+
+
+def test_fixture_provider_row_structure():
+    provider = FixtureChartSeriesProvider()
+    result = provider.fetch(["GOLD"], lookback_days=5, as_of=_AS_OF)
+    for row in result["GOLD"]:
+        assert "date" in row and "close" in row
+        assert isinstance(row["close"], float)
+        assert row["close"] > 0
+
+
+def test_fixture_provider_is_deterministic():
+    provider = FixtureChartSeriesProvider()
+    r1 = provider.fetch(["SPY"], lookback_days=10, as_of=_AS_OF)
+    r2 = provider.fetch(["SPY"], lookback_days=10, as_of=_AS_OF)
+    assert r1["SPY"] == r2["SPY"]
+
+
+def test_fetch_chart_series_sample_mode():
+    result = fetch_chart_series(["SPY", "VIX"], lookback_days=30, as_of=_AS_OF, sample_mode=True)
+    assert "SPY" in result
+    assert "VIX" in result
+    assert len(result["SPY"]) == 31
+
+
+# ---------------------------------------------------------------------------
+# build_data_preamble
+# ---------------------------------------------------------------------------
+
+def test_build_data_preamble_contains_all_variables():
+    series_data = {"SPY": [{"date": "2026-05-01", "close": 510.0}]}
+    display_names = {"SPY": "S&P 500 (proxy)"}
+    asset_classes = {"SPY": "equity"}
+    units = {"SPY": "price"}
+    preamble = build_data_preamble("Test chart", series_data, display_names, asset_classes, units, [], "out.png")
+    for var in ("dates", "series", "units", "asset_classes", "events", "title", "output_path"):
+        assert var in preamble
+    assert "matplotlib.use" in preamble
+    assert "out.png" in preamble
+
+
+# ---------------------------------------------------------------------------
+# execute_chart_code
+# ---------------------------------------------------------------------------
+
+def test_execute_chart_code_success(tmp_path):
+    output = str(tmp_path / "test.png")
+    code = f"""
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.plot([1, 2, 3], [4, 5, 6])
+plt.savefig({output!r}, dpi=72)
+plt.close()
+"""
+    execute_chart_code(code, output)
+    assert Path(output).exists()
+    assert Path(output).stat().st_size > 0
+
+
+def test_execute_chart_code_syntax_error_raises():
+    with pytest.raises(RuntimeError, match="exited"):
+        execute_chart_code("this is not python !!!{}", "/tmp/never.png")
+
+
+def test_execute_chart_code_missing_savefig_raises(tmp_path):
+    output = str(tmp_path / "missing.png")
+    code = """
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+# intentionally no savefig
+plt.close()
+"""
+    with pytest.raises(RuntimeError, match="PNG not created"):
+        execute_chart_code(code, output)
+
+
+def test_execute_chart_code_timeout_raises(tmp_path):
+    output = str(tmp_path / "timeout.png")
+    code = "import time; time.sleep(60)"
+    with pytest.raises(RuntimeError, match="timed out"):
+        execute_chart_code(code, output, timeout=1)
+
+
+# ---------------------------------------------------------------------------
+# _hardcoded_fallback
+# ---------------------------------------------------------------------------
+
+def test_hardcoded_fallback_creates_png(tmp_path):
+    draft = _make_draft()
+    output = str(tmp_path / "fallback.png")
+    spec = _hardcoded_fallback(draft, output)
+    assert Path(output).exists()
+    assert Path(output).stat().st_size > 0
+    assert spec.file_path == output
+    assert spec.code_generated is False
+    assert spec.chart_type == "bar"
+
+
+def test_hardcoded_fallback_uses_draft_caption(tmp_path):
+    draft = _make_draft()
+    output = str(tmp_path / "cap.png")
+    spec = _hardcoded_fallback(draft, output)
+    assert spec.caption == "Volatility spike signals stress"
+
+
+# ---------------------------------------------------------------------------
+# build_chart (with mocked LLM)
+# ---------------------------------------------------------------------------
+
+def _make_fake_viz_code(output_path_var: str = "output_path") -> str:
+    return f"""
+fig, ax = plt.subplots(figsize=(10, 3.5), facecolor="#FFFFFF")
+ax.set_facecolor("#FAFAFA")
+date_objs = [datetime.date.fromisoformat(d) for d in dates]
+for name, values in series.items():
+    ax.plot(date_objs, values[:len(date_objs)], label=name, linewidth=2.0)
+ax.legend()
+ax.set_title(title, fontsize=12, fontweight="bold", loc="left")
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+plt.tight_layout(pad=1.5)
+plt.savefig({output_path_var}, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+plt.close()
+"""
+
+
+def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import app.llm.provider as provider_mod
+    from app.render.charts import build_chart
+
+    viz_code = _make_fake_viz_code()
+
+    def _fake_completion(**kwargs):
+        return SimpleNamespace(
+            model="openai/gpt-4o",
+            choices=[SimpleNamespace(message=SimpleNamespace(content=viz_code))],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=100, total_tokens=110),
+            _hidden_params={},
+        )
+
+    monkeypatch.setattr(provider_mod.litellm, "completion", _fake_completion)
+
+    settings = _make_settings()
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    output = str(tmp_path / "chart.png")
+
+    spec = build_chart(draft, settings=settings, output_path=output, sample_mode=True, as_of=_AS_OF)
+    assert Path(output).exists()
+    assert spec.file_path == output
+    assert spec.code_generated is True
+
+
+def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
+    import app.llm.provider as provider_mod
+    from app.render.charts import build_chart
+
+    def _bad_completion(**kwargs):
+        raise RuntimeError("LLM unavailable")
+
+    monkeypatch.setattr(provider_mod.litellm, "completion", _bad_completion)
+
+    settings = _make_settings()
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    output = str(tmp_path / "fallback.png")
+
+    spec = build_chart(draft, settings=settings, output_path=output, sample_mode=True, as_of=_AS_OF)
+    assert Path(output).exists()
+    assert spec.code_generated is False
+
+
+# ---------------------------------------------------------------------------
+# Prompt registry — chart_codegen.md is registered and has anti-hallucination text
+# ---------------------------------------------------------------------------
+
+def test_chart_codegen_prompt_exists_and_has_no_invention_constraint():
+    from app.llm.prompt_registry import clear_prompt_cache, load_prompt
+    clear_prompt_cache()
+    prompt = load_prompt("chart_codegen")
+    assert "Never invent" in prompt.text
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_settings():
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        sources={"llm": {"synthesis_model": "openai/gpt-4o"}},
+        creds=SimpleNamespace(
+            openai_api_key="test-key",
+            alpha_vantage_api_key=None,
+            databento_api_key=None,
+            fred_api_key=None,
+        ),
+        app=SimpleNamespace(output_dir="outputs"),
+    )

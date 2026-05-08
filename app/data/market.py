@@ -810,6 +810,108 @@ def load_cached_market(cache_dir: Path) -> list[MarketSnapshot]:
     return [MarketSnapshot.model_validate(snap) for snap in raw]
 
 
+_START_PRICES: dict[str, float] = {
+    "SPY": 510.0, "QQQ": 430.0, "GOLD": 3100.0, "VIX": 20.0,
+    "US10Y": 4.3, "US2Y": 4.8, "USDJPY": 148.0, "EURUSD": 1.085,
+    "WTI": 72.0, "BRENT": 76.0, "FESX": 5100.0, "DE10Y": 2.5,
+    "HY_OAS": 320.0, "MOVE": 100.0, "BTC": 85000.0, "COPPER": 4.5,
+    "UUP": 27.0, "SILVER": 32.0, "USDCNH": 7.25,
+}
+
+
+class FixtureChartSeriesProvider:
+    """Deterministic synthetic time-series for sample mode. No API calls required."""
+
+    def fetch(
+        self,
+        instruments: list[str],
+        lookback_days: int,
+        as_of: datetime,
+    ) -> dict[str, list[dict]]:
+        import hashlib
+
+        result: dict[str, list[dict]] = {}
+        end = as_of.date()
+        start = end - timedelta(days=lookback_days)
+
+        for iid in instruments:
+            seed = int(hashlib.md5(iid.encode()).hexdigest()[:8], 16)
+            state = seed % (2 ** 32)
+            price = _START_PRICES.get(iid, 100.0)
+
+            rows: list[dict] = []
+            cursor = start
+            while cursor <= end:
+                state = (state * 1664525 + 1013904223) % (2 ** 32)
+                move = (state % 1000) / 1000.0 - 0.5  # -0.5 to +0.5
+                price = max(price * (1.0 + move * 0.02), 0.01)
+                rows.append({"date": cursor.isoformat(), "close": round(price, 6)})
+                cursor += timedelta(days=1)
+
+            result[iid] = rows
+
+        return result
+
+
+def fetch_chart_series(
+    instruments: list[str],
+    lookback_days: int,
+    as_of: datetime,
+    settings: "Settings | None" = None,
+    sample_mode: bool = False,
+) -> dict[str, list[dict]]:
+    """Fetch {instrument_id: [{date, close}]} time-series for chart rendering.
+
+    Returns up to `lookback_days` calendar days of daily close data per instrument.
+    Non-fatal: instruments that fail to fetch are omitted with a warning.
+    """
+    if sample_mode:
+        return FixtureChartSeriesProvider().fetch(instruments, lookback_days, as_of)
+
+    if settings is None:
+        _log.warning("fetch_chart_series: settings is None and sample_mode=False — returning empty")
+        return {}
+
+    end = as_of.date()
+    start = end - timedelta(days=lookback_days)
+    result: dict[str, list[dict]] = {}
+
+    for iid in instruments:
+        try:
+            rows: list[dict] = []
+            if iid in _AV_INSTRUMENT_META:
+                meta = _AV_INSTRUMENT_META[iid]
+                rows = _av_fetch_daily(
+                    meta["symbol"], meta["function"],
+                    settings.creds.alpha_vantage_api_key,
+                    start, end,
+                    **meta.get("extra", {}),
+                )
+            elif iid in _DB_INSTRUMENT_META:
+                meta = _DB_INSTRUMENT_META[iid]
+                rows = _db_fetch_daily_ohlcv(
+                    meta["dataset"], meta["symbol"],
+                    settings.creds.databento_api_key,
+                    start, end,
+                    price_to_yield=meta["price_to_yield"],
+                )
+            elif iid in _FRED_INSTRUMENT_META:
+                meta = _FRED_INSTRUMENT_META[iid]
+                rows = _fred_fetch_series(meta["series_id"], settings.creds.fred_api_key, start, end)
+            elif iid in _YF_INSTRUMENT_META:
+                meta = _YF_INSTRUMENT_META[iid]
+                rows = _yf_fetch_daily(meta["symbol"], start, end)
+            else:
+                _log.warning("fetch_chart_series: unknown instrument %s — skipped", iid)
+                continue
+            if rows:
+                result[iid] = rows
+        except Exception as exc:
+            _log.warning("fetch_chart_series: %s failed: %s — skipped", iid, exc)
+
+    return result
+
+
 def fetch_live_market_with_cache(
     settings: "Settings",
     vol_params: dict,

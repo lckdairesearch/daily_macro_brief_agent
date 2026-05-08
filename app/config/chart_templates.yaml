@@ -15,7 +15,7 @@ templates:
 
   - id: gold_real_yield
     label: "Gold vs real-yield proxy"
-    instruments: ["Gold", "US10Y"]
+    instruments: ["GOLD", "US10Y"]
     theme_tags: ["metals_complex", "monetary_debasement"]
 
   - id: vix_move_stress
@@ -25,5 +25,5 @@ templates:
 
   - id: commodity_basket
     label: "Commodity basket"
-    instruments: ["WTI", "Gold", "Copper"]
+    instruments: ["WTI", "GOLD", "COPPER"]
     theme_tags: ["metals_complex", "resource_scarcity"]

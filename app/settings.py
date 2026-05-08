@@ -130,20 +130,15 @@ class Settings:
         """Return names of missing required secrets for the given mode.
 
         Empty list means the settings are valid for the mode.
-        OPENAI_API_KEY is required in all modes because the brief writer calls
-        the LLM even in sample mode (fixture data is the input, not the LLM output).
+        Sample mode uses fixture data and a pre-baked LLM response — no credentials needed.
         """
         missing: list[str] = []
-
-        # LLM synthesis required in all modes
-        if not self.creds.openai_api_key:
-            missing.append("OPENAI_API_KEY")
 
         if mode == RunMode.SAMPLE:
             return missing
 
-        if not self.creds.alpha_vantage_api_key:
-            missing.append("ALPHA_VANTAGE_API_KEY")
+        if not self.creds.openai_api_key:
+            missing.append("OPENAI_API_KEY")
         if not self.creds.alpha_vantage_api_key:
             missing.append("ALPHA_VANTAGE_API_KEY")
 

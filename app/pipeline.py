@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+_log = logging.getLogger(__name__)
 
 from app.data.calendar import load_fixture_calendar
 from app.data.market import (
@@ -20,6 +23,7 @@ from app.models import (
     CalendarEvent,
     DeliveryStatus,
     FreshnessStatus,
+    LLMUsage,
     PipelineResult,
     RunMetadata,
     RunMode,
@@ -49,6 +53,8 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     started_at = datetime.now()
     warnings: list[str] = []
     failed_sources: list[str] = []
+    llm_usages: list[LLMUsage] = []
+    run_id = str(uuid.uuid4())
 
     # --- Step 1: Determine run window ---
     tz = ZoneInfo(settings.app.timezone)
@@ -105,16 +111,74 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     )
 
     # --- Step 8: Write grounded brief ---
-    # TODO Step 10: from app.synthesis.writer import write_brief
-    brief_draft: BriefDraft | None = None
+    from app.llm.provider import LLMResponseError
+    from app.synthesis.writer import write_brief
+    try:
+        brief_draft, llm_usage = write_brief(ranked_context, settings, data_cutoff, mode)
+        llm_usages.append(llm_usage)
+        warnings.extend(brief_draft.warnings)
+    except LLMResponseError as exc:
+        run_metadata = RunMetadata(
+            run_id=run_id,
+            run_started_at=started_at,
+            data_cutoff_at=data_cutoff,
+            timezone=settings.app.timezone,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            warnings=warnings,
+            failed_sources=failed_sources,
+            delivery_status=DeliveryStatus.DISABLED,
+            output_paths={},
+        )
+        return PipelineResult(
+            success=False,
+            run_metadata=run_metadata,
+            error_message=f"Brief writer failed: {exc}",
+        )
 
     # --- Step 9: Validate output ---
-    # TODO Step 10: from app.synthesis.validator import validate
+    from app.synthesis.validator import validate_brief
+    validation = validate_brief(brief_draft)
+    if not validation.is_valid:
+        run_metadata = RunMetadata(
+            run_id=run_id,
+            run_started_at=started_at,
+            data_cutoff_at=data_cutoff,
+            timezone=settings.app.timezone,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            token_usage=llm_usages,
+            warnings=warnings,
+            failed_sources=failed_sources,
+            delivery_status=DeliveryStatus.DISABLED,
+            output_paths={},
+        )
+        return PipelineResult(
+            success=False,
+            run_metadata=run_metadata,
+            brief_draft=brief_draft,
+            error_message="Validation critical failures: " + "; ".join(validation.critical_failures),
+        )
+    warnings.extend(validation.warnings)
 
     # --- Step 10: Render HTML/text/chart ---
     # TODO Step 11: from app.render.email import render_brief
-    #               from app.render.charts import build_chart
+    from app.render.charts import build_chart
     output_paths: dict[str, str] = {}
+    try:
+        chart_spec = build_chart(
+            draft=brief_draft,
+            settings=settings,
+            output_path=f"{settings.app.output_dir}/sample_chart.png",
+            sample_mode=(mode == RunMode.SAMPLE),
+            as_of=data_cutoff,
+        )
+        if chart_spec.file_path:
+            output_paths["chart"] = chart_spec.file_path
+            brief_draft = brief_draft.model_copy(update={"chart": chart_spec})
+    except Exception as _chart_exc:
+        _log.warning("Chart generation failed: %s", _chart_exc)
+        warnings.append(f"Chart generation failed: {_chart_exc}")
 
     # --- Step 11: Deliver email if enabled ---
     # Sample and dry-run never send real email.
@@ -126,17 +190,25 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
 
     # --- Step 12: Record run metadata ---
     run_metadata = RunMetadata(
-        run_id=str(uuid.uuid4()),
+        run_id=run_id,
         run_started_at=started_at,
         data_cutoff_at=data_cutoff,
         timezone=settings.app.timezone,
         llm_provider=llm_provider,
         llm_model=llm_model,
+        token_usage=llm_usages,
+        estimated_cost_usd=sum(
+            u.estimated_cost_usd for u in llm_usages if u.estimated_cost_usd
+        ) or None,
         warnings=warnings,
         failed_sources=failed_sources,
         delivery_status=delivery_status,
         output_paths=output_paths,
     )
+
+    # Back-fill run_metadata into the draft so rendering has full context
+    if brief_draft is not None:
+        brief_draft.run_metadata = run_metadata.model_dump(mode="json")
 
     return PipelineResult(success=True, run_metadata=run_metadata, brief_draft=brief_draft)
 
