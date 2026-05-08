@@ -383,38 +383,49 @@ python -m app.main --mode sample
 
 ## Step 5 — Market data module
 
-### 5.1 Implement fixture market provider
+### Implementation order
 
-**Agent objective:** Make sample mode market data deterministic.
+The phases below must be built in sequence. Each phase is a dependency of the next.
 
-**Files to modify:**
-
-- `app/data/market.py`
-- `tests/test_market.py`
-
-**Implementation notes:**
-
-- Load `tests/fixtures/market_sample.json` or a configured fixture path.
-- Normalize fixture rows into `MarketSnapshot` objects.
-- Include 1D and optional 5D moves.
-- Include source and freshness metadata.
-
-**Human input needed:** Review sample instrument list and macro plausibility.
-
-**Acceptance checks:**
-
-- Fixture provider returns valid `MarketSnapshot` objects.
-- Missing source metadata fails tests.
-
-**Suggested commands:**
-
-```bash
-pytest tests/test_market.py
+```
+Phase A: Fixture provider       → sample mode works immediately; no credentials needed
+Phase B: Raw API clients        → shared fetch functions used by both Phase C and Phase E
+Phase C: Vol params script      → fetches 252-day history, computes SDs, writes vol_params.yaml
+Phase D: Move detection         → reads vol_params.yaml; requires Phase C to have been run first
+Phase E: Live providers         → composes Phase B clients + Phase D move detection
+Phase F: Cache fallback         → wraps Phase E; fails soft when live calls fail
 ```
 
-### 5.2 Implement market move detection
+### Canonical instrument IDs
 
-**Agent objective:** Add deterministic notable-move flags used by discovery and ranking.
+All `MarketSnapshot.instrument_id` values must use these strings exactly. `vol_params.yaml`, the fixture, and all live providers must agree.
+
+| instrument_id | Provider | Notes |
+|---|---|---|
+| `SPY` | Alpha Vantage | TIME_SERIES_DAILY |
+| `QQQ` | Alpha Vantage | TIME_SERIES_DAILY |
+| `UUP` | Alpha Vantage | TIME_SERIES_DAILY (DXY proxy) |
+| `USDJPY` | Alpha Vantage | FX_DAILY |
+| `EURUSD` | Alpha Vantage | FX_DAILY |
+| `USDCNH` | Alpha Vantage | FX_DAILY |
+| `GOLD` | Alpha Vantage | COMMODITIES |
+| `WTI` | Alpha Vantage | COMMODITIES |
+| `BRENT` | Alpha Vantage | COMMODITIES |
+| `COPPER` | Alpha Vantage | COMMODITIES |
+| `BTC` | Alpha Vantage | DIGITAL_CURRENCY_DAILY |
+| `US2Y` | Alpha Vantage | TREASURY_YIELD maturity=2year; change unit = bps |
+| `US10Y` | Alpha Vantage | TREASURY_YIELD maturity=10year; change unit = bps |
+| `FESX` | Databento | dataset=XEUR.EOBI; front-month futures; change unit = % |
+| `DE10Y` | Databento | dataset=XEUR.EOBI; yield derived from FGBL price; change unit = bps |
+| `VIX` | yfinance | ticker=^VIX (spot index); always `freshness_status=low_reliability`; change unit = % |
+| `HY_OAS` | FRED | series=BAMLH0A0HYM2; change unit = bps |
+| `MOVE` | yfinance | ticker=^MOVE; always `freshness_status=low_reliability`; change unit = % |
+
+---
+
+### 5.A Fixture provider
+
+**Agent objective:** Make `make run-sample` work with deterministic market data. No credentials required.
 
 **Files to modify:**
 
@@ -423,71 +434,252 @@ pytest tests/test_market.py
 
 **Implementation notes:**
 
-- Use configured thresholds or fixture z-scores.
-- Include a move if absolute 1D move is at least one configured 1D standard deviation.
-- Include group moves only when at least two related instruments move together and at least one breaches threshold.
-- Use 5D context only when configured and useful.
+- Define `MarketDataProvider` protocol with `fetch_watchlist(instruments, as_of) -> list[MarketSnapshot]`.
+- Implement `FixtureMarketProvider`: load `tests/fixtures/market_sample.json`, normalize each row via `MarketSnapshot.model_validate(row)`.
+- The fixture already has `one_day_zscore` and `threshold_flag` baked in — no SD computation in sample mode.
+- Raise `FileNotFoundError` if fixture path is missing.
+- Wire into `app/pipeline.py` Step 2: replace the fixture load stub with `FixtureMarketProvider`.
 
-**Human input needed:** Confirm initial thresholds and instrument groupings.
+**Tests (`tests/test_market.py`):**
+
+- Fixture loads and returns the correct number of `MarketSnapshot` objects.
+- Each snapshot passes Pydantic validation.
+- Missing required field raises `ValidationError`.
 
 **Acceptance checks:**
 
-- Tests cover single-proxy inclusion, group inclusion, and non-inclusion.
-- Output can explain `no confirmed fresh catalyst` when needed later.
+```bash
+make run-sample
+pytest tests/test_market.py -k fixture -v
+```
 
-### 5.3 Implement live market provider wrappers
+---
 
-**Agent objective:** Add provider boundaries for all four confirmed live market data providers.
+### 5.B Raw API client layer
+
+**Agent objective:** Build the shared fetch functions that both the vol params script (5.C) and the live providers (5.E) depend on. No provider classes yet — plain functions only.
+
+**Files to modify:**
+
+- `app/data/market.py`
+
+**Implementation notes:**
+
+Build three internal functions returning `list[dict]` with `{date, close}` rows:
+
+```python
+def _av_fetch_daily(symbol, function, api_key, start_date, end_date, **extra_params) -> list[dict]: ...
+def _db_fetch_daily_ohlcv(dataset, symbol, api_key, start_date, end_date) -> list[dict]: ...
+def _fred_fetch_series(series_id, api_key, start_date, end_date) -> list[dict]: ...
+```
+
+- `_av_fetch_daily`: dispatches to `TIME_SERIES_DAILY`, `FX_DAILY`, `COMMODITIES`, `TREASURY_YIELD`, or `DIGITAL_CURRENCY_DAILY` based on `function` param. Slices response to `[start_date, end_date]`.
+- `_db_fetch_daily_ohlcv`: uses `timeseries.get_range(schema="ohlcv-1d")`. Front-month roll: pick nearest expiry > today. For `DE10Y`, convert FGBL price to yield before returning.
+- `_fred_fetch_series`: calls FRED REST endpoint `https://api.stlouisfed.org/fred/series/observations`. Forward-fill missing weekend observations before returning.
+
+These functions are not exposed publicly — they are building blocks for 5.C and 5.E.
+
+**Tests:** Mock HTTP responses with `unittest.mock.patch`. No live API calls.
+
+---
+
+### 5.C Vol params script
+
+**Agent objective:** Fetch 252-day history per instrument, compute 1D standard deviations, and commit `app/config/vol_params.yaml`. Run this once before Phase D or E can be used.
+
+**Files to create:**
+
+- `scripts/update_vol_params.py`
+- `app/config/vol_params.yaml` (generated output, committed to repo)
+
+**Files to modify:**
+
+- `Makefile` — add `update-vol-params` target
+
+**Implementation notes:**
+
+Instrument → change unit → SD formula:
+
+| instrument_id | Change unit | SD formula |
+|---|---|---|
+| SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, WTI, BRENT, COPPER, BTC, FESX, VIX, MOVE | `%` | `pct_change().std(ddof=1) * 100` |
+| US2Y, US10Y, DE10Y, HY_OAS | `bps` | `diff().std(ddof=1) * 100` (AV/FRED return percent; multiply to get true bps) |
+
+Rules:
+- Require >= 200 non-NaN observations; warn and skip the instrument if fewer.
+- If any instrument fails to fetch, emit a warning and omit it from the yaml — live mode falls back to a conservative default.
+- MOVE fetches via yfinance `^MOVE`; falls back to hardcoded `sd_1d: 4.5` only if yfinance returns no data.
+
+Output format (`app/config/vol_params.yaml`):
+```yaml
+# Generated by scripts/update_vol_params.py — run `make update-vol-params` monthly.
+generated_at: "2026-05-08"
+lookback_days: 252
+params:
+  SPY:
+    sd_1d: 1.05
+    unit: "%"
+  US10Y:
+    sd_1d: 4.26
+    unit: "bps"
+  MOVE:
+    sd_1d: 4.98
+    unit: "%"
+  # ... all instruments
+```
+
+Makefile target:
+```makefile
+update-vol-params:
+    $(BIN)/python scripts/update_vol_params.py
+```
+
+**Human input needed:** Run `make update-vol-params` with real credentials locally to generate and commit the initial `vol_params.yaml` before wiring Phase D.
+
+---
+
+### 5.D Move detection
+
+**Agent objective:** Add z-score computation and threshold flagging using the committed `vol_params.yaml`.
 
 **Files to modify:**
 
 - `app/data/market.py`
 - `tests/test_market.py`
-- `app/config/sources.yaml`
 
 **Implementation notes:**
 
-Implement all four provider classes per `architecture.md §9.2`:
+```python
+def load_vol_params(config_dir: Path) -> dict[str, dict]:
+    # raises FileNotFoundError with a helpful message if vol_params.yaml is absent
 
-- `AlphaVantageMarketProvider` — primary. Covers equities (SPY, QQQ), FX (USDJPY, EURUSD, USDCNH), commodities (Gold, WTI, Brent, Copper), crypto (BTC), US Treasury yields (2Y, 10Y via `TREASURY_YIELD` endpoint), DXY proxy (UUP ETF).
-- `DatabentoMarketProvider` — FESX (Euro Stoxx 50, dataset `XEUR.EOBI`), FGBL (German Bund, dataset `XEUR.EOBI`), VX (VIX, dataset `GLBX.MDP3`/CFE). Must implement front-month roll logic for futures contracts.
-- `FredMarketProvider` — HY OAS via series `BAMLH0A0HYM2`.
-- `YfinanceMarketProvider` — MOVE index via `^MOVE`. Mark all outputs with `freshness_status=low_reliability`.
+def detect_moves(
+    snapshots: list[MarketSnapshot],
+    vol_params: dict[str, dict],
+    threshold_sigma: float = 1.0,
+) -> list[MarketSnapshot]:
+```
 
-Normalize every provider response into `MarketSnapshot`. Do not leak raw provider payloads downstream.
+- Look up `vol_params[instrument_id]`. If missing, use conservative fallback (1.0% or 5.0 bps) and emit a warning.
+- **Hard error** if `vol_params[id]["unit"]` does not match `snapshot.one_day_change_unit` — prevents silent wrong z-scores.
+- Compute `one_day_zscore = one_day_change / sd_1d`. Set `threshold_flag = abs(one_day_zscore) >= threshold_sigma`.
+- Return updated snapshots via `model_copy(update={...})`.
 
-**Human input needed:** Provide API keys locally and verify Databento symbol availability with a test call before the submission run.
+Group move detection (spec §4.1): after individual flags, scan by `(asset_class, region)`. If >= 2 instruments moved the same direction and >= 1 breached threshold, mark all as `threshold_flag=True` and annotate the non-breaching one with a `warning` string.
 
-**Acceptance checks:**
+**Tests:**
 
-- Provider wrappers can be unit-tested with mocked payloads.
-- Sample tests do not need live credentials.
-- Live provider failures return controlled errors.
-- Databento front-month roll logic is tested with fixture contract data.
+- 1.2 sigma move → `threshold_flag=True`, correct z-score value.
+- 0.8 sigma move → `threshold_flag=False`.
+- Group move: 2 US equities both negative, one at 1.1 sigma → both flagged.
+- Missing instrument in vol_params → fallback used, no crash.
+- Unit mismatch (bps instrument, % SD) → explicit `ValueError`.
 
-### 5.4 Implement market cache fallback
+---
+
+### 5.E Live providers
+
+**Agent objective:** Implement the four provider classes that compose the Phase B client functions into `MarketSnapshot` output.
+
+**Files to modify:**
+
+- `app/data/market.py`
+- `tests/test_market.py`
+
+**Implementation notes:**
+
+Each class implements `fetch_watchlist(instruments, as_of) -> list[MarketSnapshot]` by:
+1. Calling the appropriate Phase B function for the latest 2 available trading days.
+2. Computing 1D change from prior close to latest close.
+3. Normalising to `MarketSnapshot` using canonical `instrument_id` strings from the table above.
+4. Move detection is applied by the caller, not inside the provider.
+
+```python
+class AlphaVantageMarketProvider:   # SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, WTI, BRENT, COPPER, BTC, US2Y, US10Y
+class DatabentoMarketProvider:      # FESX, DE10Y — includes front-month roll
+class FredMarketProvider:           # HY_OAS
+class YfinanceMarketProvider:       # VIX (^VIX), MOVE (^MOVE) — both LOW_RELIABILITY
+```
+
+Composition function for pipeline use:
+```python
+def fetch_live_market(settings: Settings, vol_params: dict) -> list[MarketSnapshot]:
+    snapshots = (
+        AlphaVantageMarketProvider(...).fetch_watchlist(AV_INSTRUMENTS, as_of)
+        + DatabentoMarketProvider(...).fetch_watchlist(DB_INSTRUMENTS, as_of)
+        + FredMarketProvider(...).fetch_watchlist(FRED_INSTRUMENTS, as_of)
+        + YfinanceMarketProvider().fetch_watchlist(YFINANCE_INSTRUMENTS, as_of)
+    )
+    return detect_moves(snapshots, vol_params)
+```
+
+**Human input needed:** Verify Databento symbol availability with a test call locally before the submission run.
+
+**Tests:** Mock HTTP responses with `unittest.mock.patch` per provider. No live API calls in the test suite. Databento front-month roll logic tested with fixture contract data.
+
+---
+
+### 5.F Cache fallback
 
 **Agent objective:** Make live mode fail soft when possible and warn clearly when using stale data.
 
 **Files to modify:**
 
 - `app/data/market.py`
+- `app/pipeline.py`
 - `tests/test_market.py`
-- possibly `app/pipeline.py`
 
 **Implementation notes:**
 
-- Save latest snapshots under `.cache/market/`.
-- On live call failure, load latest cached snapshot if available.
-- Mark snapshots with `freshness_status=stale_cache`.
-- Add warnings to `RunMetadata`.
-- Fail loudly in live mode when no live data and no cache exist.
+```python
+def cache_market(snapshots: list[MarketSnapshot], cache_dir: Path, as_of: date) -> None:
+    # writes .cache/market/latest.json and .cache/market/market_YYYY-MM-DD.json
 
-**Human input needed:** Decide acceptable max age for cached market data in live mode.
+def load_cached_market(cache_dir: Path) -> list[MarketSnapshot]:
+    # reads .cache/market/latest.json; raises FileNotFoundError if absent
+```
 
-**Acceptance checks:**
+Wrap `fetch_live_market()`:
+```python
+try:
+    snapshots = fetch_live_market(settings, vol_params)
+    cache_market(snapshots, settings.app.cache_dir, today)
+    return snapshots
+except Exception as exc:
+    stale = load_cached_market(settings.app.cache_dir)   # raises if absent
+    return [s.model_copy(update={"freshness_status": STALE_CACHE, "warning": f"..."}) for s in stale]
+```
 
-- Tests cover live failure with cache, live failure without cache, and warning propagation.
+- Stale warnings propagate into `RunMetadata.warnings` via the pipeline.
+- Fail loudly with `RuntimeError` if live fetch fails and no cache exists.
+
+Wire into `app/pipeline.py` Step 2:
+```python
+if mode == RunMode.SAMPLE:
+    market_snapshots = FixtureMarketProvider().fetch_watchlist(...)
+else:
+    vol_params = load_vol_params(settings.config_dir)
+    market_snapshots = fetch_live_market_with_cache(settings, vol_params)
+```
+
+**Tests:**
+
+- Live fail + cache present → stale snapshots returned, each has `STALE_CACHE` status.
+- Live fail + no cache → `RuntimeError` raised.
+- Warning strings propagate to `RunMetadata`.
+
+---
+
+### Files changed in Step 5
+
+| File | Action |
+|---|---|
+| `app/data/market.py` | Create — protocol, fixture provider, API clients, live providers, detect_moves, cache |
+| `app/config/vol_params.yaml` | Create (generated by script, committed to repo) |
+| `scripts/update_vol_params.py` | Create — monthly SD refresh script |
+| `tests/test_market.py` | Expand — all unit tests (mocked providers) |
+| `app/pipeline.py` | Modify — wire fixture/live branch in Step 2 |
+| `Makefile` | Modify — add `update-vol-params` target |
 
 ---
 

@@ -228,11 +228,11 @@ Confirmed V1 provider stack:
 | Provider | Instruments covered | Key |
 |---|---|---|
 | **Alpha Vantage** | SPY (S&P 500 proxy), QQQ (Nasdaq proxy), USD/JPY, EUR/USD, USD/CNH, Gold, WTI, Brent, Copper, BTC, US 2Y yield, US 10Y yield, UUP (DXY proxy) | `ALPHA_VANTAGE_API_KEY` |
-| **Databento** | FESX/Eurex (Euro Stoxx 50), FGBL/Eurex (German 10Y Bund), VX/CFE (VIX) | `DATABENTO_API_KEY` |
+| **Databento** | FESX/Eurex (Euro Stoxx 50), FGBL/Eurex (German 10Y Bund) | `DATABENTO_API_KEY` |
 | **FRED** | BAMLH0A0HYM2 (ICE BofA HY OAS) | `FRED_API_KEY` (free) |
-| **yfinance** | `^MOVE` (MOVE index) — no API key, marked `low_reliability` | None |
+| **yfinance** | `^VIX` (CBOE VIX spot), `^MOVE` (MOVE index) — no API key, both marked `low_reliability` | None |
 
-Databento is needed for exactly three instruments that Alpha Vantage cannot cover cleanly: Euro Stoxx 50 close (FESX futures give the actual EU session close), German Bund yield (FGBL via Eurex), and VIX (VX via CBOE Futures Exchange). All other instruments are sourced from Alpha Vantage.
+Databento is needed for exactly two instruments that Alpha Vantage cannot cover cleanly: Euro Stoxx 50 close (FESX futures give the actual EU session close) and German Bund yield (FGBL via Eurex). VIX is sourced from yfinance (`^VIX` spot index), which was confirmed to deliver data reliably and avoids the unresolved VX continuous-contract symbol on GLBX.MDP3. All other instruments are sourced from Alpha Vantage.
 
 The implementation should hide provider-specific logic behind small wrappers so a source can be replaced without rewriting the pipeline.
 
