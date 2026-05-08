@@ -30,3 +30,8 @@ themes:
     label: "Geopolitical fragmentation and trade disruption"
     keywords: ["geopolitics", "trade war", "sanctions", "export controls", "supply chain", "strategic competition"]
     portfolio_relevance: ["agriculture_long", "metals_complex_long", "usd_diversification"]
+
+  - id: credit_stress
+    label: "Credit stress and risk appetite"
+    keywords: ["credit spreads", "HY OAS", "VIX", "MOVE", "volatility", "risk-off", "credit tightening", "default risk"]
+    portfolio_relevance: ["duration_short", "metals_complex_long"]

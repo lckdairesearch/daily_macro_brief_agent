@@ -716,7 +716,7 @@ Normalize every provider response into `MarketSnapshot`. Do not leak raw provide
 
 **Implementation notes:**
 
-- `news.py`, `central_bank.py`, `research.py`: use `LLMClient` with `scout_model` (OpenAI GPT-5 with web search). Load prompts from `app/llm/prompts/scouts/`. Return structured `EvidenceCard` objects with source URLs.
+- `news.py`, `central_bank.py`, `research.py`: use `LLMClient` with `llm.scout_model` from `app/config/sources.yaml` (OpenAI GPT-5.4 by default). Load prompts from `app/llm/prompts/scouts/`. Return structured `EvidenceCard` objects with source URLs.
 - `podcast.py`: query Listen Notes API for last 24h episodes → LLM filters for portfolio-relevant thesis → transcribe via OpenAI Whisper → fallback to Gemini for YouTube or failed audio. See `architecture.md §11.3` for full flow. Requires `LISTEN_NOTES_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`.
 - `x.py`: use `LLMClient` with `x_scout_model` (Grok/xAI by default). Load prompt from `app/llm/prompts/scouts/x_narrative_search.md`. Model is hot-swappable via config. Treat output as discovery only; corroborate high-impact claims.
 - All scouts: can be disabled in `sources.yaml`. Failed optional scouts are recorded in `RunMetadata`, not raised.

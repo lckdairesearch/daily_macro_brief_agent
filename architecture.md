@@ -346,10 +346,10 @@ GEMINI_API_KEY                  podcast Gemini fallback (audio + YouTube)
 XAI_API_KEY                     X scout via Grok
 
 # LLM optional overrides
-LLM_SCOUT_MODEL                 default: openai/gpt-5
+LLM_SCOUT_MODEL                 optional override for sources.yaml llm.scout_model
 LLM_X_SCOUT_MODEL               default: xai/grok-3
-LLM_SYNTHESIS_MODEL             default: openai/gpt-5
-LLM_TEMPERATURE                 default: 0.2
+LLM_SYNTHESIS_MODEL             optional override for sources.yaml llm.synthesis_model
+LLM_TEMPERATURE                 optional override for sources.yaml llm.temperature
 
 # Market data — required for live/dry-run
 ALPHA_VANTAGE_API_KEY
@@ -461,9 +461,9 @@ calendar:
 
 llm:
   provider: litellm
-  scout_model: openai/gpt-5        # news, central_bank, research scouts (web search)
+  scout_model: openai/gpt-5.4      # news, central_bank, research scouts (web search)
   x_scout_model: xai/grok-3        # X scout — swap model here without code changes
-  synthesis_model: openai/gpt-5    # brief writer, critic, ranker
+  synthesis_model: openai/gpt-5.4  # brief writer, critic, ranker
   temperature: 0.2
   max_tokens: 2000
 
@@ -805,18 +805,18 @@ def discover_evidence(context: DiscoveryContext) -> list[EvidenceCard]:
 
 ```text
 news.py
-  Uses OpenAI GPT-5 with web search to find catalysts for large market moves.
+  Uses llm.scout_model with web search to find catalysts for large market moves.
   Useful for confirming why a price move happened overnight.
   Prompt: app/llm/prompts/scouts/news_search.md
 
 central_bank.py
-  Uses OpenAI GPT-5 with web search to find speeches, statements, minutes,
+  Uses llm.scout_model with web search to find speeches, statements, minutes,
   policy releases, and official remarks from central banks.
   Highest trust source type for policy interpretation.
   Prompt: app/llm/prompts/scouts/central_bank_extract.md
 
 research.py
-  Uses OpenAI GPT-5 with web search to find longform/research-like material.
+  Uses llm.scout_model with web search to find longform/research-like material.
   Favors non-mainstream sources for Theme Radar over generic financial media.
   Prompt: app/llm/prompts/scouts/research_search.md
 
@@ -1036,14 +1036,14 @@ Confirmed V1 model defaults:
 ```yaml
 llm:
   provider: litellm
-  scout_model: openai/gpt-5        # news, central_bank, research — web search capable
+  scout_model: openai/gpt-5.4      # news, central_bank, research — web search capable
   x_scout_model: xai/grok-3        # X scout — Grok for privileged X access
-  synthesis_model: openai/gpt-5    # brief writer, critic, ranker
+  synthesis_model: openai/gpt-5.4  # brief writer, critic, ranker
   temperature: 0.2
   max_tokens: 2000
 ```
 
-The split between `scout_model` and `synthesis_model` allows using different models for retrieval vs writing without changing any code — only config. Both default to GPT-5 in V1 but can be diverged independently (e.g. a cheaper model for synthesis in future cost-optimization).
+The `llm` block in `app/config/sources.yaml` is the source of truth for workflow-level model defaults. Environment variables are deployment overrides only. The split between `scout_model` and `synthesis_model` allows using different models for retrieval vs writing without changing any code — only config. Both default to GPT-5.4 in V1 but can be diverged independently (e.g. GPT-5.5 for final synthesis in a premium run).
 
 Do not create these unless a real provider-specific need appears:
 
@@ -1578,4 +1578,3 @@ These are implementation-planning questions, not product/spec blockers.
 3. Should the consensus-enrichment scout stay inside `calendar.py` for speed, or move to `discovery/scouts/consensus.py` once it needs separate tests?
 4. Should the sample writer avoid LLM calls entirely for deterministic tests, or should it call the configured LLM in sample mode when credentials exist?
 5. Which LiteLLM model string should be the default for the final submission environment: Azure OpenAI deployment, OpenAI direct model, or Grok/xAI-compatible endpoint for scout-only use?
-

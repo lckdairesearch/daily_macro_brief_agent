@@ -12,22 +12,25 @@ calendar:
   filter_countries: ["US", "EU", "DE", "JP", "CN", "GB"]
   filter_importance: ["high", "medium"]
 
+llm:
+  provider: litellm
+  scout_model: "openai/gpt-5.4"
+  synthesis_model: "openai/gpt-5.4"
+  x_scout_model: "xai/grok-3"
+  temperature: 0.2
+
 scouts:
   news:
     enabled: true
-    model: "gpt-4o"  # via LiteLLM
 
   central_bank:
     enabled: true
-    model: "gpt-4o"
 
   research:
     enabled: true
-    model: "gpt-4o"
 
   x:
     enabled: true
-    x_scout_model: "xai/grok-2"  # via LiteLLM — change here to swap model
 
   podcast:
     enabled: true

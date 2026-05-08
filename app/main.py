@@ -17,7 +17,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    settings = Settings()
+    settings = Settings.load()
     result = run_pipeline(mode=args.mode, settings=settings)
 
     if not result.success:

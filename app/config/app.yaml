@@ -1,12 +1,12 @@
-# app/config/app.yaml — runtime settings
-# Secrets must come from environment variables, not here.
+# app/config/app.yaml — non-secret runtime behavior
+# All secrets must come from environment variables, not this file.
 
-run:
-  timezone: "Asia/Hong_Kong"
-  data_cutoff_minutes_before_send: 30  # approx 06:45 HKT
-
-output:
-  dir: "outputs"
-
-logging:
-  level: "INFO"
+timezone: Asia/Hong_Kong
+data_cutoff_hkt: "06:45"
+send_time_hkt: "07:15"
+default_mode: sample
+output_dir: outputs
+cache_dir: .cache
+email_enabled: false
+max_discovery_items: 30
+max_theme_radar_items: 3

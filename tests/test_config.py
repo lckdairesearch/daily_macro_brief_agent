@@ -1,23 +1,177 @@
-"""Tests for config loading (Step 2)."""
+"""Tests for config loading (Step 3)."""
+
+from __future__ import annotations
 
 import pytest
 
+from app.models import RunMode
+from app.settings import (
+    CONFIG_DIR,
+    AppConfig,
+    Credentials,
+    Settings,
+    _load_yaml,
+)
 
-@pytest.mark.skip(reason="Not yet implemented — Step 2")
+
 def test_app_yaml_loads():
-    pass
+    """app.yaml parses into AppConfig with expected field types and values."""
+    raw = _load_yaml(CONFIG_DIR / "app.yaml")
+    cfg = AppConfig(**raw)
+    assert cfg.timezone == "Asia/Hong_Kong"
+    assert cfg.email_enabled is False
+    assert isinstance(cfg.max_discovery_items, int)
+    assert isinstance(cfg.max_theme_radar_items, int)
+    assert cfg.output_dir == "outputs"
+    assert cfg.cache_dir == ".cache"
 
 
-@pytest.mark.skip(reason="Not yet implemented — Step 2")
 def test_portfolio_yaml_loads():
-    pass
+    """portfolio.yaml loads as a dict with expected structure."""
+    raw = _load_yaml(CONFIG_DIR / "portfolio.yaml")
+    assert isinstance(raw, dict)
+    assert "core_positions" in raw
+    positions = raw["core_positions"]
+    assert len(positions) > 0
+    for pos in positions:
+        assert "id" in pos
+        assert "sensitivity_tags" in pos
 
 
-@pytest.mark.skip(reason="Not yet implemented — Step 2")
 def test_themes_yaml_loads():
-    pass
+    """themes.yaml loads with a list of theme dicts containing required keys."""
+    raw = _load_yaml(CONFIG_DIR / "themes.yaml")
+    themes = raw.get("themes", [])
+    assert len(themes) > 0
+    for theme in themes:
+        assert "id" in theme
+        assert "label" in theme
+        assert "keywords" in theme
 
 
-@pytest.mark.skip(reason="Not yet implemented — Step 2")
+def test_sources_yaml_loads():
+    """sources.yaml loads with expected provider sections."""
+    raw = _load_yaml(CONFIG_DIR / "sources.yaml")
+    assert "market" in raw
+    assert "calendar" in raw
+    assert "llm" in raw
+    assert "scouts" in raw
+    assert "delivery" in raw
+    assert raw["llm"]["provider"] == "litellm"
+    assert raw["llm"]["scout_model"] == "openai/gpt-5.4"
+    assert raw["llm"]["synthesis_model"] == "openai/gpt-5.4"
+    assert raw["llm"]["x_scout_model"] == "xai/grok-3"
+
+
+def test_chart_templates_yaml_loads():
+    """chart_templates.yaml loads with valid templates referencing known theme IDs."""
+    themes_raw = _load_yaml(CONFIG_DIR / "themes.yaml")
+    known_theme_ids = {t["id"] for t in themes_raw.get("themes", [])}
+
+    raw = _load_yaml(CONFIG_DIR / "chart_templates.yaml")
+    templates = raw.get("templates", [])
+    assert len(templates) > 0
+    for t in templates:
+        assert "id" in t
+        assert "instruments" in t
+        assert "theme_tags" in t
+        for tag in t["theme_tags"]:
+            assert tag in known_theme_ids, (
+                f"chart_templates.yaml: '{tag}' in template '{t['id']}' "
+                f"is not a known theme ID in themes.yaml"
+            )
+
+
 def test_secrets_not_in_yaml():
-    pass
+    """No YAML config file contains credential environment variable names."""
+    credential_keys = [
+        "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
+        "ALPHA_VANTAGE_API_KEY", "DATABENTO_API_KEY", "FRED_API_KEY",
+        "LISTEN_NOTES_API_KEY", "SENDGRID_API_KEY",
+    ]
+    yaml_files = [
+        CONFIG_DIR / "app.yaml",
+        CONFIG_DIR / "portfolio.yaml",
+        CONFIG_DIR / "themes.yaml",
+        CONFIG_DIR / "sources.yaml",
+        CONFIG_DIR / "chart_templates.yaml",
+    ]
+    for yaml_path in yaml_files:
+        content = yaml_path.read_text(encoding="utf-8")
+        for key in credential_keys:
+            assert key not in content, (
+                f"Secret key '{key}' found in {yaml_path.name}"
+            )
+
+
+def test_settings_load_sample_mode_no_keys():
+    """Settings.load() is valid in sample mode with no API keys."""
+    settings = Settings.load()
+    errors = settings.validate_for_mode(RunMode.SAMPLE)
+    assert errors == []
+
+
+def test_settings_validate_live_mode_reports_missing():
+    """validate_for_mode(LIVE) reports missing required secret names."""
+    app = AppConfig()
+    creds = Credentials.model_construct(
+        openai_api_key=None,
+        alpha_vantage_api_key=None,
+        enable_email_delivery=False,
+        llm_scout_model=None,
+        llm_x_scout_model=None,
+        llm_synthesis_model=None,
+        llm_temperature=None,
+    )
+    settings = Settings(app, creds, {}, {}, {}, {})
+    errors = settings.validate_for_mode(RunMode.LIVE)
+    assert "OPENAI_API_KEY" in errors
+    assert "ALPHA_VANTAGE_API_KEY" in errors
+
+
+def test_settings_validate_live_email_enabled_reports_sendgrid():
+    """validate_for_mode(LIVE) reports SendGrid keys when email delivery is enabled."""
+    app = AppConfig()
+    creds = Credentials.model_construct(
+        openai_api_key="sk-test",
+        alpha_vantage_api_key="av-test",
+        enable_email_delivery=True,
+        sendgrid_api_key=None,
+        sendgrid_from_email=None,
+        sendgrid_to_email=None,
+        llm_scout_model=None,
+        llm_x_scout_model=None,
+        llm_synthesis_model=None,
+        llm_temperature=None,
+    )
+    settings = Settings(app, creds, {}, {}, {}, {})
+    errors = settings.validate_for_mode(RunMode.LIVE)
+    assert "SENDGRID_API_KEY" in errors
+    assert "SENDGRID_FROM_EMAIL" in errors
+    assert "SENDGRID_TO_EMAIL" in errors
+
+
+def test_settings_load_resolves_all_yaml():
+    """Settings.load() loads all five YAML files into the expected attributes."""
+    settings = Settings.load()
+    assert settings.app.timezone == "Asia/Hong_Kong"
+    assert isinstance(settings.portfolio, dict)
+    assert isinstance(settings.themes, dict)
+    assert isinstance(settings.sources, dict)
+    assert isinstance(settings.chart_templates, dict)
+
+
+def test_settings_applies_llm_env_overrides_to_sources():
+    """Environment model overrides are merged into the source-of-truth LLM config."""
+    app = AppConfig()
+    creds = Credentials.model_construct(
+        llm_scout_model="openai/gpt-5.5",
+        llm_x_scout_model="xai/grok-4",
+        llm_synthesis_model="openai/gpt-5.5",
+        llm_temperature=0.1,
+    )
+    settings = Settings(app, creds, {}, {}, {"llm": {}}, {})
+    assert settings.sources["llm"]["scout_model"] == "openai/gpt-5.5"
+    assert settings.sources["llm"]["x_scout_model"] == "xai/grok-4"
+    assert settings.sources["llm"]["synthesis_model"] == "openai/gpt-5.5"
+    assert settings.sources["llm"]["temperature"] == 0.1
