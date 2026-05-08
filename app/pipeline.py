@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from app.data.market import FixtureMarketProvider
 from app.models import (
     BriefDraft,
     CalendarEvent,
     DeliveryStatus,
     EvidenceCard,
-    MarketSnapshot,
     PipelineResult,
     RunMetadata,
     RunMode,
@@ -57,7 +57,7 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
 
     # --- Step 2: Fetch market data ---
     if mode == RunMode.SAMPLE:
-        market_snapshots = _load_fixture_market()
+        market_snapshots = FixtureMarketProvider().fetch_watchlist([], data_cutoff)
     else:
         # TODO Step 5: AlphaVantageMarketProvider + DatabentoMarketProvider + cache fallback
         market_snapshots = []
@@ -132,12 +132,6 @@ def _data_cutoff(settings: "Settings", tz: ZoneInfo) -> datetime:
     """Compute the data cutoff datetime for this run in the configured timezone."""
     hour, minute = (int(p) for p in settings.app.data_cutoff_hkt.split(":"))
     return datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-
-def _load_fixture_market() -> list[MarketSnapshot]:
-    """Load fixture market snapshots for sample mode."""
-    raw = json.loads((FIXTURE_DIR / "market_sample.json").read_text(encoding="utf-8"))
-    return [MarketSnapshot.model_validate(s) for s in raw["snapshots"]]
 
 
 def _load_fixture_calendar() -> list[CalendarEvent]:

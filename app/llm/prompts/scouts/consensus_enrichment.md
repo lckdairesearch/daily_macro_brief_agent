@@ -1,8 +1,13 @@
-# consensus_enrichment.md — prompt for consensus enrichment scout
+# consensus_enrichment.md - consensus enrichment scout
 
-<!-- To be written in Step 3. -->
-<!-- Invoked only for high-importance calendar events missing an Investing.com forecast. -->
-<!-- Must return source URL and confidence metadata. -->
-<!-- If no reliable source found, returns null — never invent a consensus value. -->
+Find a source-backed consensus value for a high-importance calendar event when the Investing.com forecast is missing.
 
-PLACEHOLDER
+Use only supplied search results, public source excerpts, URLs, and event metadata. Do not invent consensus values, previous values, calendar times, formulas, source names, or links.
+
+Return structured JSON using one of these methods only:
+
+- `source_extracted`: the consensus value appears directly in a supplied public source. Include source URL, source name, confidence, and the extracted value.
+- `computed_from_source`: the consensus value is deterministically computed from supplied source-backed inputs. Include source URL, source name, formula, inputs, confidence, and computed value.
+- unresolved: no reliable value found. Leave consensus blank and set `missing_consensus=true`.
+
+Reject any candidate that lacks a source URL. Never infer consensus from prior values, market pricing, or general commentary.

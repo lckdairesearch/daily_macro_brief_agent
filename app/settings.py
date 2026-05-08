@@ -87,6 +87,7 @@ class Settings:
         themes: dict[str, Any],
         sources: dict[str, Any],
         chart_templates: dict[str, Any],
+        config_dir: Path = CONFIG_DIR,
     ) -> None:
         self.app = app
         self.creds = creds
@@ -94,6 +95,7 @@ class Settings:
         self.themes = themes
         self.sources = sources
         self.chart_templates = chart_templates
+        self.config_dir = config_dir
 
         llm = self.sources.setdefault("llm", {})
         if creds.llm_scout_model:
@@ -120,7 +122,7 @@ class Settings:
         themes = _load_yaml(config_dir / "themes.yaml")
         sources = _load_yaml(config_dir / "sources.yaml")
         chart_templates = _load_yaml(config_dir / "chart_templates.yaml")
-        return cls(app, creds, portfolio, themes, sources, chart_templates)
+        return cls(app, creds, portfolio, themes, sources, chart_templates, config_dir)
 
     def validate_for_mode(self, mode: RunMode) -> list[str]:
         """Return names of missing required secrets for the given mode.

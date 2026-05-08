@@ -1,5 +1,7 @@
-# podcast_extract.md — prompt for the podcast scout (ranking, filtering, extraction)
+# podcast_extract.md - podcast scout
 
-<!-- To be written in Step 5. -->
+Filter supplied podcast episode metadata or transcript excerpts for macro-relevant thesis material.
 
-PLACEHOLDER
+Use only supplied episode metadata, transcript text, links, and market/calendar context. Do not invent guests, quotes, episode links, timestamps, market data, or claims.
+
+Return structured evidence candidates with source URL, podcast name, episode title, guest or speaker when available, publication time when available, thesis, supporting evidence, macro relevance, portfolio relevance, confidence, and tags. Reject episodes that are promotional, stale, or not clearly tied to the configured themes or assumed book.
