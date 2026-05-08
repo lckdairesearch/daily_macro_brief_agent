@@ -6,12 +6,12 @@ grok-3 and older do not support server-side tools.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import grpc
 from xai_sdk import Client
 from xai_sdk.chat import user as xai_user
 from xai_sdk.tools import x_search
@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 _X_URL_RE = re.compile(r"https?://(x|twitter)\.com/[\w]{1,50}/status/\d{10,20}$")
 
 
+_XAI_TIMEOUT_SECONDS = 30
+_XAI_MAX_TOKENS = 2000
+
+
 class XScout:
     """Find market narratives on X using Grok-4's live x_search Agent Tool."""
 
@@ -44,35 +48,61 @@ class XScout:
 
     def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
         system_prompt = load_prompt("scouts/x_narrative_search").text
-        payload = build_market_context(context)
+        market_context = build_market_context(context)
+        payload: dict[str, Any] = {
+            "data_cutoff": market_context["data_cutoff"],
+            "lookback_hours": context.lookback_hours,
+            "flagged_market_moves": market_context["flagged_market_moves"][:5],
+            "calendar_highlights": market_context["calendar_highlights"][:5],
+            "theme_keywords": market_context["theme_keywords"][:15],
+        }
         portfolio_themes = [
-            p.get("rationale", "") for p in context.portfolio.get("core_positions", [])
+            p.get("label") or p.get("rationale", "")
+            for p in context.portfolio.get("core_positions", [])[:5]
         ]
-        payload["portfolio_themes"] = portfolio_themes
+        payload["portfolio_themes"] = [theme for theme in portfolio_themes if theme]
         payload["instruction"] = (
-            "Use live X search to find real posts from the last 24 hours relevant to "
-            "the flagged market moves or portfolio themes. Only include posts you have "
-            "retrieved and can verify are real. Return up to 4 evidence cards as JSON. "
-            'If you cannot find real verified posts, return {"cards": []}.'
+            "Search only for the strongest verified posts. Return up to 3 cards. "
+            'If none qualify, return {"cards":[]}.'
         )
+        targets = _search_targets(payload)
+        context_lines = [
+            f"Data cutoff: {payload['data_cutoff']}",
+            f"Search targets: {', '.join(targets)}",
+            "Use the targets above; do not run a broad macro search.",
+        ]
+        if payload["calendar_highlights"]:
+            events = [
+                f"{item['country']} {item['event']}"
+                for item in payload["calendar_highlights"][:3]
+            ]
+            context_lines.append(f"Calendar context: {', '.join(events)}")
 
         prompt_text = (
             system_prompt
-            + '\n\nReturn valid JSON only, using schema: {"cards": [...]}\n\n'
-            + json.dumps(payload, ensure_ascii=False)
+            + "\n\n"
+            + "\n".join(context_lines)
+            + '\n\nReturn valid JSON only. If nothing qualifies, return {"cards":[]}.'
         )
 
         since = datetime.now(timezone.utc) - timedelta(hours=24)
         # Strip provider prefix if present (xai_sdk uses bare model names)
         clean_model = self.model.removeprefix("xai/")
 
-        client = Client(api_key=self.api_key)
+        client = Client(api_key=self.api_key, timeout=_XAI_TIMEOUT_SECONDS)
         chat = client.chat.create(
             model=clean_model,
             tools=[x_search(from_date=since)],
+            temperature=self.temperature,
+            max_tokens=_XAI_MAX_TOKENS,
+            reasoning_effort="medium",
         )
         chat.append(xai_user(prompt_text))
-        result = chat.sample()
+        try:
+            result = chat.sample()
+        except grpc.RpcError as exc:
+            logger.warning("XScout: xAI x_search request failed: %s", exc)
+            return []
 
         text: str = result.content or ""
         # Cleanup structuring falls back to LiteLLM — must use prefixed model name.
@@ -93,3 +123,35 @@ def _filter_verified(cards: list[EvidenceCard]) -> list[EvidenceCard]:
             continue
         verified.append(card)
     return verified
+
+
+def _search_targets(payload: dict[str, Any]) -> list[str]:
+    """Build a small concrete target list for x_search."""
+    targets: list[str] = []
+    for move in payload.get("flagged_market_moves", []):
+        display_name = move.get("display_name")
+        if display_name:
+            targets.append(str(display_name))
+    for event in payload.get("calendar_highlights", []):
+        name = event.get("event")
+        country = event.get("country")
+        if name and country:
+            targets.append(f"{country} {name}")
+    for keyword in payload.get("theme_keywords", []):
+        if keyword:
+            targets.append(str(keyword))
+
+    if not targets:
+        targets = ["S&P 500", "US rates", "gold", "USD/JPY", "China macro"]
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for target in targets:
+        normalized = target.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(target)
+        if len(deduped) >= 6:
+            break
+    return deduped

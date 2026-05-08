@@ -36,10 +36,13 @@ from app.models import EvidenceCard, SourceType
 logger = logging.getLogger(__name__)
 
 _LISTEN_NOTES_BASE = "https://listen-api.listennotes.com/api/v2"
-_MACRO_SEARCH_TERMS = [
+_DEFAULT_FREEFLOW_SEARCH_TERMS = [
     "macro economy", "Federal Reserve", "central bank", "inflation",
     "interest rates", "bond market", "global macro", "emerging markets",
 ]
+_DEFAULT_CURATED_MIN_EPISODES = 6
+_DEFAULT_MAX_CURATED_QUERIES = 8
+_DEFAULT_MAX_FREEFLOW_QUERIES = 4
 _MAX_EPISODES_TO_FILTER = 20
 _MAX_RELEVANT_EPISODES = 3
 
@@ -73,11 +76,21 @@ class PodcastScout:
         api_key: str | None,
         listen_notes_api_key: str,
         lookback_hours: int = 24,
+        curated_podcasts: list[dict[str, Any]] | None = None,
+        freeflow_search_terms: list[str] | None = None,
+        curated_min_episodes: int = _DEFAULT_CURATED_MIN_EPISODES,
+        max_curated_queries: int = _DEFAULT_MAX_CURATED_QUERIES,
+        max_freeflow_queries: int = _DEFAULT_MAX_FREEFLOW_QUERIES,
     ) -> None:
         self.scout_model = scout_model
         self.api_key = api_key
         self.listen_notes_api_key = listen_notes_api_key
         self.lookback_hours = lookback_hours
+        self.curated_podcasts = curated_podcasts or []
+        self.freeflow_search_terms = freeflow_search_terms or _DEFAULT_FREEFLOW_SEARCH_TERMS
+        self.curated_min_episodes = curated_min_episodes
+        self.max_curated_queries = max_curated_queries
+        self.max_freeflow_queries = max_freeflow_queries
 
     def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
         episodes = self._fetch_episodes()
@@ -108,40 +121,60 @@ class PodcastScout:
     def _fetch_episodes(self) -> list[dict[str, Any]]:
         cutoff_ts = int((datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)).timestamp())
         episodes: list[dict[str, Any]] = []
+
+        curated = sorted(
+            self.curated_podcasts[: self.max_curated_queries],
+            key=lambda item: float(item.get("priority", 0.5)),
+            reverse=True,
+        )
+        for podcast in curated:
+            query = str(podcast.get("name", "")).strip()
+            if not query:
+                continue
+            results = self._search_listen_notes(query, cutoff_ts, podcast.get("ocid"))
+            matches = [ep for ep in results if _matches_curated_podcast(ep, podcast)]
+            episodes.extend(matches or results[:1])
+            time.sleep(0.3)  # conservative rate limit
+
+        if len(_dedupe_episodes(episodes)) < self.curated_min_episodes:
+            for term in self.freeflow_search_terms[: self.max_freeflow_queries]:
+                episodes.extend(self._search_listen_notes(term, cutoff_ts))
+                time.sleep(0.3)
+
+        return _dedupe_episodes(episodes)[:_MAX_EPISODES_TO_FILTER]
+
+    def _search_listen_notes(
+        self,
+        query: str,
+        cutoff_ts: int,
+        ocid: str | None = None,
+    ) -> list[dict[str, Any]]:
         headers = {"X-ListenAPI-Key": self.listen_notes_api_key}
-
-        for term in _MACRO_SEARCH_TERMS[:4]:  # limit API calls
-            try:
-                resp = requests.get(
-                    f"{_LISTEN_NOTES_BASE}/search",
-                    headers=headers,
-                    params={
-                        "q": term,
-                        "type": "episode",
-                        "published_after": cutoff_ts,
-                        "len_min": 5,
-                        "page_size": 5,
-                        "language": "English",
-                    },
-                    timeout=15,
-                )
-                resp.raise_for_status()
-                results = resp.json().get("results", [])
-                episodes.extend(results)
-                time.sleep(0.3)  # conservative rate limit
-            except Exception as exc:
-                logger.warning("PodcastScout: Listen Notes search failed for '%s': %s", term, exc)
-
-        # Deduplicate by episode id
-        seen: set[str] = set()
-        unique: list[dict[str, Any]] = []
-        for ep in episodes:
-            eid = ep.get("id", "")
-            if eid and eid not in seen:
-                seen.add(eid)
-                unique.append(ep)
-
-        return unique[:_MAX_EPISODES_TO_FILTER]
+        params: dict[str, Any] = {
+            "q": query,
+            "type": "episode",
+            "published_after": cutoff_ts,
+            "len_min": 5,
+            "page_size": 5,
+            "language": "English",
+        }
+        if ocid:
+            params["ocid"] = ocid
+        try:
+            resp = requests.get(
+                f"{_LISTEN_NOTES_BASE}/search",
+                headers=headers,
+                params=params,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return [
+                ep for ep in resp.json().get("results", [])
+                if _is_fresh_episode(ep, cutoff_ts)
+            ]
+        except Exception as exc:
+            logger.warning("PodcastScout: Listen Notes search failed for '%s': %s", query, exc)
+            return []
 
     # ------------------------------------------------------------------
     # Step 2: Filter to portfolio-relevant episodes
@@ -269,3 +302,47 @@ class PodcastScout:
             confidence=c.confidence,
             tags=c.tags,
         )
+
+
+def _dedupe_episodes(episodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate Listen Notes episodes by id, preserving priority order."""
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for ep in episodes:
+        eid = ep.get("id", "")
+        if not eid or eid in seen:
+            continue
+        seen.add(eid)
+        unique.append(ep)
+    return unique
+
+
+def _matches_curated_podcast(episode: dict[str, Any], podcast: dict[str, Any]) -> bool:
+    """Return True when an episode appears to belong to a configured curated show."""
+    podcast_title = (
+        episode.get("podcast", {}).get("title_original")
+        or episode.get("podcast", {}).get("title")
+        or ""
+    )
+    title_norm = _normalize_match_text(podcast_title)
+    candidates = [podcast.get("name", ""), *podcast.get("aliases", [])]
+    return any(
+        _normalize_match_text(candidate) in title_norm
+        for candidate in candidates
+        if candidate
+    )
+
+
+def _normalize_match_text(value: str) -> str:
+    return " ".join(value.casefold().replace("&", "and").split())
+
+
+def _is_fresh_episode(episode: dict[str, Any], cutoff_ts: int) -> bool:
+    """Defend against upstream search results that ignore published_after."""
+    pub_ms = episode.get("pub_date_ms")
+    if not pub_ms:
+        return False
+    try:
+        return int(pub_ms) >= cutoff_ts * 1000
+    except (TypeError, ValueError):
+        return False

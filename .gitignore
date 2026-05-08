@@ -15,8 +15,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Live run outputs (keep sample outputs)
-outputs/runs/
+# Generated run outputs
+outputs/
 
 # Build / packaging
 dist/

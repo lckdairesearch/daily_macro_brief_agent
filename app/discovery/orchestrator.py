@@ -73,14 +73,18 @@ def build_scouts(settings: "Settings", mode: RunMode) -> list[Scout]:
         )
 
     if scouts_cfg.get("podcast", {}).get("enabled", True) and creds.listen_notes_api_key:
+        podcast_cfg = scouts_cfg.get("podcast", {})
         scouts.append(
             PodcastScout(
                 scout_model=scout_model,
                 api_key=creds.openai_api_key,
                 listen_notes_api_key=creds.listen_notes_api_key,
-                lookback_hours=int(
-                    scouts_cfg.get("podcast", {}).get("listen_notes_lookback_hours", 24)
-                ),
+                lookback_hours=int(podcast_cfg.get("listen_notes_lookback_hours", 24)),
+                curated_podcasts=podcast_cfg.get("curated_podcasts", []),
+                freeflow_search_terms=podcast_cfg.get("freeflow_search_terms", []),
+                curated_min_episodes=int(podcast_cfg.get("curated_min_episodes", 6)),
+                max_curated_queries=int(podcast_cfg.get("max_curated_queries", 8)),
+                max_freeflow_queries=int(podcast_cfg.get("max_freeflow_queries", 4)),
             )
         )
 

@@ -368,13 +368,14 @@ def test_x_scout_handles_markdown_json(mock_client_cls):
 
 
 def _mock_listen_notes_response(n: int = 2) -> MagicMock:
+    pub_date_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     episodes = [
         {
             "id": f"ep{i}",
             "title_original": f"Macro Insights Episode {i}",
             "description_original": "Discussion on Fed policy and global macro",
             "listennotes_url": f"https://listennotes.com/ep/{i}",
-            "pub_date_ms": 1746662400000,
+            "pub_date_ms": pub_date_ms,
             "podcast": {"title_original": f"Macro Pod {i}"},
         }
         for i in range(n)
@@ -405,6 +406,84 @@ def test_podcast_scout_full_flow(mock_get, mock_completion, mock_openai_cls):
     cards = scout.run(_make_context(RunMode.LIVE))
     assert len(cards) == 2
     assert all(c.source_type == SourceType.PODCAST for c in cards)
+
+
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_fetches_curated_first_then_freeflow_fallback(mock_get):
+    def response_for(query: str) -> MagicMock:
+        pub_date_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        podcast_title = "Macro Voices" if query == "Macro Voices" else "Freeflow Macro"
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {
+            "results": [
+                {
+                    "id": f"{query}-ep",
+                    "title_original": f"{query} latest",
+                    "description_original": "Macro discussion",
+                    "listennotes_url": f"https://listennotes.com/{query}",
+                    "pub_date_ms": pub_date_ms,
+                    "podcast": {"title_original": podcast_title},
+                }
+            ]
+        }
+        return resp
+
+    mock_get.side_effect = lambda *_, **kwargs: response_for(kwargs["params"]["q"])
+    scout = PodcastScout(
+        scout_model="openai/gpt-5.4",
+        api_key="sk-test",
+        listen_notes_api_key="ln-test",
+        curated_podcasts=[{"name": "Macro Voices", "aliases": ["MacroVoices"], "priority": 1.0}],
+        freeflow_search_terms=["Federal Reserve"],
+        curated_min_episodes=2,
+        max_curated_queries=1,
+        max_freeflow_queries=1,
+    )
+
+    episodes = scout._fetch_episodes()
+
+    queries = [call.kwargs["params"]["q"] for call in mock_get.call_args_list]
+    assert queries == ["Macro Voices", "Federal Reserve"]
+    assert [ep["id"] for ep in episodes] == ["Macro Voices-ep", "Federal Reserve-ep"]
+
+
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_filters_stale_listen_notes_results(mock_get):
+    fresh_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    stale_ms = 946684800000
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {
+        "results": [
+            {
+                "id": "stale",
+                "title_original": "Old macro episode",
+                "pub_date_ms": stale_ms,
+                "podcast": {"title_original": "Macro Voices"},
+            },
+            {
+                "id": "fresh",
+                "title_original": "Fresh macro episode",
+                "pub_date_ms": fresh_ms,
+                "podcast": {"title_original": "Macro Voices"},
+            },
+        ]
+    }
+    mock_get.return_value = resp
+    scout = PodcastScout(
+        scout_model="openai/gpt-5.4",
+        api_key="sk-test",
+        listen_notes_api_key="ln-test",
+        curated_podcasts=[{"name": "Macro Voices"}],
+        freeflow_search_terms=[],
+        curated_min_episodes=0,
+        max_curated_queries=1,
+    )
+
+    episodes = scout._fetch_episodes()
+
+    assert [ep["id"] for ep in episodes] == ["fresh"]
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
