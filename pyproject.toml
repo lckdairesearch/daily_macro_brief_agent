@@ -19,6 +19,8 @@ dependencies = [
     "sendgrid>=6.11",
     "yfinance>=0.2",
     "fredapi>=0.5",
+    "databento>=0.40",
+    "pandas>=2.0",
 ]
 
 [project.optional-dependencies]

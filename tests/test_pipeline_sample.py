@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from app.data.market import FixtureMarketProvider
 from app.models import DeliveryStatus, PipelineResult, RunMode
 from app.pipeline import (
     _load_fixture_calendar,
     _load_fixture_evidence,
-    _load_fixture_market,
     run_pipeline,
 )
 from app.settings import Settings
@@ -46,8 +48,8 @@ def test_sample_pipeline_no_email_sent():
 
 
 def test_load_fixture_market():
-    """Fixture market loader returns non-empty list of MarketSnapshot objects."""
-    snapshots = _load_fixture_market()
+    """FixtureMarketProvider returns non-empty list of MarketSnapshot objects."""
+    snapshots = FixtureMarketProvider().fetch_watchlist([], datetime.now(timezone.utc))
     assert len(snapshots) > 0
     for snap in snapshots:
         assert snap.instrument_id
