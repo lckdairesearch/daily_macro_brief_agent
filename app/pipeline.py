@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
@@ -21,7 +19,6 @@ from app.models import (
     BriefDraft,
     CalendarEvent,
     DeliveryStatus,
-    EvidenceCard,
     FreshnessStatus,
     PipelineResult,
     RunMetadata,
@@ -30,9 +27,6 @@ from app.models import (
 
 if TYPE_CHECKING:
     from app.settings import Settings
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures"
 
 
 def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
@@ -152,11 +146,4 @@ def _data_cutoff(settings: "Settings", tz: ZoneInfo) -> datetime:
 
 
 def _load_fixture_calendar() -> list[CalendarEvent]:
-    """Load fixture calendar events for sample mode."""
     return load_fixture_calendar()
-
-
-def _load_fixture_evidence() -> list[EvidenceCard]:
-    """Load fixture evidence cards for sample mode."""
-    raw = json.loads((FIXTURE_DIR / "evidence_sample.json").read_text(encoding="utf-8"))
-    return [EvidenceCard.model_validate(c) for c in raw["cards"]]

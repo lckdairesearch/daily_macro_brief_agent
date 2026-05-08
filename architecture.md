@@ -346,13 +346,12 @@ Likely environment variables:
 APP_MODE optional override
 
 # LLM — required for all modes
-OPENAI_API_KEY                  synthesis model, web-search scouts, Whisper transcription
-GEMINI_API_KEY                  podcast Gemini fallback (audio + YouTube)
-XAI_API_KEY                     X scout via Grok
+OPENAI_API_KEY                  synthesis model, web-search scouts (Responses API), podcast content recall
+XAI_API_KEY                     X scout via xai-sdk + grok-4
 
 # LLM optional overrides
 LLM_SCOUT_MODEL                 optional override for sources.yaml llm.scout_model
-LLM_X_SCOUT_MODEL               default: xai/grok-3
+LLM_X_SCOUT_MODEL               default: grok-4 (bare model name; grok-4+ required for xAI server-side x_search)
 LLM_SYNTHESIS_MODEL             optional override for sources.yaml llm.synthesis_model
 LLM_TEMPERATURE                 optional override for sources.yaml llm.temperature
 
@@ -466,16 +465,14 @@ calendar:
 
 llm:
   provider: litellm
-  scout_model: openai/gpt-5.4      # news, central_bank, research scouts (web search)
-  x_scout_model: xai/grok-3        # X scout — swap model here without code changes
+  scout_model: openai/gpt-5.4      # news, central_bank, research, podcast scouts (OpenAI Responses API)
+  x_scout_model: grok-4            # X scout — bare model name for xai-sdk (grok-4+ required)
   synthesis_model: openai/gpt-5.4  # brief writer, critic, ranker
   temperature: 0.2
   max_tokens: 2000
 
 podcast:
   provider: listen_notes
-  transcription: openai_whisper
-  transcription_fallback: gemini   # handles both audio URLs and YouTube
   lookback_hours: 24
 
 social:
@@ -855,14 +852,14 @@ File: `app/discovery/scouts/podcast.py`
 V1 behavior:
 
 1. Query Listen Notes API (free tier) for episodes published in the last 24 hours, from curated channels or by topic search aligned to configured macro themes.
-2. LLM ranks and filters candidates against macro themes, portfolio assumptions, and watchlist. Gate question: "Is there a tradeable or portfolio-relevant thesis here?" Do not summarize every episode.
-3. For matched episodes:
-   - If transcribable audio URL exists: transcribe via OpenAI Whisper API.
-   - If no transcribable URL: search YouTube and use Gemini API to summarize the video directly. Gemini also serves as the fallback when Whisper fails or the audio URL is inaccessible.
-4. Extract from transcript/summary: speaker's core thesis, evidence/argument, why it matters now, one-line "what this means for our book."
+2. LiteLLM (GPT-5.4, `json_object` response format) ranks and filters candidates against macro themes, portfolio assumptions, and watchlist. Gate question: "Is there a tradeable or portfolio-relevant thesis here?" Do not summarize every episode.
+3. For matched episodes, use the OpenAI Responses API (`client.responses.create()` with `web_search_preview`) to recall public summaries/notes about the episode content. No audio transcription or Gemini video analysis in V1.
+4. Extract from web-recalled content: speaker's core thesis, evidence/argument, why it matters now, one-line "what this means for our book."
 5. Return structured `EvidenceCard` objects for ranking. Output flows into Theme Radar.
 
-Required keys: `LISTEN_NOTES_API_KEY`, `OPENAI_API_KEY` (Whisper), `GEMINI_API_KEY` (fallback).
+Required keys: `LISTEN_NOTES_API_KEY`, `OPENAI_API_KEY` (Responses API web search).
+
+**V1 limitation:** Content recall relies on web search finding public summaries/show notes for matched episodes rather than actual audio transcription. Episodes without public web presence may have lower-quality extractions.
 
 ### 11.4 Grok/xAI X scout
 
@@ -870,12 +867,15 @@ File: `app/discovery/scouts/x.py`
 
 V1 behavior:
 
-- Prompt Grok/xAI to identify relevant X narratives, posts, and sentiment clusters tied to configured macro themes and overnight market moves.
+- Use `xai_sdk.Client` with grok-4 and the `x_search` Agent Tool to retrieve real, live X posts from the last 24 hours tied to flagged market moves or portfolio themes.
 - Load prompt text from `app/llm/prompts/scouts/x_narrative_search.md`.
-- Ask for source links/handles where possible.
-- Convert results into candidate `EvidenceCard` objects.
-- Treat Grok output as discovery, not final truth. Corroborate high-impact claims through another source before strong use.
-- Model is configurable via `x_scout_model` in `sources.yaml` — a one-line change routes through any LiteLLM-supported model.
+- Grok-4 performs a live server-side search over X and returns posts with real URLs in the format `https://x.com/{username}/status/{id}`.
+- Post-process with `_filter_verified()`: drop cards with empty titles or URLs that don't match the X post URL pattern — this catches hallucinated cards.
+- Convert verified results into `EvidenceCard` objects with `SourceType.SOCIAL`.
+- Treat results as discovery, not final truth. Corroborate high-impact claims through another source before strong use.
+- Model is configurable via `x_scout_model` in `sources.yaml`. Must be `grok-4` or later — grok-3 does not support server-side tools.
+
+**Implementation note:** LiteLLM cannot route xAI server-side Agent Tools. The X scout uses `xai_sdk` directly (not the LiteLLM wrapper) and is the only scout that bypasses `app/llm/provider.py`.
 
 Future behavior (V2):
 
@@ -1045,14 +1045,16 @@ Confirmed V1 model defaults:
 ```yaml
 llm:
   provider: litellm
-  scout_model: openai/gpt-5.4      # news, central_bank, research — web search capable
-  x_scout_model: xai/grok-3        # X scout — Grok for privileged X access
+  scout_model: openai/gpt-5.4      # news, central_bank, research, podcast — OpenAI Responses API
+  x_scout_model: grok-4            # X scout — xai-sdk (bare name, grok-4+ required)
   synthesis_model: openai/gpt-5.4  # brief writer, critic, ranker
   temperature: 0.2
   max_tokens: 2000
 ```
 
 The `llm` block in `app/config/sources.yaml` is the source of truth for workflow-level model defaults. Environment variables are deployment overrides only. The split between `scout_model` and `synthesis_model` allows using different models for retrieval vs writing without changing any code — only config. Both default to GPT-5.4 in V1 but can be diverged independently (e.g. GPT-5.5 for final synthesis in a premium run).
+
+**Important:** The news, central_bank, research, and podcast scouts use the OpenAI Responses API (`client.responses.create()` with `web_search_preview`) rather than LiteLLM, because LiteLLM blocks the `web_search_preview` built-in tool type. The `scout_model` value is stripped of the `openai/` prefix before passing to the OpenAI SDK. The X scout uses `xai_sdk` directly for the same reason. LiteLLM is still used for synthesis (brief writer, critic, ranker) and the LiteLLM-backed `LLMClient` wrapper in `app/llm/provider.py` handles all synthesis calls.
 
 Do not create these unless a real provider-specific need appears:
 

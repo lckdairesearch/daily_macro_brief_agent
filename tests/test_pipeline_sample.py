@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.data.market import FixtureMarketProvider
+from app.discovery.scouts.base import DiscoveryContext, FixtureDiscoveryScout
 from app.models import DeliveryStatus, PipelineResult, RunMode
 from app.pipeline import (
     _load_fixture_calendar,
-    _load_fixture_evidence,
     run_pipeline,
 )
 from app.settings import Settings
@@ -67,8 +67,12 @@ def test_load_fixture_calendar():
 
 
 def test_load_fixture_evidence():
-    """Fixture evidence loader returns non-empty list of EvidenceCard objects."""
-    cards = _load_fixture_evidence()
+    """FixtureDiscoveryScout returns non-empty list of EvidenceCard objects."""
+    ctx = DiscoveryContext(
+        market_snapshots=[], calendar_events=[], themes=[], portfolio={},
+        lookback_hours=24, data_cutoff=datetime.now(timezone.utc), mode=RunMode.SAMPLE,
+    )
+    cards = FixtureDiscoveryScout().run(ctx)
     assert len(cards) > 0
     for card in cards:
         assert card.id

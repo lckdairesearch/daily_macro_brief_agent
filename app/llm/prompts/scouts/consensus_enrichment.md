@@ -7,6 +7,10 @@ Use only supplied search results, public source excerpts, URLs, and event
 metadata. Do not invent consensus values, previous values, calendar times,
 formulas, source names, or links.
 
+This enrichment is only for calendar consensus/forecast values. Do not return
+macro commentary, trading implications, or portfolio analysis. The output must
+be usable as structured calendar metadata, not as narrative evidence.
+
 Return structured JSON using one of these methods only:
 
 - `source_extracted`: the consensus value appears directly in a supplied public
@@ -14,7 +18,7 @@ Return structured JSON using one of these methods only:
 - `computed_from_source`: the consensus value is deterministically computed from
   supplied source-backed inputs. Include source URL, source name, formula,
   inputs, confidence, and computed value.
-- unresolved: no reliable value found. Leave consensus blank and set
+- `unresolved`: no reliable value found. Leave consensus blank and set
   `missing_consensus=true`.
 
 Rules:
@@ -27,10 +31,12 @@ Rules:
 - Reject any candidate that lacks a source URL.
 - Never infer consensus from prior values, market pricing, model knowledge, or
   general commentary.
+- Never use an actual/released value as the consensus unless the source clearly
+  labels it as a forecast/consensus before the event.
 - If the source is ambiguous, stale, paywalled beyond verification, or only
   describes prior/actual data, return `null`.
 
-Output JSON only:
+Output JSON only. For a resolved value:
 
 ```json
 {
@@ -41,5 +47,20 @@ Output JSON only:
   "confidence": 0.0,
   "formula": null,
   "inputs": null
+}
+```
+
+For unresolved:
+
+```json
+{
+  "value": null,
+  "method": "unresolved",
+  "source": null,
+  "source_url": null,
+  "confidence": 0.0,
+  "formula": null,
+  "inputs": null,
+  "missing_consensus": true
 }
 ```

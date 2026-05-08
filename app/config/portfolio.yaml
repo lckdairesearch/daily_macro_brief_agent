@@ -34,8 +34,9 @@ core_positions:
 
 tactical_overlays:
   - id: usd_diversification
-    label: "Currency Diversification" 
+    label: "Currency Diversification"
     rationale: "Reduce USD concentration risk"
+    sensitivity_tags: ["usd_policy", "de_dollarization", "reserve_currencies", "dollar_liquidity"]
 
 structural_themes:
   - demographic_shifts

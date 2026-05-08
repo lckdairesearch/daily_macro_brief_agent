@@ -20,7 +20,7 @@ llm:
   provider: litellm
   scout_model: "openai/gpt-5.4"
   synthesis_model: "openai/gpt-5.4"
-  x_scout_model: "xai/grok-3"
+  x_scout_model: "grok-4"  # grok-4+ required for xAI server-side x_search tool
   temperature: 0.2
 
 scouts:
@@ -38,9 +38,8 @@ scouts:
 
   podcast:
     enabled: true
-    transcription_model: "whisper-1"
-    video_fallback_model: "gemini/gemini-1.5-pro"
     listen_notes_lookback_hours: 24
+    # content recall via GPT web search (no audio transcription)
 
 delivery:
   provider: sendgrid

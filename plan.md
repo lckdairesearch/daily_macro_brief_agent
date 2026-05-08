@@ -908,9 +908,9 @@ else:
 
 **Implementation notes:**
 
-- `news.py`, `central_bank.py`, `research.py`: use `LLMClient` with `llm.scout_model` from `app/config/sources.yaml` (OpenAI GPT-5.4 by default). Load prompts from `app/llm/prompts/scouts/`. Return structured `EvidenceCard` objects with source URLs.
-- `podcast.py`: query Listen Notes API for last 24h episodes → LLM filters for portfolio-relevant thesis → transcribe via OpenAI Whisper → fallback to Gemini for YouTube or failed audio. See `architecture.md §11.3` for full flow. Requires `LISTEN_NOTES_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`.
-- `x.py`: use `LLMClient` with `x_scout_model` (Grok/xAI by default). Load prompt from `app/llm/prompts/scouts/x_narrative_search.md`. Model is hot-swappable via config. Treat output as discovery only; corroborate high-impact claims.
+- `news.py`, `central_bank.py`, `research.py`: use `web_search_and_structure()` from `base.py`, which calls the OpenAI Responses API (`client.responses.create()` with `web_search_preview`). LiteLLM blocks this tool type. Load prompts from `app/llm/prompts/scouts/`. Return structured `EvidenceCard` objects with source URLs. Model string strips the `openai/` prefix before passing to the OpenAI SDK.
+- `podcast.py`: (1) query Listen Notes API for last 24h episodes; (2) LiteLLM GPT filter (`json_object` format) selects portfolio-relevant episodes; (3) OpenAI Responses API `web_search_preview` recalls public summaries/show notes per episode. No audio transcription or Gemini in V1. Requires `LISTEN_NOTES_API_KEY`, `OPENAI_API_KEY`.
+- `x.py`: use `xai_sdk.Client` with the `x_search` Agent Tool (not LiteLLM — LiteLLM cannot route xAI server-side tools). Model must be `grok-4` or later; grok-3 does not support server-side tools. Post-process with `_filter_verified()` to drop empty titles and non-X URLs. Requires `XAI_API_KEY`.
 - All scouts: can be disabled in `sources.yaml`. Failed optional scouts are recorded in `RunMetadata`, not raised.
 
 **Human input needed:** Confirm which scouts must produce live output for the submission demo vs which can remain fixture-backed.
@@ -920,7 +920,7 @@ else:
 - Each scout can be disabled in config.
 - Each scout returns zero or more valid `EvidenceCard` objects with source metadata.
 - Failed optional scouts are recorded without killing the run.
-- Podcast scout transcription fallback to Gemini is tested with a mocked response.
+- All scouts are tested with mocked provider responses (OpenAI Responses API mock for news/CB/research/podcast, xai_sdk Client mock for X scout).
 
 ---
 

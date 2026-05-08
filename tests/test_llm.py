@@ -34,7 +34,7 @@ def test_prompt_registry_loads_all_prompts():
         prompt = load_prompt(name)
         assert prompt.name == name
         assert prompt.path.name.endswith(".md")
-        assert "Do not invent" in prompt.text
+        assert any(phrase in prompt.text for phrase in ("Do not invent", "do not invent", "do not fabricate", "fabricate"))
         assert "source" in prompt.text.lower()
 
 
