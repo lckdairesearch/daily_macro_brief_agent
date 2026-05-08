@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "market_sample.json"
 
 

@@ -1,6 +1,6 @@
 .PHONY: venv install format lint test run-sample run-live dry-run render-memo
 
-PYTHON := python3
+PYTHON := /opt/homebrew/bin/python3.13
 VENV := .venv
 BIN := $(VENV)/bin
 
