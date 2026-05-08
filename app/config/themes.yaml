@@ -1,26 +1,32 @@
-# app/config/themes.yaml — macro themes to track and rank evidence against
+# app/config/themes.yaml — Family Office structural themes for evidence ranking
 
 themes:
-  - id: us_policy_rates
-    label: "US policy path and front-end rates"
-    keywords: ["Fed", "FOMC", "fed funds", "front-end", "US rates", "Treasury", "2Y", "10Y"]
+  - id: monetary_debasement
+    label: "Monetary debasement and fiscal dominance"
+    keywords: ["Fed", "FOMC", "monetary policy", "fiscal dominance", "debt sustainability", "debasement", "Treasury", "duration"]
+    portfolio_relevance: ["metals_complex_long", "duration_short"]
 
-  - id: usd_jpy_divergence
-    label: "Dollar liquidity and USD/JPY policy divergence"
-    keywords: ["USD/JPY", "DXY", "BOJ", "dollar liquidity", "yen", "divergence"]
+  - id: metals_complex
+    label: "Metals complex as monetary hedge"
+    keywords: ["gold", "silver", "copper", "precious metals", "industrial metals", "central bank demand", "real yields"]
+    portfolio_relevance: ["metals_complex_long"]
 
-  - id: gold_hedge
-    label: "Gold as real-rate and geopolitical hedge"
-    keywords: ["gold", "real yields", "TIPS", "geopolitical", "safe haven"]
+  - id: food_security
+    label: "Food security and agricultural supply disruption"
+    keywords: ["agriculture", "grains", "wheat", "corn", "soybeans", "food security", "fertilizer", "weather", "geopolitics"]
+    portfolio_relevance: ["agriculture_long"]
 
-  - id: china_asia_em
-    label: "China/Asia demand and spillovers to EM credit"
-    keywords: ["China", "PBOC", "Asia", "EM", "emerging markets", "CNH", "growth"]
+  - id: currency_diversification
+    label: "De-dollarization and currency diversification"
+    keywords: ["USD", "dollar", "reserve currency", "BRICS", "de-dollarization", "currency diversification", "bilateral trade"]
+    portfolio_relevance: ["usd_diversification"]
 
-  - id: credit_stress
-    label: "Credit stress and risk appetite"
-    keywords: ["HY", "IG", "credit spreads", "OAS", "VIX", "risk off", "risk on"]
+  - id: resource_scarcity
+    label: "Resource scarcity and population pressure"
+    keywords: ["inflation", "resource scarcity", "supply chain", "commodity", "population growth", "demographics"]
+    portfolio_relevance: ["metals_complex_long", "agriculture_long"]
 
-  - id: commodity_inflation
-    label: "Oil/commodity inflation risk"
-    keywords: ["oil", "WTI", "Brent", "copper", "commodities", "inflation", "CPI"]
+  - id: geopolitical_fragmentation
+    label: "Geopolitical fragmentation and trade disruption"
+    keywords: ["geopolitics", "trade war", "sanctions", "export controls", "supply chain", "strategic competition"]
+    portfolio_relevance: ["agriculture_long", "metals_complex_long", "usd_diversification"]

@@ -1,31 +1,52 @@
-# app/config/portfolio.yaml — assumed PM book (synthetic/demo)
-# These are prototype assumptions, not real client positions.
-# Replace with actual exposures before using in a live PM context.
+# app/config/portfolio.yaml — Family Office Macro Book (synthetic/demo)
+# Assumptions: Multi-generational family office with 10-20 year horizon
+# Focus: Wealth preservation, structural themes, inflation protection
+# These are prototype assumptions based on typical family office positioning.
 
-disclaimer: "Synthetic demo assumptions. Not real client data."
+disclaimer: "Synthetic family office assumptions for demo. Not real client data."
 
-positions:
-  - id: usdjpy_long
-    label: "Long USD/JPY"
-    instrument: "USD/JPY"
+investment_profile:
+  horizon: "10-20 years"
+  focus: "wealth preservation, structural trends, inflation hedge"
+  risk_tolerance: "moderate, can handle volatility for long-term themes"
+
+core_positions:
+  - id: metals_complex_long
+    label: "Long Metals Complex (Gold/Silver/Copper)"
+    instruments: ["Gold", "Silver", "Copper"]
     direction: long
-    sensitivity_tags: ["usd", "jpy", "us_rates", "boj_policy"]
-
-  - id: gold_overweight
-    label: "Overweight gold"
-    instrument: "Gold"
+    rationale: "Monetary debasement hedge"
+    sensitivity_tags: ["real_rates", "usd_policy", "monetary_policy"]
+    
+  - id: agriculture_long  
+    label: "Long Agriculture Futures (Grains Complex)"
+    instruments: ["Wheat", "Corn", "Soybeans"]
     direction: long
-    sensitivity_tags: ["gold", "real_rates", "geopolitical", "usd"]
+    rationale: "Food security, population growth, climate disruption"
+    sensitivity_tags: ["weather", "geopolitics", "fertilizer_costs", "population_growth"]
 
-  - id: em_debt_basket
-    label: "EM debt basket"
-    instrument: "EM_DEBT"
-    direction: long
-    sensitivity_tags: ["em_credit", "usd_liquidity", "china_growth", "risk_appetite"]
+  - id: duration_short
+    label: "Short Long-term US Duration" 
+    instruments: ["US 30Y", "US 10Y"]
+    direction: short
+    rationale: "Fiscal dominance, structural inflation risk"
+    sensitivity_tags: ["fiscal_policy", "fed_policy", "inflation_regime", "debt_sustainability"]
+
+tactical_overlays:
+  - id: usd_diversification
+    label: "Currency Diversification" 
+    rationale: "Reduce USD concentration risk"
+
+structural_themes:
+  - demographic_shifts
+  - monetary_debasement
+  - resource_scarcity
+  - technological_disruption
+  - geopolitical_fragmentation
 
 macro_sensitivities:
-  - us_rates
-  - usd_liquidity
-  - china_asia_growth
-  - commodity_shocks
-  - credit_stress
+  - real_rates
+  - usd_policy_regime
+  - china_growth_model
+  - geopolitical_stability
+  - fiscal_sustainability
