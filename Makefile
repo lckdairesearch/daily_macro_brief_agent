@@ -1,6 +1,6 @@
-.PHONY: venv install format lint test run-sample run-live dry-run render-memo
+.PHONY: venv install format lint test run-sample run-live dry-run render-memo update-vol-params
 
-PYTHON := /opt/homebrew/bin/python3.13
+PYTHON ?= /opt/homebrew/bin/python3.13
 VENV := .venv
 BIN := $(VENV)/bin
 
@@ -32,3 +32,6 @@ dry-run:
 
 render-memo:
 	@echo "memo/memo.md — render to PDF manually or via pandoc when ready"
+
+update-vol-params:
+	$(BIN)/python scripts/update_vol_params.py
