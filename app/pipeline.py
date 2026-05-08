@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from app.data.calendar import load_fixture_calendar
 from app.models import (
     BriefDraft,
     CalendarEvent,
@@ -57,18 +58,18 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
 
     # --- Step 2: Fetch market data ---
     if mode == RunMode.SAMPLE:
-        market_snapshots = _load_fixture_market()
+        _market_snapshots = _load_fixture_market()
     else:
         # TODO Step 5: AlphaVantageMarketProvider + DatabentoMarketProvider + cache fallback
-        market_snapshots = []
+        _market_snapshots = []
         warnings.append("Live market data not yet implemented — no snapshots loaded")
 
     # --- Step 3 & 4: Fetch calendar and enrich missing consensus ---
     if mode == RunMode.SAMPLE:
-        calendar_events = _load_fixture_calendar()
+        _calendar_events = _load_fixture_calendar()
     else:
         # TODO Step 6: InvestingComCalendarProvider + consensus enrichment scout
-        calendar_events = []
+        _calendar_events = []
         warnings.append("Live calendar data not yet implemented — no events loaded")
 
     # --- Step 5: Discover source evidence ---
@@ -85,7 +86,7 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
 
     # --- Step 7: Rank evidence and events ---
     # TODO Step 9: from app.synthesis.ranker import rank
-    ranked_evidence = deduped_evidence
+    _ranked_evidence = deduped_evidence
 
     # --- Step 8: Write grounded brief ---
     # TODO Step 10: from app.synthesis.writer import write_brief
@@ -142,8 +143,7 @@ def _load_fixture_market() -> list[MarketSnapshot]:
 
 def _load_fixture_calendar() -> list[CalendarEvent]:
     """Load fixture calendar events for sample mode."""
-    raw = json.loads((FIXTURE_DIR / "calendar_sample.json").read_text(encoding="utf-8"))
-    return [CalendarEvent.model_validate(e) for e in raw["events"]]
+    return load_fixture_calendar()
 
 
 def _load_fixture_evidence() -> list[EvidenceCard]:
