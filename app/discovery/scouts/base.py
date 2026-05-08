@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+import warnings
+
+# litellm calls asyncio.get_event_loop() at import time — harmless noise in Python 3.10+.
+warnings.filterwarnings("ignore", message="There is no current event loop")
 import re
 import uuid
 from dataclasses import dataclass

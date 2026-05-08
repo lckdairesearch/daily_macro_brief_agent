@@ -75,8 +75,8 @@ class XScout:
         result = chat.sample()
 
         text: str = result.content or ""
-        # Use grok-4 itself for cleanup structuring (no web search needed for JSON formatting)
-        candidates = _parse_or_structure(text, model=clean_model, api_key=self.api_key)
+        # Cleanup structuring falls back to LiteLLM — must use prefixed model name.
+        candidates = _parse_or_structure(text, model=self.model, api_key=self.api_key)
         cards = to_evidence_cards(candidates, SourceType.SOCIAL)
         return _filter_verified(cards)
 

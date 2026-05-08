@@ -84,7 +84,7 @@ def test_build_fetchers_returns_all_instruments():
     fetchers = _build_fetchers(_dummy_creds())
     expected = {
         "SPY", "QQQ", "UUP", "USDJPY", "EURUSD", "USDCNH",
-        "GOLD", "WTI", "BRENT", "COPPER", "BTC",
+        "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC",
         "US2Y", "US10Y", "FESX", "DE10Y", "HY_OAS", "VIX", "MOVE",
     }
     assert set(fetchers.keys()) == expected
@@ -93,7 +93,7 @@ def test_build_fetchers_returns_all_instruments():
 def test_build_fetchers_units():
     fetchers = _build_fetchers(_dummy_creds())
     pct_instruments = {"SPY", "QQQ", "UUP", "USDJPY", "EURUSD", "USDCNH",
-                       "GOLD", "WTI", "BRENT", "COPPER", "BTC", "FESX", "VIX", "MOVE"}
+                       "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC", "FESX", "VIX", "MOVE"}
     bps_instruments = {"US2Y", "US10Y", "DE10Y", "HY_OAS"}
     for inst in pct_instruments:
         assert fetchers[inst][0] == "%", f"{inst} should be % unit"

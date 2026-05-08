@@ -60,7 +60,7 @@ def test_sources_yaml_loads():
     assert raw["llm"]["provider"] == "litellm"
     assert raw["llm"]["scout_model"] == "openai/gpt-5.4"
     assert raw["llm"]["synthesis_model"] == "openai/gpt-5.4"
-    assert raw["llm"]["x_scout_model"] == "grok-4"
+    assert raw["llm"]["x_scout_model"] == "xai/grok-4"
 
 
 def test_chart_templates_yaml_loads():

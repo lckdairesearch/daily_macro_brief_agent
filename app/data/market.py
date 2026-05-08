@@ -121,6 +121,9 @@ def _av_fetch_daily(
     elif function in ("WTI", "BRENT", "COPPER"):
         params["interval"] = "daily"
         # no symbol param needed — function name IS the commodity
+    elif function == "GOLD_SILVER_HISTORY":
+        params["symbol"] = symbol  # "GOLD" or "SILVER"
+        params["interval"] = "daily"
 
     for k, v in extra_params.items():
         params[k] = str(v)
@@ -155,6 +158,12 @@ def _av_fetch_daily(
                 rows.append({"date": entry["date"], "close": float(entry["value"])})
             except (ValueError, KeyError):
                 pass  # "." entries appear for missing weekend/holiday values
+    elif function == "GOLD_SILVER_HISTORY":
+        for entry in data.get("data", []):
+            try:
+                rows.append({"date": entry["date"], "close": float(entry["price"])})
+            except (ValueError, KeyError):
+                pass
 
     rows.sort(key=lambda r: r["date"])
     start_str, end_str = start_date.isoformat(), end_date.isoformat()
@@ -513,18 +522,21 @@ _AV_INSTRUMENT_META: dict[str, dict] = {
     "USDJPY": {"function": "FX_DAILY",               "symbol": "USDJPY", "display_name": "USD/JPY",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%",   "extra": {"from_symbol": "USD", "to_symbol": "JPY"}},
     "EURUSD": {"function": "FX_DAILY",               "symbol": "EURUSD", "display_name": "EUR/USD",             "asset_class": AssetClass.FX,        "region": "EU",     "change_unit": "%",   "extra": {"from_symbol": "EUR", "to_symbol": "USD"}},
     "USDCNH": {"function": "FX_DAILY",               "symbol": "USDCNH", "display_name": "USD/CNH",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%",   "extra": {"from_symbol": "USD", "to_symbol": "CNH"}},
-    "GOLD":   {"function": "TIME_SERIES_DAILY",      "symbol": "GLD",    "display_name": "Gold",                "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
+    "GOLD":   {"function": "GOLD_SILVER_HISTORY",     "symbol": "GOLD",   "display_name": "Gold (spot)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
+    "SILVER": {"function": "GOLD_SILVER_HISTORY",     "symbol": "SILVER", "display_name": "Silver (spot)",       "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
     "WTI":    {"function": "WTI",                    "symbol": "",       "display_name": "WTI Crude",           "asset_class": AssetClass.COMMODITY, "region": "US",     "change_unit": "%"},
     "BRENT":  {"function": "BRENT",                  "symbol": "",       "display_name": "Brent Crude",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
-    "COPPER": {"function": "COPPER",                 "symbol": "",       "display_name": "Copper",              "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
     "BTC":    {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "BTC",    "display_name": "Bitcoin",             "asset_class": AssetClass.CRYPTO,    "region": "Global", "change_unit": "%"},
     "US2Y":   {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 2Y Yield",         "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "extra": {"maturity": "2year"}},
     "US10Y":  {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 10Y Yield",        "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "extra": {"maturity": "10year"}},
 }
 
 _DB_INSTRUMENT_META: dict[str, dict] = {
-    "FESX":  {"dataset": "XEUR.EOBI", "symbol": "FESX.c.0", "display_name": "Euro Stoxx 50",     "asset_class": AssetClass.EQUITY, "region": "EU", "change_unit": "%",   "price_to_yield": False},
-    "DE10Y": {"dataset": "XEUR.EOBI", "symbol": "FGBL.c.0", "display_name": "German 10Y (Bund)", "asset_class": AssetClass.RATES,  "region": "EU", "change_unit": "bps", "price_to_yield": True},
+    "FESX":   {"dataset": "XEUR.EOBI",  "symbol": "FESX.c.0", "display_name": "Euro Stoxx 50 (front-month)",     "asset_class": AssetClass.EQUITY,    "region": "EU",     "change_unit": "%",   "price_to_yield": False},
+    "DE10Y":  {"dataset": "XEUR.EOBI",  "symbol": "FGBL.c.0", "display_name": "German 10Y Bund (front-month)",   "asset_class": AssetClass.RATES,     "region": "EU",     "change_unit": "bps", "price_to_yield": True},
+    # AV COPPER returns monthly data only — use CME front-month futures via GLBX.MDP3 instead.
+    # V1 note: roll artifacts (price jump at contract expiry) not yet detected; easy V2 add.
+    "COPPER": {"dataset": "GLBX.MDP3",  "symbol": "HG.c.0",   "display_name": "Copper (HG front-month)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
 }
 
 _FRED_INSTRUMENT_META: dict[str, dict] = {
@@ -559,6 +571,19 @@ def _compute_1d_change(rows: list[dict], change_unit: str) -> tuple[float, float
     return last, last - prev
 
 
+def _compute_5d_change(rows: list[dict], change_unit: str) -> float | None:
+    """Return 5-trading-day change if at least 6 sorted rows are available, else None."""
+    if len(rows) < 6:
+        return None
+    prev5 = rows[-6]["close"]
+    last = rows[-1]["close"]
+    if change_unit == "%":
+        return (last - prev5) / prev5 * 100.0
+    if change_unit == "bps":
+        return (last - prev5) * 100.0
+    return last - prev5
+
+
 class AlphaVantageMarketProvider:
     """Live provider for AV instruments (equities, FX, commodities, yields, BTC)."""
 
@@ -584,9 +609,10 @@ class AlphaVantageMarketProvider:
                     **meta.get("extra", {}),
                 )
                 if len(rows) < 2:
-                    _log.warning("AlphaVantage: insufficient data for %s (%d rows) — skipped", iid, len(rows))
+                    _log.debug("AlphaVantage: insufficient data for %s (%d rows) — skipped (V2 item if monthly-only)", iid, len(rows))
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
+                change5 = _compute_5d_change(rows, meta["change_unit"])
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
                     instrument_id=iid,
@@ -596,6 +622,8 @@ class AlphaVantageMarketProvider:
                     last_price_or_level=round(last_close, 6),
                     one_day_change=round(change, 4),
                     one_day_change_unit=meta["change_unit"],
+                    five_day_change=round(change5, 4) if change5 is not None else None,
+                    five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="alpha_vantage",
                     source_url=_AV_BASE,
                     freshness_status=FreshnessStatus.FRESH,
@@ -612,7 +640,8 @@ class DatabentoMarketProvider:
         self._api_key = api_key
 
     def fetch_watchlist(self, instruments: list[str], as_of: datetime) -> list[MarketSnapshot]:
-        end = as_of.date()
+        # Cap at yesterday so we only request settled historical bars — no live license needed.
+        end = as_of.date() - timedelta(days=1)
         start = end - timedelta(days=_LIVE_LOOKBACK_DAYS)
         snapshots: list[MarketSnapshot] = []
         for iid in instruments:
@@ -633,6 +662,7 @@ class DatabentoMarketProvider:
                     _log.warning("Databento: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
+                change5 = _compute_5d_change(rows, meta["change_unit"])
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
                     instrument_id=iid,
@@ -642,6 +672,8 @@ class DatabentoMarketProvider:
                     last_price_or_level=round(last_close, 6),
                     one_day_change=round(change, 4),
                     one_day_change_unit=meta["change_unit"],
+                    five_day_change=round(change5, 4) if change5 is not None else None,
+                    five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="databento",
                     freshness_status=FreshnessStatus.FRESH,
                 ))
@@ -671,6 +703,7 @@ class FredMarketProvider:
                     _log.warning("FRED: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
+                change5 = _compute_5d_change(rows, meta["change_unit"])
                 level_mult = meta.get("level_multiplier", 1)
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
@@ -681,6 +714,8 @@ class FredMarketProvider:
                     last_price_or_level=round(last_close * level_mult, 6),
                     one_day_change=round(change, 4),
                     one_day_change_unit=meta["change_unit"],
+                    five_day_change=round(change5, 4) if change5 is not None else None,
+                    five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="fred",
                     source_url=_FRED_BASE,
                     freshness_status=FreshnessStatus.FRESH,
@@ -708,6 +743,7 @@ class YfinanceMarketProvider:
                     _log.warning("yfinance: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
+                change5 = _compute_5d_change(rows, meta["change_unit"])
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
                     instrument_id=iid,
@@ -717,6 +753,8 @@ class YfinanceMarketProvider:
                     last_price_or_level=round(last_close, 6),
                     one_day_change=round(change, 4),
                     one_day_change_unit=meta["change_unit"],
+                    five_day_change=round(change5, 4) if change5 is not None else None,
+                    five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="yfinance",
                     freshness_status=FreshnessStatus.LOW_RELIABILITY,
                     warning="yfinance data marked low_reliability",

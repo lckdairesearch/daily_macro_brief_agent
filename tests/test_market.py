@@ -17,6 +17,7 @@ from app.data.market import (
     YfinanceMarketProvider,
     _av_fetch_daily,
     _compute_1d_change,
+    _compute_5d_change,
     _fgbl_price_to_yield_pct,
     _fred_fetch_series,
     _yf_fetch_daily,
@@ -29,7 +30,7 @@ from app.data.market import (
 from app.models import AssetClass, FreshnessStatus, MarketSnapshot
 
 FIXTURE = Path(__file__).parent / "fixtures" / "market_sample.json"
-FIXTURE_COUNT = 18  # must equal the number of snapshots in market_sample.json
+FIXTURE_COUNT = 19  # must equal the number of snapshots in market_sample.json
 
 
 # ---------------------------------------------------------------------------
@@ -627,6 +628,40 @@ def test_compute_1d_change_bps():
     last, change = _compute_1d_change(rows, "bps")
     assert last == pytest.approx(4.55)
     assert change == pytest.approx(5.0)  # (4.55-4.50)*100 = 5 bps
+
+
+def test_compute_5d_change_pct():
+    rows = [
+        {"date": "2026-05-01", "close": 100.0},
+        {"date": "2026-05-02", "close": 101.0},
+        {"date": "2026-05-05", "close": 102.0},
+        {"date": "2026-05-06", "close": 103.0},
+        {"date": "2026-05-07", "close": 104.0},
+        {"date": "2026-05-08", "close": 110.0},
+    ]
+    change = _compute_5d_change(rows, "%")
+    assert change == pytest.approx((110.0 - 100.0) / 100.0 * 100.0)  # 10.0%
+
+
+def test_compute_5d_change_bps():
+    rows = [
+        {"date": "2026-05-01", "close": 4.50},
+        {"date": "2026-05-02", "close": 4.51},
+        {"date": "2026-05-05", "close": 4.52},
+        {"date": "2026-05-06", "close": 4.53},
+        {"date": "2026-05-07", "close": 4.54},
+        {"date": "2026-05-08", "close": 4.60},
+    ]
+    change = _compute_5d_change(rows, "bps")
+    assert change == pytest.approx((4.60 - 4.50) * 100.0)  # 10 bps
+
+
+def test_compute_5d_change_returns_none_when_insufficient():
+    rows = [
+        {"date": "2026-05-07", "close": 4.50},
+        {"date": "2026-05-08", "close": 4.55},
+    ]
+    assert _compute_5d_change(rows, "%") is None
 
 
 # --- AlphaVantageMarketProvider ---

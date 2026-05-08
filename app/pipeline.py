@@ -91,12 +91,18 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     evidence_cards = run_discovery(scouts, discovery_context, failed_sources)
 
     # --- Step 6: Deduplicate evidence ---
-    # TODO Step 9: from app.synthesis.deduper import dedup_evidence
-    deduped_evidence = evidence_cards
+    from app.synthesis.deduper import deduplicate
+    deduped_evidence = deduplicate(evidence_cards)
 
     # --- Step 7: Rank evidence and events ---
-    # TODO Step 9: from app.synthesis.ranker import rank
-    _ranked_evidence = deduped_evidence
+    from app.synthesis.ranker import rank
+    ranked_context = rank(
+        market_snapshots=_market_snapshots,
+        calendar_events=_calendar_events,
+        evidence_cards=deduped_evidence,
+        themes=settings.themes.get("themes", []),
+        portfolio=settings.portfolio,
+    )
 
     # --- Step 8: Write grounded brief ---
     # TODO Step 10: from app.synthesis.writer import write_brief

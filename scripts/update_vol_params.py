@@ -20,6 +20,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
+warnings.filterwarnings("ignore", message="There is no current event loop")
+
 # ── bootstrap: make `app` importable when run as a script ────────────────────
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
@@ -49,7 +51,7 @@ OUTPUT_PATH = REPO_ROOT / "app" / "config" / "vol_params.yaml"
 
 _PCT_INSTRUMENTS = [
     "SPY", "QQQ", "UUP", "USDJPY", "EURUSD", "USDCNH",
-    "GOLD", "WTI", "BRENT", "COPPER", "BTC", "FESX", "VIX",
+    "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC", "FESX", "VIX",
 ]
 _BPS_INSTRUMENTS = ["US2Y", "US10Y", "DE10Y", "HY_OAS"]
 # MOVE uses hardcoded fallback — omitted from live fetch
@@ -82,11 +84,12 @@ def _build_fetchers(creds: Credentials) -> dict[str, tuple[str, object]]:
         "USDJPY": ("%", av_daily("USDJPY", "FX_DAILY", from_symbol="USD", to_symbol="JPY")),
         "EURUSD": ("%", av_daily("EURUSD", "FX_DAILY", from_symbol="EUR", to_symbol="USD")),
         "USDCNH": ("%", av_daily("USDCNH", "FX_DAILY", from_symbol="USD", to_symbol="CNH")),
-        # Commodities
-        "GOLD":   ("%", av_daily("GLD",  "TIME_SERIES_DAILY")),  # GLD ETF proxy
-        "WTI":    ("%", av_daily("",     "WTI")),
-        "BRENT":  ("%", av_daily("",     "BRENT")),
-        "COPPER": ("%", av_daily("CPER", "TIME_SERIES_DAILY")),  # CPER ETF proxy; AV COPPER fn is monthly
+        # Commodities — sources match live providers exactly
+        "GOLD":   ("%", av_daily("GOLD",   "GOLD_SILVER_HISTORY")),  # AV spot price
+        "SILVER": ("%", av_daily("SILVER", "GOLD_SILVER_HISTORY")),  # AV spot price
+        "WTI":    ("%", av_daily("",       "WTI")),
+        "BRENT":  ("%", av_daily("",       "BRENT")),
+        "COPPER": ("%", db_daily("GLBX.MDP3", "HG.c.0")),  # CME front-month; AV COPPER is monthly-only
         # Crypto
         "BTC":    ("%", av_daily("BTC",  "DIGITAL_CURRENCY_DAILY")),
         # Rates (bps — diff, not pct)
