@@ -10,12 +10,19 @@ from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 from app.data.calendar import load_fixture_calendar
-from app.data.market import FixtureMarketProvider
+from app.data.market import (
+    FixtureMarketProvider,
+    fetch_live_market_with_cache,
+    load_vol_params,
+)
+from app.discovery.orchestrator import build_scouts, run_discovery
+from app.discovery.scouts.base import DiscoveryContext
 from app.models import (
     BriefDraft,
     CalendarEvent,
     DeliveryStatus,
     EvidenceCard,
+    FreshnessStatus,
     PipelineResult,
     RunMetadata,
     RunMode,
@@ -60,9 +67,13 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     if mode == RunMode.SAMPLE:
         _market_snapshots = FixtureMarketProvider().fetch_watchlist([], data_cutoff)
     else:
-        # TODO Step 5: AlphaVantageMarketProvider + DatabentoMarketProvider + cache fallback
-        _market_snapshots = []
-        warnings.append("Live market data not yet implemented — no snapshots loaded")
+        vol_params = load_vol_params(settings.config_dir)
+        _market_snapshots = fetch_live_market_with_cache(settings, vol_params)
+        # Propagate stale-cache warnings into run metadata (deduplicated)
+        for snap in _market_snapshots:
+            if snap.freshness_status == FreshnessStatus.STALE_CACHE and snap.warning:
+                if snap.warning not in warnings:
+                    warnings.append(snap.warning)
 
     # --- Step 3 & 4: Fetch calendar and enrich missing consensus ---
     if mode == RunMode.SAMPLE:
@@ -73,12 +84,17 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         warnings.append("Live calendar data not yet implemented — no events loaded")
 
     # --- Step 5: Discover source evidence ---
-    if mode == RunMode.SAMPLE:
-        evidence_cards = _load_fixture_evidence()
-    else:
-        # TODO Step 8: discovery orchestrator (news, central_bank, research, podcast, x scouts)
-        evidence_cards = []
-        warnings.append("Live discovery not yet implemented — no evidence cards loaded")
+    scouts = build_scouts(settings, mode)
+    discovery_context = DiscoveryContext(
+        market_snapshots=_market_snapshots,
+        calendar_events=_calendar_events,
+        themes=settings.themes.get("themes", []),
+        portfolio=settings.portfolio,
+        lookback_hours=24,
+        data_cutoff=data_cutoff,
+        mode=mode,
+    )
+    evidence_cards = run_discovery(scouts, discovery_context, failed_sources)
 
     # --- Step 6: Deduplicate evidence ---
     # TODO Step 9: from app.synthesis.deduper import dedup_evidence
