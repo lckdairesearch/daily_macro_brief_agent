@@ -38,42 +38,36 @@ scouts:
 
   podcast:
     enabled: true
-    listen_notes_lookback_hours: 24
-    curated_min_episodes: 6
-    max_curated_queries: 8
-    max_freeflow_queries: 4
+    lookback_hours: 24
+    curated_min_episodes: 1
+    max_curated_queries: 6
+    max_freeflow_queries: 2
+    max_relevant_episodes: 5
+    # use_transcripts: fetch non-exclusive plain-text transcript when available;
+    # falls back to OpenAI web-search recall if no usable transcript.
+    use_transcripts: true
     curated_podcasts:
       - name: "Macro Voices"
-        aliases: ["MacroVoices"]
         priority: 1.0
       - name: "Forward Guidance"
-        aliases: ["Forward Guidance"]
         priority: 1.0
       - name: "Top Traders Unplugged"
-        aliases: ["Global Macro", "Top Traders Unplugged"]
         priority: 0.9
       - name: "The Macro Trading Floor"
-        aliases: ["Macro Trading Floor"]
         priority: 0.9
-      - name: "The Market Huddle"
-        aliases: ["Market Huddle"]
-        priority: 0.8
       - name: "Macro Hive Conversations With Bilal Hafeez"
-        aliases: ["Macro Hive Conversations", "Macro Hive"]
         priority: 0.8
       - name: "Odd Lots"
-        aliases: ["Bloomberg Odd Lots", "Odd Lots"]
         priority: 0.7
     freeflow_search_terms:
+      - "global macro"
       - "Federal Reserve"
       - "central bank"
       - "inflation"
       - "interest rates"
       - "bond market"
-      - "global macro"
       - "emerging markets"
       - "commodities"
-    # content recall via GPT web search (no audio transcription)
 
 delivery:
   provider: sendgrid

@@ -225,7 +225,8 @@ def test_build_scouts_live_mode_builds_enabled_scouts():
     }
     settings.creds.openai_api_key = "sk-test"
     settings.creds.xai_api_key = "xai-test"
-    settings.creds.listen_notes_api_key = "ln-test"
+    settings.creds.taddy_user_id = "uid-test"
+    settings.creds.taddy_api_key = "key-test"
     scouts = build_scouts(settings, RunMode.LIVE)
     names = [s.name for s in scouts]
     assert "news" in names
@@ -234,20 +235,6 @@ def test_build_scouts_live_mode_builds_enabled_scouts():
     assert "podcast" in names
     assert "x" in names
 
-
-def test_build_scouts_live_skips_podcast_without_key():
-    settings = MagicMock()
-    settings.sources = {
-        "scouts": {"podcast": {"enabled": True}, "news": {"enabled": False},
-                   "central_bank": {"enabled": False}, "research": {"enabled": False},
-                   "x": {"enabled": False}},
-        "llm": {"scout_model": "openai/gpt-5.4", "temperature": 0.2},
-    }
-    settings.creds.openai_api_key = "sk-test"
-    settings.creds.xai_api_key = None
-    settings.creds.listen_notes_api_key = None  # missing → podcast skipped
-    scouts = build_scouts(settings, RunMode.LIVE)
-    assert all(s.name != "podcast" for s in scouts)
 
 
 # ---------------------------------------------------------------------------
@@ -367,139 +354,169 @@ def test_x_scout_handles_markdown_json(mock_client_cls):
 # ---------------------------------------------------------------------------
 
 
-def _mock_listen_notes_response(n: int = 2) -> MagicMock:
-    pub_date_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    episodes = [
-        {
-            "id": f"ep{i}",
-            "title_original": f"Macro Insights Episode {i}",
-            "description_original": "Discussion on Fed policy and global macro",
-            "listennotes_url": f"https://listennotes.com/ep/{i}",
-            "pub_date_ms": pub_date_ms,
-            "podcast": {"title_original": f"Macro Pod {i}"},
-        }
-        for i in range(n)
-    ]
+# ---------------------------------------------------------------------------
+# 8.3 — PodcastScout (mocked requests.post for Taddy GraphQL)
+# ---------------------------------------------------------------------------
+
+from app.discovery.scouts.podcast import _strip_html, _is_fresh_episode, _fetch_plain_transcript
+
+
+def _make_taddy_episode(
+    uid: str = "uuid-1",
+    name: str = "Macro Insights",
+    pub_offset_seconds: int = 0,
+    transcript_urls: list[dict] | None = None,
+) -> dict:
+    pub_ts = int(datetime.now(timezone.utc).timestamp()) - pub_offset_seconds
+    return {
+        "uuid": uid,
+        "name": name,
+        "description": "<p>Discussion on <b>Fed policy</b> and global macro.</p>",
+        "audioUrl": f"https://audio.example.com/{uid}.mp3",
+        "datePublished": pub_ts,
+        "taddyTranscribeStatus": "COMPLETED" if transcript_urls else "NOT_STARTED",
+        "transcriptUrlsWithDetails": transcript_urls or [],
+        "podcastSeries": {"uuid": "series-1", "name": "Macro Pod", "websiteUrl": "https://macropod.com"},
+    }
+
+
+def _taddy_search_response(episodes: list[dict]) -> MagicMock:
+    """Mock requests.post returning a Taddy search GraphQL response."""
     resp = MagicMock()
-    resp.json.return_value = {"results": episodes}
     resp.raise_for_status = MagicMock()
+    resp.json.return_value = {
+        "data": {
+            "search": {
+                "searchId": "test-search-id",
+                "podcastEpisodes": episodes,
+            }
+        }
+    }
     return resp
+
+
+def _taddy_series_response(episodes: list[dict], series_name: str = "Macro Pod") -> MagicMock:
+    """Mock requests.post returning a Taddy getPodcastSeries GraphQL response."""
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json.return_value = {
+        "data": {
+            "getPodcastSeries": {
+                "uuid": "series-1",
+                "name": series_name,
+                "websiteUrl": "https://macropod.com",
+                "episodes": episodes,
+            }
+        }
+    }
+    return resp
+
+
+def _make_scout(**kwargs) -> PodcastScout:
+    defaults = dict(
+        scout_model="openai/gpt-5.4",
+        api_key="sk-test",
+        taddy_user_id="uid-test",
+        taddy_api_key="key-test",
+        lookback_hours=24,
+        use_transcripts=False,  # web-search path by default; transcript tests opt in
+    )
+    defaults.update(kwargs)
+    return PodcastScout(**defaults)
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
 @patch("app.discovery.scouts.podcast.litellm.completion")
-@patch("app.discovery.scouts.podcast.requests.get")
-def test_podcast_scout_full_flow(mock_get, mock_completion, mock_openai_cls):
-    # Listen Notes returns 2 episodes (called 4 times for 4 search terms)
-    mock_get.return_value = _mock_listen_notes_response(2)
-    # litellm: episode filter → both relevant
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_full_flow(mock_post, mock_completion, mock_openai_cls):
+    eps = [_make_taddy_episode(f"ep{i}", f"Macro Episode {i}") for i in range(2)]
+    mock_post.return_value = _taddy_search_response(eps)
     mock_completion.return_value = _mock_litellm_response('{"relevant_indices": [0, 1]}')
-    # OpenAI Responses API: content extraction for each episode
     mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(1))
 
-    scout = PodcastScout(
-        scout_model="openai/gpt-5.4",
-        api_key="sk-test",
-        listen_notes_api_key="ln-test",
-        lookback_hours=24,
-    )
+    scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
     cards = scout.run(_make_context(RunMode.LIVE))
+
     assert len(cards) == 2
     assert all(c.source_type == SourceType.PODCAST for c in cards)
 
 
-@patch("app.discovery.scouts.podcast.requests.get")
-def test_podcast_scout_fetches_curated_first_then_freeflow_fallback(mock_get):
-    def response_for(query: str) -> MagicMock:
-        pub_date_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-        podcast_title = "Macro Voices" if query == "Macro Voices" else "Freeflow Macro"
-        resp = MagicMock()
-        resp.raise_for_status = MagicMock()
-        resp.json.return_value = {
-            "results": [
-                {
-                    "id": f"{query}-ep",
-                    "title_original": f"{query} latest",
-                    "description_original": "Macro discussion",
-                    "listennotes_url": f"https://listennotes.com/{query}",
-                    "pub_date_ms": pub_date_ms,
-                    "podcast": {"title_original": podcast_title},
-                }
-            ]
-        }
-        return resp
+@patch("app.discovery.scouts.podcast.OpenAI")
+@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_respects_relevant_episode_limit(mock_post, mock_completion, mock_openai_cls):
+    eps = [_make_taddy_episode(f"ep{i}") for i in range(5)]
+    mock_post.return_value = _taddy_search_response(eps)
+    mock_completion.return_value = _mock_litellm_response('{"relevant_indices": [0,1,2,3,4]}')
+    mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(1))
 
-    mock_get.side_effect = lambda *_, **kwargs: response_for(kwargs["params"]["q"])
-    scout = PodcastScout(
-        scout_model="openai/gpt-5.4",
-        api_key="sk-test",
-        listen_notes_api_key="ln-test",
-        curated_podcasts=[{"name": "Macro Voices", "aliases": ["MacroVoices"], "priority": 1.0}],
+    scout = _make_scout(
+        freeflow_search_terms=["global macro"],
+        max_freeflow_queries=1,
+        max_relevant_episodes=3,
+    )
+    cards = scout.run(_make_context(RunMode.LIVE))
+
+    assert len(cards) == 3
+
+
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_curated_then_freeflow_fallback(mock_post):
+    """Curated fetch uses getPodcastSeries; freeflow uses search when below threshold."""
+    fresh_ep = _make_taddy_episode("ep-curated", "Curated Episode")
+    freeflow_ep = _make_taddy_episode("ep-free", "Freeflow Episode")
+
+    call_count = {"n": 0}
+
+    def side_effect(*args, **kwargs):
+        call_count["n"] += 1
+        body = kwargs.get("json", {}).get("query", "")
+        if "getPodcastSeries" in body:
+            return _taddy_series_response([fresh_ep], "Macro Voices")
+        return _taddy_search_response([freeflow_ep])
+
+    mock_post.side_effect = side_effect
+
+    scout = _make_scout(
+        curated_podcasts=[{"name": "Macro Voices", "priority": 1.0}],
         freeflow_search_terms=["Federal Reserve"],
-        curated_min_episodes=2,
+        curated_min_episodes=2,  # 1 curated < 2 threshold → freeflow also runs
         max_curated_queries=1,
         max_freeflow_queries=1,
     )
-
     episodes = scout._fetch_episodes()
 
-    queries = [call.kwargs["params"]["q"] for call in mock_get.call_args_list]
-    assert queries == ["Macro Voices", "Federal Reserve"]
-    assert [ep["id"] for ep in episodes] == ["Macro Voices-ep", "Federal Reserve-ep"]
+    assert any(ep["uuid"] == "ep-curated" for ep in episodes)
+    assert any(ep["uuid"] == "ep-free" for ep in episodes)
+    assert call_count["n"] == 2  # 1 curated + 1 freeflow
 
 
-@patch("app.discovery.scouts.podcast.requests.get")
-def test_podcast_scout_filters_stale_listen_notes_results(mock_get):
-    fresh_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    stale_ms = 946684800000
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    resp.json.return_value = {
-        "results": [
-            {
-                "id": "stale",
-                "title_original": "Old macro episode",
-                "pub_date_ms": stale_ms,
-                "podcast": {"title_original": "Macro Voices"},
-            },
-            {
-                "id": "fresh",
-                "title_original": "Fresh macro episode",
-                "pub_date_ms": fresh_ms,
-                "podcast": {"title_original": "Macro Voices"},
-            },
-        ]
-    }
-    mock_get.return_value = resp
-    scout = PodcastScout(
-        scout_model="openai/gpt-5.4",
-        api_key="sk-test",
-        listen_notes_api_key="ln-test",
-        curated_podcasts=[{"name": "Macro Voices"}],
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_filters_stale_episodes(mock_post):
+    fresh_ep = _make_taddy_episode("fresh", pub_offset_seconds=3600)    # 1 hour ago
+    stale_ep = _make_taddy_episode("stale", pub_offset_seconds=999999)  # way old
+
+    mock_post.return_value = _taddy_series_response([fresh_ep, stale_ep])
+
+    scout = _make_scout(
+        curated_podcasts=[{"name": "Macro Voices", "priority": 1.0}],
         freeflow_search_terms=[],
         curated_min_episodes=0,
         max_curated_queries=1,
     )
-
     episodes = scout._fetch_episodes()
 
-    assert [ep["id"] for ep in episodes] == ["fresh"]
+    assert [ep["uuid"] for ep in episodes] == ["fresh"]
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
 @patch("app.discovery.scouts.podcast.litellm.completion")
-@patch("app.discovery.scouts.podcast.requests.get")
-def test_podcast_scout_handles_empty_listen_notes(mock_get, mock_completion, mock_openai_cls):
-    resp = MagicMock()
-    resp.json.return_value = {"results": []}
-    resp.raise_for_status = MagicMock()
-    mock_get.return_value = resp
-    scout = PodcastScout(
-        scout_model="openai/gpt-5.4",
-        api_key="sk-test",
-        listen_notes_api_key="ln-test",
-    )
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_handles_empty_search(mock_post, mock_completion, mock_openai_cls):
+    mock_post.return_value = _taddy_search_response([])
+    scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
     cards = scout.run(_make_context(RunMode.LIVE))
+
     assert cards == []
     mock_completion.assert_not_called()
     mock_openai_cls.assert_not_called()
@@ -507,36 +524,152 @@ def test_podcast_scout_handles_empty_listen_notes(mock_get, mock_completion, moc
 
 @patch("app.discovery.scouts.podcast.OpenAI")
 @patch("app.discovery.scouts.podcast.litellm.completion")
-@patch("app.discovery.scouts.podcast.requests.get")
-def test_podcast_scout_handles_no_relevant_episodes(mock_get, mock_completion, mock_openai_cls):
-    mock_get.return_value = _mock_listen_notes_response(2)
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_handles_no_relevant_episodes(mock_post, mock_completion, mock_openai_cls):
+    eps = [_make_taddy_episode("ep0")]
+    mock_post.return_value = _taddy_search_response(eps)
     mock_completion.return_value = _mock_litellm_response('{"relevant_indices": []}')
-    scout = PodcastScout(
-        scout_model="openai/gpt-5.4",
-        api_key="sk-test",
-        listen_notes_api_key="ln-test",
-    )
+
+    scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
     cards = scout.run(_make_context(RunMode.LIVE))
+
     assert cards == []
     mock_openai_cls.assert_not_called()
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
 @patch("app.discovery.scouts.podcast.litellm.completion")
-@patch("app.discovery.scouts.podcast.requests.get")
-def test_podcast_scout_skips_failed_episode_extraction(mock_get, mock_completion, mock_openai_cls):
-    mock_get.return_value = _mock_listen_notes_response(1)
+@patch("app.discovery.scouts.podcast.requests.post")
+def test_podcast_scout_skips_failed_episode_extraction(mock_post, mock_completion, mock_openai_cls):
+    eps = [_make_taddy_episode("ep0")]
+    mock_post.return_value = _taddy_search_response(eps)
     mock_completion.return_value = _mock_litellm_response('{"relevant_indices": [0]}')
-    # Content extraction raises
     mock_openai_cls.return_value.responses.create.side_effect = RuntimeError("LLM timeout")
-    scout = PodcastScout(
-        scout_model="openai/gpt-5.4",
-        api_key="sk-test",
-        listen_notes_api_key="ln-test",
+
+    scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
+    cards = scout.run(_make_context(RunMode.LIVE))
+
+    assert cards == []  # failed extraction skipped; run does not crash
+
+
+@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.requests.post")
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_uses_transcript_when_available(mock_get, mock_post, mock_completion):
+    """When a non-exclusive plain-text transcript URL exists, litellm extraction is used."""
+    transcript_url = {"url": "https://transcripts.example.com/ep0.txt", "type": "text/plain",
+                      "isTaddyExclusive": False, "language": "en"}
+    ep = _make_taddy_episode("ep0", transcript_urls=[transcript_url])
+    mock_post.return_value = _taddy_search_response([ep])
+
+    # First litellm call = episode filter; second = transcript extraction
+    mock_completion.side_effect = [
+        _mock_litellm_response('{"relevant_indices": [0]}'),
+        _mock_litellm_response(_candidate_json(1)),
+    ]
+    transcript_resp = MagicMock()
+    transcript_resp.raise_for_status = MagicMock()
+    transcript_resp.text = "Fed raised rates. Gold is relevant to our book."
+    mock_get.return_value = transcript_resp
+
+    scout = _make_scout(
+        freeflow_search_terms=["global macro"],
+        max_freeflow_queries=1,
+        use_transcripts=True,
     )
     cards = scout.run(_make_context(RunMode.LIVE))
-    # Failed extraction is skipped; run does not crash
-    assert cards == []
+
+    assert len(cards) == 1
+    assert mock_completion.call_count == 2  # filter + extraction (no OpenAI web search)
+
+
+@patch("app.discovery.scouts.podcast.OpenAI")
+@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.requests.post")
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_falls_back_to_web_search_when_no_transcript(
+    mock_get, mock_post, mock_completion, mock_openai_cls
+):
+    """Episode with no transcript URLs falls back to OpenAI web search recall."""
+    ep = _make_taddy_episode("ep0", transcript_urls=[])
+    mock_post.return_value = _taddy_search_response([ep])
+    mock_completion.return_value = _mock_litellm_response('{"relevant_indices": [0]}')
+    mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(1))
+
+    scout = _make_scout(
+        freeflow_search_terms=["global macro"],
+        max_freeflow_queries=1,
+        use_transcripts=True,
+    )
+    cards = scout.run(_make_context(RunMode.LIVE))
+
+    assert len(cards) == 1
+    mock_openai_cls.assert_called_once()  # web search path was used
+    mock_get.assert_not_called()          # no transcript fetch attempted
+
+
+@patch("app.discovery.scouts.podcast.requests.post")
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_skips_exclusive_transcripts(mock_get, mock_post):
+    """isTaddyExclusive=True transcripts are not fetched."""
+    exclusive_url = {"url": "https://taddy.org/exclusive/ep0.txt", "type": "text/plain",
+                     "isTaddyExclusive": True, "language": "en"}
+    ep = _make_taddy_episode("ep0", transcript_urls=[exclusive_url])
+
+    result = _fetch_plain_transcript(ep)
+
+    assert result is None
+    mock_get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# PodcastScout helpers — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_strip_html_removes_tags():
+    assert _strip_html("<p>Hello <b>world</b></p>") == "Hello  world"
+
+
+def test_strip_html_passthrough_plain():
+    assert _strip_html("plain text") == "plain text"
+
+
+def test_is_fresh_episode_accepts_recent():
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    ep = {"datePublished": now_ts - 3600}  # 1 hour ago
+    assert _is_fresh_episode(ep, now_ts - 86400) is True
+
+
+def test_is_fresh_episode_rejects_stale():
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    ep = {"datePublished": now_ts - 999999}
+    assert _is_fresh_episode(ep, now_ts - 86400) is False
+
+
+def test_is_fresh_episode_handles_missing_date():
+    assert _is_fresh_episode({}, 0) is False
+
+
+# ---------------------------------------------------------------------------
+# build_scouts — Taddy credential checks
+# ---------------------------------------------------------------------------
+
+
+def test_build_scouts_live_skips_podcast_without_taddy_key():
+    settings = MagicMock()
+    settings.sources = {
+        "scouts": {"podcast": {"enabled": True}, "news": {"enabled": False},
+                   "central_bank": {"enabled": False}, "research": {"enabled": False},
+                   "x": {"enabled": False}},
+        "llm": {"scout_model": "openai/gpt-5.4", "temperature": 0.2},
+    }
+    settings.creds.openai_api_key = "sk-test"
+    settings.creds.xai_api_key = None
+    settings.creds.taddy_api_key = None  # missing → podcast skipped
+    settings.creds.taddy_user_id = None
+    scouts = build_scouts(settings, RunMode.LIVE)
+    assert all(s.name != "podcast" for s in scouts)
 
 
 # ---------------------------------------------------------------------------

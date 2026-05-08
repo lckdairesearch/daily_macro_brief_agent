@@ -62,7 +62,9 @@ class Credentials(BaseSettings):
     fred_api_key: str | None = None
 
     # Discovery — required for live/dry-run
-    listen_notes_api_key: str | None = None
+    listen_notes_api_key: str | None = None  # kept for env compat; no longer used by podcast scout
+    taddy_user_id: str | None = None
+    taddy_api_key: str | None = None
 
     # Delivery — required for live email send
     sendgrid_api_key: str | None = None
@@ -128,14 +130,20 @@ class Settings:
         """Return names of missing required secrets for the given mode.
 
         Empty list means the settings are valid for the mode.
-        Sample mode requires no live credentials.
+        OPENAI_API_KEY is required in all modes because the brief writer calls
+        the LLM even in sample mode (fixture data is the input, not the LLM output).
         """
-        if mode == RunMode.SAMPLE:
-            return []
-
         missing: list[str] = []
+
+        # LLM synthesis required in all modes
         if not self.creds.openai_api_key:
             missing.append("OPENAI_API_KEY")
+
+        if mode == RunMode.SAMPLE:
+            return missing
+
+        if not self.creds.alpha_vantage_api_key:
+            missing.append("ALPHA_VANTAGE_API_KEY")
         if not self.creds.alpha_vantage_api_key:
             missing.append("ALPHA_VANTAGE_API_KEY")
 
