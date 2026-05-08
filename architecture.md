@@ -87,6 +87,18 @@ app/pipeline.py
         +--> save artifacts + run metadata
 ```
 
+### 3.1 Current implementation status
+
+As of the latest Step 5-9 implementation:
+
+- `app/data/market.py` implements fixture and live market providers, move detection, generated `vol_params.yaml`, and cache fallback.
+- `app/data/calendar.py` implements fixture loading, Investing.com normalization/caching, and consensus-candidate guardrails.
+- `app/llm/` implements the LiteLLM-backed synthesis wrapper and prompt registry.
+- `app/discovery/` implements fixture, news, central bank, research, podcast, and X scouts with optional-failure handling.
+- `app/synthesis/deduper.py` and `app/synthesis/ranker.py` implement evidence deduplication and ranking.
+- `scripts/live_eval_run.py` is a diagnostic runner that exercises live collection, discovery, ranking, LLM markdown generation, and saved evaluation artifacts.
+- `app/pipeline.py` is not yet end-to-end for V1 output: Step 10+ work remains for structured brief writing, deterministic validation, HTML/text/chart rendering, delivery, and production run artifact persistence.
+
 ## 4. Runtime modes
 
 ### 4.1 Sample mode
@@ -98,8 +110,8 @@ Behavior:
 - Uses fixture market data.
 - Uses fixture calendar data.
 - Uses fixture source/evidence items.
-- Can either call the configured LLM or use a deterministic sample writer, depending on config.
-- Always produces `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
+- After Step 10+ is implemented, can either call the configured LLM or use a deterministic sample writer, depending on config.
+- After rendering is wired, must produce `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
 
 Suggested command:
 
@@ -118,8 +130,8 @@ Behavior:
 - Pulls calendar data from the Investing.com backend calendar endpoint.
 - Uses cached calendar/market data if live calls fail according to reliability rules.
 - Runs discovery scouts.
-- Calls the configured model through the LiteLLM-backed `app/llm/provider.py` wrapper for synthesis.
-- Sends email via SendGrid when delivery is enabled.
+- After Step 10+ is implemented, calls the configured model through the LiteLLM-backed `app/llm/provider.py` wrapper for synthesis.
+- After delivery is wired, sends email via SendGrid when delivery is enabled.
 
 Suggested command:
 
@@ -134,7 +146,7 @@ Purpose: validate the full pipeline without sending email.
 Behavior:
 
 - Runs live or cached data collection.
-- Generates outputs.
+- After Step 10+ is implemented, generates outputs.
 - Skips delivery.
 - Useful for local testing and GitHub Actions debugging.
 
@@ -406,13 +418,20 @@ Role:
 Initial assumptions:
 
 ```yaml
-book_assumptions:
-  - name: Long USD/JPY
-    sensitivity: Japan policy divergence, US yields, dollar liquidity
-  - name: Overweight gold
-    sensitivity: real yields, USD, geopolitical risk, central bank demand
-  - name: EM debt basket
-    sensitivity: dollar liquidity, US rates, China demand, credit stress
+core_positions:
+  - id: metals_complex_long
+    label: Long Metals Complex (Gold/Silver/Copper)
+    sensitivity_tags: [real_rates, usd_policy, monetary_policy]
+  - id: agriculture_long
+    label: Long Agriculture Futures (Grains Complex)
+    sensitivity_tags: [weather, geopolitics, fertilizer_costs, population_growth]
+  - id: duration_short
+    label: Short Long-term US Duration
+    sensitivity_tags: [fiscal_policy, fed_policy, inflation_regime, debt_sustainability]
+tactical_overlays:
+  - id: usd_diversification
+    label: Currency Diversification
+    sensitivity_tags: [usd_policy, de_dollarization, reserve_currencies, dollar_liquidity]
 ```
 
 These are demo assumptions, not real client positions.
@@ -427,18 +446,20 @@ Initial themes:
 
 ```yaml
 themes:
-  - id: us_policy_path
-    name: US policy path and front-end rates
-  - id: dollar_liquidity
-    name: Dollar liquidity and USD/JPY policy divergence
-  - id: gold_hedge
-    name: Gold as real-rate/geopolitical hedge
-  - id: china_asia
-    name: China/Asia demand and spillovers to EM credit
+  - id: monetary_debasement
+    label: Monetary debasement and fiscal dominance
+  - id: metals_complex
+    label: Metals complex as monetary hedge
+  - id: food_security
+    label: Food security and agricultural supply disruption
+  - id: currency_diversification
+    label: De-dollarization and currency diversification
+  - id: resource_scarcity
+    label: Resource scarcity and population pressure
+  - id: geopolitical_fragmentation
+    label: Geopolitical fragmentation and trade disruption
   - id: credit_stress
-    name: Credit stress and risk appetite
-  - id: oil_inflation
-    name: Oil/commodity inflation risk
+    label: Credit stress and risk appetite
 ```
 
 ### 7.5 `app/config/sources.yaml`
@@ -450,38 +471,37 @@ Role:
 Likely contents:
 
 ```yaml
-market_data:
+market:
   primary: alpha_vantage
-  supplemental:
-    - databento       # FESX (Euro Stoxx 50), FGBL (German Bund)
-    - fred            # BAMLH0A0HYM2 (HY OAS)
-    - yfinance        # ^VIX (spot VIX), ^MOVE (MOVE index) — both low_reliability
-  cache_fallback: true
+  supplemental: databento
+  move_index: yfinance      # ^VIX, ^MOVE — both low_reliability
+  hy_oas: fred              # BAMLH0A0HYM2
 
 calendar:
-  provider: investing_backend
+  provider: investing_com
   cache_daily: true
-  consensus_enrichment: true
+  filter_countries: ["US", "EU", "DE", "JP", "CN", "GB"]
+  filter_importance: ["high", "medium"]
 
 llm:
   provider: litellm
   scout_model: openai/gpt-5.4      # news, central_bank, research, podcast scouts (OpenAI Responses API)
-  x_scout_model: grok-4            # X scout — bare model name for xai-sdk (grok-4+ required)
+  x_scout_model: xai/grok-4-1-fast-reasoning
   synthesis_model: openai/gpt-5.4  # brief writer, critic, ranker
   temperature: 0.2
-  max_tokens: 2000
 
-podcast:
-  provider: listen_notes
-  lookback_hours: 24
-
-social:
-  x_provider: grok_prompted
-  direct_x_api: false              # V2: direct X API ingestion
+scouts:
+  news: {enabled: true}
+  central_bank: {enabled: true}
+  research: {enabled: true}
+  x: {enabled: true}
+  podcast:
+    enabled: true
+    listen_notes_lookback_hours: 24
 
 delivery:
   provider: sendgrid
-  enabled: false
+  default_enabled: false
 ```
 
 ### 7.6 `app/config/chart_templates.yaml`
@@ -649,16 +669,17 @@ Confirmed V1 provider assignments. The `instrument_id` column is the canonical s
 | `USDJPY` | USD/JPY | Alpha Vantage | USDJPY | Forex API |
 | `EURUSD` | EUR/USD | Alpha Vantage | EURUSD | Forex API |
 | `USDCNH` | USD/CNH | Alpha Vantage | USDCNH | Forex API |
-| `GOLD` | Gold | Alpha Vantage | GOLD | Commodities API |
+| `GOLD` | Gold | Alpha Vantage | GOLD | `GOLD_SILVER_HISTORY` spot history |
+| `SILVER` | Silver | Alpha Vantage | SILVER | `GOLD_SILVER_HISTORY` spot history |
 | `WTI` | WTI Crude | Alpha Vantage | WTI | Commodities API |
 | `BRENT` | Brent Crude | Alpha Vantage | BRENT | Commodities API |
-| `COPPER` | Copper | Alpha Vantage | COPPER | Commodities API |
+| `COPPER` | Copper | Databento (GLBX.MDP3) | HG.c.0 | CME front-month; AV copper was not suitable for daily move detection |
 | `BTC` | Bitcoin | Alpha Vantage | BTC | Crypto API |
 | `VIX` | VIX | yfinance | ^VIX | Spot index; `low_reliability`; VX continuous contract unresolved on GLBX.MDP3 |
 | `HY_OAS` | HY OAS | FRED | BAMLH0A0HYM2 | Free; change unit = bps |
 | `MOVE` | MOVE Index | yfinance | ^MOVE | No official API; always `low_reliability` |
 
-Databento FGBL/FESX wrappers must handle front-month roll logic.
+Databento FGBL/FESX/HG wrappers use continuous front-month symbols and must guard against accidental broad downloads. FGBL is converted to an approximate 10Y Bund yield in percent before bps changes are computed.
 
 Fixture data is used for sample/demo tests only.
 
@@ -676,7 +697,7 @@ Provider-specific classes:
 
 ```text
 AlphaVantageMarketProvider    primary — equities, FX, commodities, yields, crypto
-DatabentoMarketProvider       FESX, FGBL — includes front-month roll logic
+DatabentoMarketProvider       FESX, FGBL, HG copper — continuous front-month symbols
 FredMarketProvider            HY OAS (BAMLH0A0HYM2)
 YfinanceMarketProvider        ^VIX (spot VIX), ^MOVE — both low_reliability flag
 FixtureMarketProvider         sample/demo mode only
@@ -827,13 +848,14 @@ research.py
   Prompt: app/llm/prompts/scouts/research_search.md
 
 podcast.py
-  See §11.3 for full flow. Uses Listen Notes API + Whisper/Gemini.
+  See §11.3 for full flow. Uses Listen Notes API, LiteLLM filtering,
+  and OpenAI Responses API web recall. V1 does not transcribe audio.
   Prompt: app/llm/prompts/scouts/podcast_extract.md
 
 x.py
-  Uses Grok/xAI specifically for privileged X content access.
-  Model is configurable via x_scout_model in sources.yaml — swapping is a
-  one-line config change through LiteLLM. Direct X API ingestion deferred to V2.
+  Uses xai-sdk with a Grok x_search-capable model for live X post retrieval.
+  This scout bypasses LiteLLM because LiteLLM cannot route xAI server-side
+  Agent Tools. Direct X API ingestion deferred to V2.
   Prompt: app/llm/prompts/scouts/x_narrative_search.md
 
 base.py
@@ -1038,7 +1060,7 @@ Before final submission, verify the chosen version and avoid known compromised v
 
 LiteLLM gives one OpenAI-style interface across many model providers, including OpenAI, Azure OpenAI, Anthropic, Gemini/Vertex, Bedrock, and local/OpenAI-compatible endpoints.
 
-This matters for the case study because model choice should be replaceable through config rather than code edits. The X scout model (`x_scout_model`) in particular is designed to be swapped trivially — changing `xai/grok-3` to any other LiteLLM model string is the only change needed.
+This matters for the case study because synthesis model choice should be replaceable through config rather than code edits. The exception is the X scout: `x_scout_model` is still configured in `sources.yaml`, but the implementation uses `xai-sdk` directly because LiteLLM cannot route xAI server-side Agent Tools such as `x_search`.
 
 Confirmed V1 model defaults:
 
@@ -1219,7 +1241,7 @@ The V1 prompt set should include:
 - `scouts/news_search.md` for market-move catalyst discovery.
 - `scouts/central_bank_extract.md` for policy-source extraction.
 - `scouts/research_search.md` for non-mainstream research/theme discovery.
-- `scouts/podcast_extract.md` for transcript/podcast-style evidence extraction.
+- `scouts/podcast_extract.md` for podcast/show-note evidence extraction.
 - `scouts/x_narrative_search.md` for X narrative discovery through Grok/xAI or another configured model.
 - `scouts/consensus_enrichment.md` for narrow calendar consensus enrichment.
 

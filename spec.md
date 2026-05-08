@@ -84,7 +84,7 @@ Initial asset coverage:
 - Equities: S&P 500, Nasdaq 100, Euro Stoxx 50 or equivalent ETF/index proxies.
 - Rates: US 2Y, US 10Y, German 10Y where available.
 - FX: DXY, USD/JPY, EUR/USD, CNH proxy if available.
-- Commodities: gold, WTI or Brent oil, copper.
+- Commodities: gold, silver, WTI or Brent oil, copper.
 - Credit/risk: VIX, HY OAS or ETF proxy, MOVE if available.
 - Crypto: BTC.
 
@@ -190,19 +190,21 @@ Some portfolio and theme context is unavailable. For V1, encode assumptions in `
 
 Initial assumed book:
 
-- Long USD/JPY.
-- Overweight gold.
-- Running an EM debt basket.
-- Macro risk book sensitive to US rates, dollar liquidity, China/Asia growth, commodity shocks, and credit stress.
+- Long metals complex, including gold, silver, and copper.
+- Long agriculture futures / grains complex.
+- Short long-term US duration.
+- Currency diversification overlay to reduce USD concentration risk.
+- Macro risk book sensitive to real rates, fiscal dominance, USD policy regime, resource scarcity, food security, geopolitical fragmentation, and credit stress.
 
 Initial themes:
 
-- US policy path and front-end rates.
-- Dollar liquidity and USD/JPY policy divergence.
-- Gold as real-rate/geopolitical hedge.
-- China/Asia demand and spillovers to EM credit.
+- Monetary debasement and fiscal dominance.
+- Metals complex as monetary hedge.
+- Food security and agricultural supply disruption.
+- De-dollarization and currency diversification.
+- Resource scarcity and population pressure.
+- Geopolitical fragmentation and trade disruption.
 - Credit stress and risk appetite.
-- Oil/commodity inflation risk.
 
 These assumptions must be configurable and easy to replace.
 
@@ -227,12 +229,12 @@ Confirmed V1 provider stack:
 
 | Provider | Instruments covered | Key |
 |---|---|---|
-| **Alpha Vantage** | SPY (S&P 500 proxy), QQQ (Nasdaq proxy), USD/JPY, EUR/USD, USD/CNH, Gold, WTI, Brent, Copper, BTC, US 2Y yield, US 10Y yield, UUP (DXY proxy) | `ALPHA_VANTAGE_API_KEY` |
-| **Databento** | FESX/Eurex (Euro Stoxx 50), FGBL/Eurex (German 10Y Bund) | `DATABENTO_API_KEY` |
+| **Alpha Vantage** | SPY (S&P 500 proxy), QQQ (Nasdaq proxy), UUP (DXY proxy), USD/JPY, EUR/USD, USD/CNH, Gold spot, Silver spot, WTI, Brent, BTC, US 2Y yield, US 10Y yield | `ALPHA_VANTAGE_API_KEY` |
+| **Databento** | FESX/Eurex (Euro Stoxx 50), FGBL/Eurex (German 10Y Bund proxy/yield derivation), HG/CME copper front-month | `DATABENTO_API_KEY` |
 | **FRED** | BAMLH0A0HYM2 (ICE BofA HY OAS) | `FRED_API_KEY` (free) |
 | **yfinance** | `^VIX` (CBOE VIX spot), `^MOVE` (MOVE index) — no API key, both marked `low_reliability` | None |
 
-Databento is needed for exactly two instruments that Alpha Vantage cannot cover cleanly: Euro Stoxx 50 close (FESX futures give the actual EU session close) and German Bund yield (FGBL via Eurex). VIX is sourced from yfinance (`^VIX` spot index), which was confirmed to deliver data reliably and avoids the unresolved VX continuous-contract symbol on GLBX.MDP3. All other instruments are sourced from Alpha Vantage.
+Databento is used for instruments Alpha Vantage cannot cover cleanly in daily form: Euro Stoxx 50 close via FESX, German Bund proxy via FGBL with an approximate yield conversion, and copper via HG front-month because the Alpha Vantage copper endpoint was not suitable for daily move detection. Gold and silver use Alpha Vantage `GOLD_SILVER_HISTORY`. VIX and MOVE are sourced from yfinance and marked `low_reliability`.
 
 The implementation should hide provider-specific logic behind small wrappers so a source can be replaced without rewriting the pipeline.
 
@@ -267,13 +269,13 @@ The discovery layer has five scouts. All use LLM-prompted approaches in V1.
 Use OpenAI GPT-5 (latest) with web search capability. Each scout is prompted to search for relevant content, extract structured candidate evidence, and return source URLs. Prompts live in `app/llm/prompts/scouts/`.
 
 **X scout** (`x.py`):
-Uses Grok/xAI specifically for its privileged access to X content. Prompts Grok to identify relevant X narratives, posts, and sentiment clusters tied to macro themes and overnight moves. Model is configurable via `x_scout_model` in `sources.yaml` — switching to another LiteLLM-routed model is a one-line config change. Direct X API ingestion is deferred to V2.
+Uses `xai-sdk` with a Grok model that supports the `x_search` Agent Tool to retrieve live X posts tied to flagged market moves, calendar events, and portfolio themes. It bypasses the LiteLLM wrapper because LiteLLM cannot route xAI server-side Agent Tools. Post-processing drops empty cards and URLs that do not match a real X post URL pattern. Direct X API ingestion is deferred to V2.
 
 **Podcast scout** (`podcast.py`):
 1. Query Listen Notes API (free tier) for episodes published in the last 24 hours, from curated channels or topic search.
 2. LLM ranks and filters candidates against macro themes, portfolio assumptions, and watchlist. Gate: "Is there a tradeable or portfolio-relevant thesis here?"
-3. For matched episodes: transcribe audio via OpenAI Whisper API. If no transcribable URL exists, search YouTube and use Gemini API to summarize the video directly. Gemini handles both YouTube and direct audio URL fallback.
-4. Extract: speaker's core thesis, evidence/argument, why it matters now, one-line "what this means for our book."
+3. For matched episodes, use the OpenAI Responses API with `web_search_preview` to recall public show notes, transcripts, summaries, or related pages. V1 does not perform audio transcription or Gemini video/audio analysis.
+4. Extract from source-backed web recall: speaker's core thesis, evidence/argument, why it matters now, one-line "what this means for our book."
 5. Output flows into Theme Radar.
 
 Each discovered item should become a structured `EvidenceCard` before synthesis.
@@ -472,5 +474,4 @@ V1 focuses on a runnable, validated daily brief. Future versions would make the 
 - **Smarter chart selection:** Let the system choose and configure the most relevant chart dynamically at runtime with LLM assistance, while still validating all plotted data comes from real or fixture sources.
 
 - **Additional delivery channels:** Add Slack, Telegram, or dashboard delivery after email is stable, while preserving the same rendered brief and validation pipeline.
-
 

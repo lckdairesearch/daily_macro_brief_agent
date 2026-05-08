@@ -57,6 +57,22 @@ Use one task branch or one small pull request per main step when possible.
 | M7 | Add delivery/scheduling | SendGrid/noop delivery, GitHub Actions | Add secrets or keep dry-run |
 | M8 | Finalize submission | README, costs, memo, acceptance pass | Final human review |
 
+## 7. Current implementation status
+
+This section records what has actually been implemented so later agents do not treat planned work as completed.
+
+| Step | Status | Notes |
+| --- | --- | --- |
+| 0-4 | Implemented | Repo structure, configs, typed models, CLI entry point, and pipeline skeleton exist. |
+| 5 | Implemented with modifications | Market module includes fixture/live providers, vol params, move detection, cache fallback, `SILVER`, and Databento copper via `HG.c.0`. |
+| 6 | Partially implemented module-level | Fixture calendar, Investing.com fetch/cache/normalization, and consensus candidate guardrails exist. Live calendar and any LLM consensus-enrichment scout are not yet wired into `app/pipeline.py`. |
+| 7 | Implemented | LiteLLM wrapper and prompt registry exist; OpenAI Responses API is used directly where web search tools are needed. |
+| 8 | Implemented with modifications | News/central bank/research use OpenAI Responses web search; podcast uses Listen Notes + LLM filtering + web recall; X uses `xai-sdk` `x_search`. |
+| 9 | Implemented | Evidence deduper and ranker exist with tests. |
+| 10+ | Not yet implemented in main app | Writer, deterministic validator, renderer, chart builder, delivery, and normal pipeline artifact persistence remain stubs/upcoming work. |
+
+`scripts/live_eval_run.py` is a diagnostic runner that exercises live collection, discovery, ranking, an LLM markdown brief, and saved raw/eval artifacts. It is not yet the production pipeline path.
+
 ---
 
 # Main implementation steps
@@ -408,15 +424,16 @@ All `MarketSnapshot.instrument_id` values must use these strings exactly. `vol_p
 | `USDJPY` | Alpha Vantage | FX_DAILY |
 | `EURUSD` | Alpha Vantage | FX_DAILY |
 | `USDCNH` | Alpha Vantage | FX_DAILY |
-| `GOLD` | Alpha Vantage | COMMODITIES |
+| `GOLD` | Alpha Vantage | GOLD_SILVER_HISTORY |
+| `SILVER` | Alpha Vantage | GOLD_SILVER_HISTORY |
 | `WTI` | Alpha Vantage | COMMODITIES |
 | `BRENT` | Alpha Vantage | COMMODITIES |
-| `COPPER` | Alpha Vantage | COMMODITIES |
 | `BTC` | Alpha Vantage | DIGITAL_CURRENCY_DAILY |
 | `US2Y` | Alpha Vantage | TREASURY_YIELD maturity=2year; change unit = bps |
 | `US10Y` | Alpha Vantage | TREASURY_YIELD maturity=10year; change unit = bps |
 | `FESX` | Databento | dataset=XEUR.EOBI; front-month futures; change unit = % |
 | `DE10Y` | Databento | dataset=XEUR.EOBI; yield derived from FGBL price; change unit = bps |
+| `COPPER` | Databento | dataset=GLBX.MDP3; HG front-month futures; change unit = % |
 | `VIX` | yfinance | ticker=^VIX (spot index); always `freshness_status=low_reliability`; change unit = % |
 | `HY_OAS` | FRED | series=BAMLH0A0HYM2; change unit = bps |
 | `MOVE` | yfinance | ticker=^MOVE; always `freshness_status=low_reliability`; change unit = % |
@@ -502,7 +519,7 @@ Instrument → change unit → SD formula:
 
 | instrument_id | Change unit | SD formula |
 |---|---|---|
-| SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, WTI, BRENT, COPPER, BTC, FESX, VIX, MOVE | `%` | `pct_change().std(ddof=1) * 100` |
+| SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, SILVER, WTI, BRENT, COPPER, BTC, FESX, VIX, MOVE | `%` | `pct_change().std(ddof=1) * 100` |
 | US2Y, US10Y, DE10Y, HY_OAS | `bps` | `diff().std(ddof=1) * 100` (AV/FRED return percent; multiply to get true bps) |
 
 Rules:
@@ -595,8 +612,8 @@ Each class implements `fetch_watchlist(instruments, as_of) -> list[MarketSnapsho
 4. Move detection is applied by the caller, not inside the provider.
 
 ```python
-class AlphaVantageMarketProvider:   # SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, WTI, BRENT, COPPER, BTC, US2Y, US10Y
-class DatabentoMarketProvider:      # FESX, DE10Y — includes front-month roll
+class AlphaVantageMarketProvider:   # SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, SILVER, WTI, BRENT, BTC, US2Y, US10Y
+class DatabentoMarketProvider:      # FESX, DE10Y, COPPER — continuous front-month futures
 class FredMarketProvider:           # HY_OAS
 class YfinanceMarketProvider:       # VIX (^VIX), MOVE (^MOVE) — both LOW_RELIABILITY
 ```
