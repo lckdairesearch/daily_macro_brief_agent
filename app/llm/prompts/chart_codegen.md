@@ -7,6 +7,8 @@ The chart is embedded in an HTML email. It must be clean, professional, and imme
 ## Hard constraints
 
 - Use ONLY the data in the injected variables below. Never invent prices, dates, or event labels.
+- Annotate ONLY entries from the `events` list. Do not add "Sharp move", outlier markers, or any annotation you derive from the price data.
+- Do NOT truncate event labels. Print the full `lbl` string exactly as provided — never slice it with `[:n]` or any other truncation.
 - Do NOT call `plt.show()`. Save with the exact pattern shown in the **Output** section.
 - Restrict imports to: `matplotlib.pyplot`, `matplotlib.dates`, `matplotlib.ticker`, `datetime`, `numpy` (arithmetic only if needed).
 - Return ONLY Python code. No markdown fences, no explanations, no inline comments.
@@ -15,14 +17,17 @@ The chart is embedded in an HTML email. It must be clean, professional, and imme
 ## Pre-defined variables (injected before your code)
 
 ```python
-dates         # list[str] — ISO date strings "YYYY-MM-DD", ascending, ~30 entries
-series        # dict[str, list[float]] — {display_name: [close_values matching dates]}
+dates         # list[str] — ISO date strings "YYYY-MM-DD", union of all series dates, ascending
+series_dates  # dict[str, list[str]] — {display_name: own ISO dates, only trading days for that series}
+series        # dict[str, list[float]] — {display_name: [close_values aligned to series_dates[name]]}
 units         # dict[str, str] — {display_name: "price" | "%" | "bps" | "index"}
 asset_classes # dict[str, str] — {display_name: "equity"|"rates"|"fx"|"commodity"|"volatility"|"credit"|"crypto"}
 events        # list[dict] — [{date: "YYYY-MM-DD", label: str, source: "calendar"|"context"}]
 title         # str — chart title
 output_path   # str — file path to save the PNG
 ```
+
+**Critical:** `series[name]` is aligned to `series_dates[name]`, NOT to `dates`. Different series may have different lengths (e.g. one has 30 calendar-day rows, another has 21 trading-day rows). Always use `series_dates[name]` as x-values when plotting a line — never use the shared `dates` for plotting.
 
 ## Figure and layout
 
@@ -37,9 +42,23 @@ The chart is displayed in an HTML email at approximately 500px wide and 175px ta
 - Horizontal gridlines only on the primary axis: `color="#E5E7EB"`, `linewidth=0.6`, `alpha=0.8`, `zorder=0`.
 - Light vertical x-gridlines: `color="#E5E7EB"`, `linewidth=0.4`, `alpha=0.5`.
 
+## Time window and chart type
+
+The injected data covers up to 30 calendar days. Choose the window and chart type that best communicates the `title` context:
+
+| Window | When to use | Chart type | X-axis ticks |
+|--------|-------------|------------|--------------|
+| **30 days** | Month-long trend, cross-asset divergence | Line | Monday of each week |
+| **1 week** | Recent momentum, short-term breakout | Line | Every trading day |
+| **1 day** | Snapshot comparison, single-session moves | Horizontal bar | Series names (categorical) |
+
+For **1-day bar chart**: plot `series[name][-1]` as one bar per series. Use a single axis with value labels. Skip the dual-axis and "Plotting lines" sections below. Skip event annotations (no date axis).
+
+For **line charts**: slice each series to the chosen window by taking the last N entries of `series_dates[name]` and `series[name]` before plotting. Keep the sliced dates in a local variable (e.g. `plot_dates`) — use it for axis bounds, ticks, and event lookups in place of the full `dates` list.
+
 ## Series selection
 
-**Default: plot exactly 2 series.** If `series` contains more than 2 keys, pick the 2 with the largest combined value range (max − min). Only plot a 3rd series if dropping it would remove the single most important relationship for the `title` context — and only if all 3 series have scales within 8× of each other.
+**Default: plot exactly 2 series.** If `series` contains more than 2 keys, pick the 2 with the largest combined value range (max − min) over the chosen window. Only plot a 3rd series if dropping it would remove the single most important relationship for the `title` context — and only if all 3 series have scales within 8× of each other.
 
 ## Axis assignment — scale-based, NOT unit-based
 
@@ -76,34 +95,68 @@ COLORS = {
 
 Plot all lines with `linewidth=2.0`, no markers.
 
-## X-axis formatting
+## Plotting lines
 
-Convert `dates` to `datetime.date` objects. Use exactly this pattern for clean, readable date labels:
+After slicing to the chosen window, use per-series dates as x-values — do NOT use the shared `dates`:
 
 ```python
-date_objs = [datetime.date.fromisoformat(d) for d in dates]
-ax.xaxis.set_major_locator(mdates.DayLocator(interval=7))
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
-plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha='right', fontsize=8)
+# slice to chosen window (e.g. last 7 entries for 1-week)
+x = [datetime.date.fromisoformat(d) for d in series_dates[name][-n:]]
+y = series[name][-n:]
+ax_target.plot(x, y, color=color, linewidth=2.0, label=name)
 ```
 
-Do NOT use `AutoDateLocator`, `ConciseDateFormatter`, or any other date formatter.
+Each series has its own `x` and `y` slice. Never index into a shared x-array using a series' position.
+
+## X-axis formatting (line charts only)
+
+Convert `plot_dates` (the chosen window's date strings) to `datetime.date` objects, then apply the tick rule that matches the window span:
+
+```python
+plot_date_objs = [datetime.date.fromisoformat(d) for d in plot_dates]
+span = (plot_date_objs[-1] - plot_date_objs[0]).days
+if span <= 10:
+    ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+else:
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d %b'))
+plt.setp(ax.xaxis.get_majorticklabels(), rotation=0, ha='center', fontsize=8)
+```
+
+Do NOT use `AutoDateLocator`, `ConciseDateFormatter`, or any other date formatter. Use `plot_date_objs` (not the full `dates`) for event annotation lookups too.
 
 ## Event annotations
 
-For each entry in `events`:
-1. Find the index in `dates` whose string matches the event date (or the closest date).
-2. Get the corresponding x-coordinate: `x_pos = date_objs[idx]`.
-3. Draw a vertical dashed line: `ax.axvline(x_pos, linestyle="--", color="#94A3B8", linewidth=0.8, alpha=0.7)`.
-4. Place a small rotated text label using `ax.text(x_pos, ax.get_ylim()[1] * 0.92, event["label"], fontsize=7, color="#64748B", rotation=45, ha="right", va="top")`.
+Pre-group events by date, then draw one dashed line and stacked labels per date:
 
-You may add up to 1 additional annotation if the data shows a sharp single-day move (magnitude > 3× average daily move). Label with ≤3 words. Do not annotate outside the plotted date range.
+```python
+from collections import defaultdict
+in_window = [e for e in events if plot_dates[0] <= e["date"] <= plot_dates[-1]]
+in_window = sorted(in_window, key=lambda e: e["source"] != "calendar")[:3]
+by_date = defaultdict(list)
+for e in in_window: by_date[e["date"]].append(e["label"])
+trans = ax.get_xaxis_transform()
+total_span = max((plot_date_objs[-1] - plot_date_objs[0]).days, 1)
+prev_x = None
+for date_str in sorted(by_date):
+    labels = by_date[date_str]
+    idx = min(range(len(plot_dates)), key=lambda k: abs((datetime.date.fromisoformat(plot_dates[k]) - datetime.date.fromisoformat(date_str)).days))
+    x_pos = plot_date_objs[idx]
+    y_ann = 0.93 if prev_x is None or abs((x_pos - prev_x).days) >= 5 else 0.83
+    ha = "right" if (x_pos - plot_date_objs[0]).days / total_span > 0.5 else "left"
+    ax.axvline(x_pos, linestyle="--", color="#94A3B8", linewidth=0.8, alpha=0.7)
+    for lbl in labels: ax.text(x_pos, y_ann, lbl, transform=trans, fontsize=7, color="#64748B", rotation=0, ha=ha, va="top"); y_ann -= 0.09
+    prev_x = x_pos
+```
+
+Do not add any annotations beyond what is in `events`. Do not invent labels or markers from the price data.
 
 ## Legend and title
 
 - Title: `ax.set_title(title, fontsize=11, fontweight="bold", loc="left", pad=6)`.
-- Subtitle (date range): `fig.text(0.01, 0.88, f"{date_objs[0].strftime('%d %b')} – {date_objs[-1].strftime('%d %b %Y')}", fontsize=8, color="#6B7280", transform=fig.transFigure)`.
-- Legend: `ax.legend(loc="upper right", framealpha=0.75, fontsize=8, edgecolor="#E5E7EB")`.
+- **Legend placement**: if `by_date` is non-empty (events exist), place the legend **below the x-axis**: `ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=2, framealpha=0.9, fontsize=8, edgecolor="#E5E7EB")`. If there are no events, place inside: `ax.legend(loc="upper right", framealpha=0.75, fontsize=8, edgecolor="#E5E7EB")`. The legend must include every plotted series — call `ax.legend()` after all `ax.plot()` / `ax2.plot()` calls.
+- After placing the legend, expand the top of the y-axis so no line is hidden behind a title or label: `ymin, ymax = ax.get_ylim(); ax.set_ylim(ymin, ymax + (ymax - ymin) * 0.20)`. Apply the same expansion to `ax2` if it exists.
 
 ## Code style
 

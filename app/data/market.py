@@ -170,7 +170,7 @@ def _av_fetch_daily(
     return [r for r in rows if start_str <= r["date"] <= end_str]
 
 
-_DB_TIMEOUT_SECS = 60
+_DB_TIMEOUT_SECS = 120
 
 
 def _db_fetch_daily_ohlcv(

@@ -54,6 +54,7 @@ class Credentials(BaseSettings):
     llm_scout_model: str | None = None
     llm_x_scout_model: str | None = None
     llm_synthesis_model: str | None = None
+    llm_chart_model: str | None = None
     llm_temperature: float | None = None
 
     # Market data — required for live/dry-run
@@ -106,6 +107,8 @@ class Settings:
             llm["x_scout_model"] = creds.llm_x_scout_model
         if creds.llm_synthesis_model:
             llm["synthesis_model"] = creds.llm_synthesis_model
+        if creds.llm_chart_model:
+            llm["chart_model"] = creds.llm_chart_model
         if creds.llm_temperature is not None:
             llm["temperature"] = creds.llm_temperature
 
