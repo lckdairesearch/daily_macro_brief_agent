@@ -8,7 +8,11 @@ market:
 
 calendar:
   provider: investing_com
+  endpoint_url: "https://endpoints.investing.com/pd-instruments/v1/calendars/economic/events/occurrences"
+  domain_id: 1
+  limit: 200
   cache_daily: true
+  country_ids: [5, 72, 17, 35, 37, 4]
   filter_countries: ["US", "EU", "DE", "JP", "CN", "GB"]
   filter_importance: ["high", "medium"]
 
