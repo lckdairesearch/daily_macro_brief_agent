@@ -20,7 +20,7 @@ Sample mode can run without live market credentials. Add Postmark credentials wh
 ```bash
 cp .env.example .env      # add at minimum: OPENAI_API_KEY
 make install
-make run-sample           # produces outputs/sample_brief.html, .txt, and chart.png
+make run-sample           # produces outputs/runs/YYYY-MM-DD/<run_id>/...
 make test
 ```
 
@@ -59,7 +59,7 @@ Validation warnings appear as a banner at the top of the email. Production email
 
 GitHub Actions runs `.github/workflows/daily_brief.yml` on cron `15 23 * * 0-4` (07:15 HKT Mon–Fri). Secrets must be configured in the repository settings. Manual dispatch is supported via `workflow_dispatch`.
 
-Output artifacts are saved to `outputs/runs/YYYY-MM-DD_HHMM_HKT/` for each run.
+Output artifacts are saved to `outputs/runs/YYYY-MM-DD/<run_id>/` for each run.
 
 ## Tests
 
@@ -79,7 +79,7 @@ Postmark integration test, set `RUN_LIVE_POSTMARK_TEST=true` with valid
 ## Known limitations
 
 - **Calendar data:** Investing.com backend endpoint is a prototype dependency, not a licensed feed. Treat consensus values as indicative only. Future production should use a paid calendar API.
-- **MOVE index:** Sourced from Yahoo Finance (`^MOVE`) via yfinance — no official API. Marked `low_reliability` in run metadata.
+- **MOVE index:** Sourced from Yahoo Finance (`^MOVE`) via yfinance — no official API.
 - **HY OAS:** FRED series `BAMLH0A0HYM2` limited to 3 years of history from April 2026.
 - **X scout:** Uses Grok/xAI by default. Model is configurable via `x_scout_model` in `app/config/sources.yaml` through LiteLLM — swapping to another model is a one-line config change.
 - **Podcast scout:** Uses Listen Notes API (free tier) for episode discovery, OpenAI Whisper for transcription, with Gemini as fallback for both audio and YouTube-hosted episodes.

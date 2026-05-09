@@ -27,6 +27,8 @@ def render_brief(
     draft: BriefDraft,
     settings: "Settings",
     output_dir: str | Path | None = None,
+    html_filename: str = "sample_brief.html",
+    text_filename: str = "sample_brief.txt",
     vol_params: dict[str, dict[str, Any]] | None = None,
     chart_image_url: str | None = None,
 ) -> dict[str, str]:
@@ -38,8 +40,8 @@ def render_brief(
     html = render_html(context)
     text = render_text(context)
 
-    html_path = out_dir / "sample_brief.html"
-    text_path = out_dir / "sample_brief.txt"
+    html_path = out_dir / html_filename
+    text_path = out_dir / text_filename
     html_path.write_text(html, encoding="utf-8")
     text_path.write_text(text, encoding="utf-8")
 
