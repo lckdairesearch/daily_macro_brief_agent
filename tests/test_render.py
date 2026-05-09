@@ -578,15 +578,15 @@ def test_build_render_context_filters_dashboard_to_core_plus_significant_extras(
 
     assert [row["asset"] for row in ctx["dashboard_rows"]] == [
         "S&P 500 (proxy)",
-        "US 10Y Yield",
+        "Nasdaq 100 (proxy)",
         "USD/JPY",
+        "US 10Y Yield",
+        "US 2Y Yield",
         "Gold (spot)",
         "WTI (front-month)",
-        "VIX",
-        "US 2Y Yield",
-        "MOVE Index",
         "Brent (front-month)",
-        "Nasdaq 100 (proxy)",
+        "VIX",
+        "MOVE Index",
     ]
 
 
@@ -600,6 +600,66 @@ def test_build_render_context_does_not_duplicate_significant_core_assets():
 
     assert assets.count("VIX") == 1
     assert assets.count("US 10Y Yield") == 1
+
+
+def test_build_render_context_orders_extras_by_bucket_after_selection():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    dashboard = [
+        _snapshot("SPY", "S&P 500 (proxy)", AssetClass.EQUITY, -1.2),
+        _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+        _snapshot("USDJPY", "USD/JPY", AssetClass.FX, 0.3),
+        _snapshot("GOLD", "Gold (spot)", AssetClass.COMMODITY, 0.5),
+        _snapshot("WTI", "WTI (front-month)", AssetClass.COMMODITY, -0.2),
+        _snapshot("VIX", "VIX", AssetClass.VOLATILITY, 8.0, flagged=True),
+        _snapshot("QQQ", "Nasdaq 100 (proxy)", AssetClass.EQUITY, -2.1, flagged=True),
+        _snapshot("US2Y", "US 2Y Yield", AssetClass.RATES, 3.5, flagged=True),
+        _snapshot("BTC", "Bitcoin", AssetClass.CRYPTO, 4.2, flagged=True),
+        _snapshot("HY_OAS", "ICE BofA US High Yield OAS", AssetClass.CREDIT, 12.0, flagged=True),
+        _snapshot("MOVE", "MOVE Index", AssetClass.VOLATILITY, 3.0, flagged=True),
+        _snapshot("BRENT", "Brent (front-month)", AssetClass.COMMODITY, -2.5, flagged=True),
+        _snapshot("EURUSD", "EUR/USD", AssetClass.FX, 0.1),
+    ]
+    draft = _make_draft().model_copy(update={"overnight_dashboard": dashboard})
+
+    ctx = build_render_context(draft, settings, vol_params={})
+
+    assert [row["asset"] for row in ctx["dashboard_rows"]] == [
+        "S&P 500 (proxy)",
+        "USD/JPY",
+        "US 10Y Yield",
+        "US 2Y Yield",
+        "Gold (spot)",
+        "WTI (front-month)",
+        "Bitcoin",
+        "VIX",
+        "ICE BofA US High Yield OAS",
+        "MOVE Index",
+    ]
+
+
+def test_build_render_context_splits_metals_from_commodities():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    settings.app.dashboard_core_instruments = []
+    dashboard = [
+        _snapshot("WTI", "WTI (front-month)", AssetClass.COMMODITY, 1.2, flagged=True),
+        _snapshot("COPPER", "Copper (front-month)", AssetClass.COMMODITY, 2.0, flagged=True),
+        _snapshot("GOLD", "Gold (spot)", AssetClass.COMMODITY, 0.8, flagged=True),
+        _snapshot("SILVER", "Silver (spot)", AssetClass.COMMODITY, 0.7, flagged=True),
+    ]
+    draft = _make_draft().model_copy(update={"overnight_dashboard": dashboard})
+
+    ctx = build_render_context(draft, settings, vol_params={})
+
+    assert [row["asset"] for row in ctx["dashboard_rows"]] == [
+        "Copper (front-month)",
+        "Gold (spot)",
+        "Silver (spot)",
+        "WTI (front-month)",
+    ]
 
 
 def test_build_render_context_pairs_calendar_events_for_two_column_layout():

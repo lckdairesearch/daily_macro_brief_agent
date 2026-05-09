@@ -22,6 +22,8 @@ _FALLBACK_VOL: dict[str, dict[str, float | str]] = {
     "bps": {"sd_1d": 5.0, "unit": "bps"},
 }
 _FIVE_DAY_FLAT_Z = 0.25
+_DASHBOARD_BUCKET_ORDER = ("equities", "fx", "rates", "metals", "commodities", "btc", "other")
+_METALS_IDS = frozenset({"GOLD", "SILVER", "COPPER"})
 _POSITION_ID_RE = re.compile(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b")
 _BOOK_IMPACT_PREFIX_RE = re.compile(r"^what this means for our book:\s*", re.IGNORECASE)
 
@@ -152,12 +154,12 @@ def _select_dashboard_snapshots(
 ) -> list[MarketSnapshot]:
     core_ids = list(getattr(settings.app, "dashboard_core_instruments", []) or [])
     if not core_ids:
-        return snapshots
+        return _order_dashboard_snapshots(snapshots)
 
     by_id = {snapshot.instrument_id: snapshot for snapshot in snapshots}
     core_snapshots = [by_id[instrument_id] for instrument_id in core_ids if instrument_id in by_id]
     if not core_snapshots:
-        return snapshots
+        return _order_dashboard_snapshots(snapshots)
 
     selected_ids = {snapshot.instrument_id for snapshot in core_snapshots}
     indexed_snapshots = list(enumerate(snapshots))
@@ -176,7 +178,34 @@ def _select_dashboard_snapshots(
 
     max_extra_movers = max(int(getattr(settings.app, "dashboard_max_extra_movers", 0) or 0), 0)
     extras = [snapshot for _, snapshot in extra_snapshots[:max_extra_movers]]
-    return core_snapshots + extras
+    return _order_dashboard_snapshots(core_snapshots + extras)
+
+
+def _order_dashboard_snapshots(snapshots: list[MarketSnapshot]) -> list[MarketSnapshot]:
+    grouped: dict[str, list[MarketSnapshot]] = {bucket: [] for bucket in _DASHBOARD_BUCKET_ORDER}
+    for snapshot in snapshots:
+        grouped[_dashboard_bucket(snapshot)].append(snapshot)
+
+    ordered: list[MarketSnapshot] = []
+    for bucket in _DASHBOARD_BUCKET_ORDER:
+        ordered.extend(grouped[bucket])
+    return ordered
+
+
+def _dashboard_bucket(snapshot: MarketSnapshot) -> str:
+    if snapshot.asset_class.value == "equity":
+        return "equities"
+    if snapshot.asset_class.value == "fx":
+        return "fx"
+    if snapshot.asset_class.value == "rates":
+        return "rates"
+    if snapshot.instrument_id in _METALS_IDS:
+        return "metals"
+    if snapshot.asset_class.value == "commodity":
+        return "commodities"
+    if snapshot.instrument_id == "BTC":
+        return "btc"
+    return "other"
 
 
 def _is_significant_move(snapshot: MarketSnapshot) -> bool:
