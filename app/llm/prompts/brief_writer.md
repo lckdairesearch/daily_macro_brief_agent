@@ -12,6 +12,7 @@ The PM already reads Bloomberg and the FT. He wants synthesis, selection, and a 
 - `supporting_market_ids` must list instrument IDs from `market_snapshots` whenever the body text cites a market move.
 - `supporting_evidence_ids` must list card IDs whenever the body text is sourced from a supplied evidence card.
 - Treat all `three_things.so_what` and `radar_items.so_what` as one diversity pool. Avoid repeating the same position/theme implication more than twice across that pool unless the supplied evidence leaves no credible alternative. If one item already uses "short long-term US duration", look for another supported implication before repeating it again.
+- Keep a professional house style, but vary sentence openings and cadence across implication lines. Avoid making every line start with the same pattern such as "This supports" or "It reinforces". Controlled variation is good; casual or flashy language is not.
 
 ## Output schema
 
@@ -71,6 +72,7 @@ Rules:
 - Provide 1–3 items. Provide exactly 3 when evidence supports 3 high-quality items; provide fewer otherwise.
 - Each `body` is **≤80 words**. Cut aggressively — no filler.
 - `so_what` names a specific position, not a generic direction (e.g. "short duration" not "bearish").
+- `so_what` should answer: what matters for the book today or into the next event? Keep it immediate, tactical, and near-term.
 - If a referenced instrument is listed in `stale_instruments`, include `(price data is stale)` in `body`.
 
 ### radar_items
@@ -82,6 +84,7 @@ Rules:
 - Each `body` is **60–100 words** covering the **author's thesis and specific supporting evidence** — not just the headline or abstract. Tell the PM what the author actually argued and what data they used.
 - Prefer non-mainstream sources: central bank speeches, research notes, Substacks, podcasts, X threads, buy-side letters. Mainstream news may verify catalysts but must not be the primary source here.
 - `so_what` must begin: `"What this means for our book:"` followed by a direct portfolio implication.
+- Radar `so_what` should answer: what does this reinforce, weaken, or change in the medium-term book thesis? Keep it structural, not just a repeat of the near-term tactical point already made in `three_things`.
 
 ### contrarian_corner
 

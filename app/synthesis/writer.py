@@ -43,8 +43,8 @@ _SAMPLE_FAKE_RESPONSE: dict = {
                 "term-premium pressure on rates."
             ),
             "so_what": (
-                "This validates the short long-term US duration position while reducing "
-                "immediate stress on the broader risk backdrop."
+                "Keeps the short long-term US duration position aligned with today's "
+                "tape while reducing immediate stress on the broader risk backdrop."
             ),
             "supporting_market_ids": ["QQQ", "SPY", "MOVE", "US10Y", "US2Y"],
             "supporting_evidence_ids": ["ev_dfb73667"],
@@ -59,8 +59,8 @@ _SAMPLE_FAKE_RESPONSE: dict = {
                 "supply-and-inflation repricing rather than a simple policy-rate story."
             ),
             "so_what": (
-                "This reinforces the short long-term US duration position and supports "
-                "the long metals complex thesis."
+                "Adds near-term conviction to the short long-term US duration position "
+                "into the next rates repricing while keeping the metals complex bid intact."
             ),
             "supporting_market_ids": ["QQQ", "US10Y", "MOVE"],
             "supporting_evidence_ids": ["ev_211cb61b"],
@@ -76,8 +76,8 @@ _SAMPLE_FAKE_RESPONSE: dict = {
                 "the book's structural duration view."
             ),
             "so_what": (
-                "This is the main event risk for the short long-term US duration "
-                "position and the currency diversification overlay."
+                "Leaves the short long-term US duration position exposed to today's "
+                "payrolls surprise and puts the currency diversification overlay in play."
             ),
             "supporting_market_ids": ["US10Y", "US2Y", "MOVE", "EURUSD", "UUP"],
             "supporting_evidence_ids": [],
@@ -97,8 +97,8 @@ _SAMPLE_FAKE_RESPONSE: dict = {
                 "changing the medium-term supply burden facing duration."
             ),
             "so_what": (
-                "It supports the short long-term US duration position while explaining "
-                "why risk assets can stay firm in the near term."
+                "Argues for staying with the structural short long-term US duration "
+                "view even if the next few sessions still look risk-friendly."
             ),
             "supporting_evidence_ids": ["ev_dfb73667"],
         },
@@ -115,8 +115,8 @@ _SAMPLE_FAKE_RESPONSE: dict = {
                 "changing cut expectations."
             ),
             "so_what": (
-                "It strengthens the fiscal-dominance case behind the short long-term US "
-                "duration position and argues to stay with the long metals complex theme."
+                "Adds medium-term conviction to the fiscal-dominance case behind the "
+                "short long-term US duration position and keeps the long metals complex theme intact."
             ),
             "supporting_evidence_ids": ["ev_211cb61b"],
         },
@@ -132,8 +132,8 @@ _SAMPLE_FAKE_RESPONSE: dict = {
                 "grain data look mixed to soft rather than supply-constrained."
             ),
             "so_what": (
-                "It tempers any near-term inflation tailwind for the agriculture_long "
-                "position without breaking the longer-term food security theme."
+                "Tempers the medium-term inflation case for the agriculture_long "
+                "position without overturning the longer-term food security theme."
             ),
             "supporting_evidence_ids": ["ev_2685ad3d"],
         }
