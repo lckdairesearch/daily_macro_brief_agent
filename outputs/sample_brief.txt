@@ -39,7 +39,7 @@ TODAY'S CALENDAR
 19:30 US - FOMC Member Bowman Speaks (Exp: n/a; Prev: n/a)
 
 ONE CHART WORTH SEEING
-Overnight market moves
+Market overview
 outputs/sample_chart.png
 
 THEME RADAR
@@ -50,3 +50,4 @@ Reinforces short duration positioning in our book.
 
 WARNINGS
 - contrarian_corner is absent
+- Chart GitHub push failed — chart will appear as email attachment
