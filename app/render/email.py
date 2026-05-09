@@ -23,6 +23,7 @@ _FALLBACK_VOL: dict[str, dict[str, float | str]] = {
 }
 _FIVE_DAY_FLAT_Z = 0.25
 _POSITION_ID_RE = re.compile(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b")
+_BOOK_IMPACT_PREFIX_RE = re.compile(r"^what this means for our book:\s*", re.IGNORECASE)
 
 
 def render_brief(
@@ -78,7 +79,7 @@ def render_text(context: dict[str, Any]) -> str:
         lines.append(f"{i}. {item['headline']}")
         lines.append(item["body"])
         if item["so_what"]:
-            lines.append(f"So what: {item['so_what']}")
+            lines.append(item["so_what"])
         lines.append("")
 
     lines.append("TODAY'S CALENDAR")
@@ -102,7 +103,7 @@ def render_text(context: dict[str, Any]) -> str:
             lines.append(url)
         lines.append(item["body"])
         if item["so_what"]:
-            lines.append(_so_what_label(item["so_what"]))
+            lines.append(item["so_what"])
         lines.append("")
 
     contrarian = context.get("contrarian_corner")
@@ -253,7 +254,7 @@ def _format_brief_item(item: Any | None, label_map: dict[str, str]) -> dict[str,
     return {
         "headline": item.headline,
         "body": _normalize_display_text(item.body, label_map),
-        "so_what": _normalize_display_text(item.so_what, label_map),
+        "so_what": _normalize_so_what_text(item.so_what, label_map),
         "source_name": getattr(item, "source_name", None),
         "source_url": source_url,
         "source_type": getattr(item, "source_type", None),
@@ -332,10 +333,6 @@ def _format_optional_value(value: Any) -> str:
     return str(value)
 
 
-def _so_what_label(text: str) -> str:
-    return text.replace("What this means for our book:", "So what:")
-
-
 def _format_header_date(value: Any) -> str:
     if not value:
         return "Daily Macro Brief"
@@ -372,3 +369,18 @@ def _normalize_display_text(text: str | None, label_map: dict[str, str]) -> str 
         return label_map.get(token, token.replace("_", " "))
 
     return _POSITION_ID_RE.sub(_replace, text)
+
+
+def _normalize_so_what_text(text: str | None, label_map: dict[str, str]) -> str | None:
+    normalized = _normalize_display_text(text, label_map)
+    if not normalized:
+        return normalized
+
+    normalized = _BOOK_IMPACT_PREFIX_RE.sub("", normalized).strip()
+    if not normalized:
+        return normalized
+
+    first = normalized[0]
+    if first.isalpha():
+        normalized = first.upper() + normalized[1:]
+    return normalized

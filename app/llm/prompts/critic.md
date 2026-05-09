@@ -10,7 +10,7 @@ Return structured JSON matching the requested schema. Flag:
 - Market numbers without source metadata.
 - Calendar consensus values without an allowed source or method.
 - Claims that are not supported by a market ID, calendar event, or evidence ID.
-- Missing or weak `so what` statements.
+- Missing or weak book-impact statements.
 - Word limit or formatting violations.
 - Missing stale-data or source-failure warnings.
 

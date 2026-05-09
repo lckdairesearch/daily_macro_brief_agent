@@ -782,7 +782,7 @@ def test_theme_radar_topic_renders_before_title(tmp_path):
     assert "Research headline<span class=\"radar-title-icon\">↗</span>" in html
 
 
-def test_theme_radar_uses_consistent_so_what_label(tmp_path):
+def test_theme_radar_renders_plain_book_impact_text(tmp_path):
     from app.render.email import render_brief
 
     settings = _make_settings()
@@ -801,9 +801,31 @@ def test_theme_radar_uses_consistent_so_what_label(tmp_path):
     html = Path(paths["html"]).read_text(encoding="utf-8")
     text = Path(paths["text"]).read_text(encoding="utf-8")
 
-    assert "So what: reinforces short duration thesis." in html
+    assert "Reinforces short duration thesis." in html
     assert "What this means for our book:" not in html
-    assert "So what: reinforces short duration thesis." in text
+    assert "Reinforces short duration thesis." in text
+    assert "What this means for our book:" not in text
+
+
+def test_book_impact_sentence_is_capitalized(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Research headline",
+        body="Rates stay under pressure as issuance remains elevated.",
+        so_what="what this means for our book: reinforces short duration thesis.",
+        supporting_evidence_ids=["ev_001"],
+        topic_label="Rates",
+    )
+    draft = _make_draft().model_copy(update={"radar_items": [radar]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "Reinforces short duration thesis." in html
+    assert "Reinforces short duration thesis." in text
 
 
 def test_theme_radar_without_source_url_renders_plain_title(tmp_path):

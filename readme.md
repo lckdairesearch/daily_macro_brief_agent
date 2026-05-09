@@ -2,7 +2,7 @@
 
 A scheduled Python pipeline that produces a PM-facing morning macro brief focused on one question:
 
-> what changed overnight, and so what for our book?
+> what changed overnight, and what does it mean for our book?
 
 The system uses real or fixture-backed market, calendar, and source inputs. The LLM is used for grounded synthesis, not for making up facts.
 

@@ -194,7 +194,7 @@
             <div class="thing-title">{{ loop.index }}. {{ item.headline }}</div>
             <p class="thing-body">{{ item.body }}</p>
             {% if item.so_what %}
-            <span class="so-what-tag">So what: {{ item.so_what }}</span>
+            <span class="so-what-tag">{{ item.so_what }}</span>
             {% endif %}
         </div>
         {% endfor %}
@@ -248,7 +248,7 @@
             {% endif %}
             <p class="radar-summary">{{ item.body }}</p>
             {% if item.so_what %}
-            <span class="so-what-tag">{{ item.so_what | replace("What this means for our book:", "So what:") }}</span>
+            <span class="so-what-tag">{{ item.so_what }}</span>
             {% endif %}
         </div>
         {% endfor %}

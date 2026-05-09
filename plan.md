@@ -370,7 +370,7 @@ Goal: improve synthesis quality without letting the writer become a fact source.
 
 Scope:
 
-- refine writing instructions, selection pressure, and `so what` expectations
+- refine writing instructions, selection pressure, and book-impact expectations
 - avoid prompt sprawl
 
 Primary files:

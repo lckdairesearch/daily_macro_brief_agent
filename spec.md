@@ -6,7 +6,7 @@ Build a Python agent that produces a concise morning macro brief for a macro PM 
 
 The brief should answer:
 
-> What changed overnight, and so what for our book?
+> What changed overnight, and what does it mean for our book?
 
 The product is a selective macro note, not a headline dump. It should highlight a small number of moves, events, and source items that matter for the configured portfolio themes.
 
@@ -121,7 +121,7 @@ The validator must catch or flag:
 - numeric language in `Overnight Book Impact`
 - stale-data disclosures
 - word-limit violations
-- missing `so what` statements
+- missing book-impact statements
 
 Critical validation failures suppress live delivery.
 

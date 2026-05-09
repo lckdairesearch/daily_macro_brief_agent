@@ -19,7 +19,7 @@ US 2Y Yield: 4.720% | +3.0bps | 5D →
 THE 3 THINGS
 1. Metals complex gains on central bank accumulation
 Gold and silver moved higher amid continued central bank buying. Reserve managers are diversifying away from dollar-denominated assets, keeping the bid elevated. Real yields softened, removing a key headwind for non-yielding metals and reinforcing the structural debasement narrative.
-So what: Supports long metals complex position in the book.
+Supports long metals complex position in the book.
 
 TODAY'S CALENDAR
 08:30 Japan - S&P Global Services PMI (Apr) (Exp: 51.2; Prev: 53.4)
@@ -35,5 +35,5 @@ outputs/samples/2026-05-10/20260510_022459_sample/sample_chart.png
 THEME RADAR
 Fiscal Dominance Thesis — Research Note - Sample Economic Source
 https://example.com/placeholder
-Author argues fiscal dominance is now the primary driver of long-end yields. Evidence includes persistently widening deficits and sustained Treasury issuance at elevated supply levels. Central banks are losing credibility as effective inflation anchors. Historical parallels drawn to the 1940s yield curve control era when fiscal needs overrode monetary independence. Non-mainstream source challenges the consensus soft-landing narrative. What this means for our book: reinforces short duration positioning.
+Author argues fiscal dominance is now the primary driver of long-end yields. Evidence includes persistently widening deficits and sustained Treasury issuance at elevated supply levels. Central banks are losing credibility as effective inflation anchors. Historical parallels drawn to the 1940s yield curve control era when fiscal needs overrode monetary independence. Non-mainstream source challenges the consensus soft-landing narrative.
 Reinforces short duration positioning in our book.
