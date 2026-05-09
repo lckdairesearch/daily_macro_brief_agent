@@ -293,7 +293,7 @@
     {
       "as_of": "2026-05-08T06:45:00+08:00",
       "instrument_id": "HY_OAS",
-      "display_name": "HY OAS (BAMLH0A0HYM2)",
+      "display_name": "ICE BofA US High Yield OAS",
       "asset_class": "credit",
       "region": "US",
       "last_price_or_level": 330.0,

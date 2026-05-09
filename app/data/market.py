@@ -4,7 +4,7 @@ Providers:
   FixtureMarketProvider        — sample/demo mode; no credentials needed  (Step 5.A)
   AlphaVantageMarketProvider   — equities, FX, US yields, BTC, DXY proxy  (Step 5.E)
   DatabentoMarketProvider      — DE10Y (FGBL), COPPER (HG), WTI (CL), BRENT (BRN)  (Step 5.E)
-  FredMarketProvider           — HY OAS (BAMLH0A0HYM2)  (Step 5.E)
+  FredMarketProvider           — ICE BofA US High Yield OAS (BAMLH0A0HYM2)  (Step 5.E)
   YfinanceMarketProvider       — ^VIX, ^MOVE (low_reliability)  (Step 5.E)
 
 Falls back to latest cached snapshot with a warning if live calls fail.  (Step 5.F)
@@ -560,7 +560,7 @@ _DB_INSTRUMENT_META: dict[str, dict] = {
 _FRED_INSTRUMENT_META: dict[str, dict] = {
     # BAMLH0A0HYM2 is reported by FRED in percent (3.30 = 330 bps).
     # level_multiplier converts the raw value to the display unit (bps).
-    "HY_OAS": {"series_id": "BAMLH0A0HYM2", "display_name": "HY OAS (BAMLH0A0HYM2)", "asset_class": AssetClass.CREDIT, "region": "US", "change_unit": "bps", "level_multiplier": 100},
+    "HY_OAS": {"series_id": "BAMLH0A0HYM2", "display_name": "ICE BofA US High Yield OAS", "asset_class": AssetClass.CREDIT, "region": "US", "change_unit": "bps", "level_multiplier": 100},
 }
 
 _YF_INSTRUMENT_META: dict[str, dict] = {
