@@ -33,7 +33,8 @@ def render_brief(
     chart_image_url: str | None = None,
 ) -> dict[str, str]:
     """Render HTML and plain-text artifacts and return their paths."""
-    out_dir = Path(output_dir or settings.app.output_dir)
+    default_output_dir = Path(settings.app.output_dir) / "samples"
+    out_dir = Path(output_dir or default_output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     context = build_render_context(draft, settings, vol_params=vol_params, chart_image_url=chart_image_url)
@@ -134,6 +135,7 @@ def build_render_context(
         ],
         "three_things": draft.three_things,
         "calendar_events": [_format_calendar_event(event) for event in draft.todays_calendar],
+        "calendar_event_rows": _pair_calendar_events(draft.todays_calendar),
         "chart": _format_chart(draft.chart, image_url=chart_image_url),
         "radar_items": draft.radar_items,
         "contrarian_corner": draft.contrarian_corner,
@@ -221,10 +223,24 @@ def _format_calendar_event(event: CalendarEvent) -> dict[str, str | bool]:
         "time_hkt": event.event_time_hkt.strftime("%H:%M"),
         "country_or_region": event.country_or_region,
         "event_name": event.event_name,
-        "high_importance": event.importance >= 3,
+        "high_importance": event.brief_importance >= 3,
+        "brief_importance": str(event.brief_importance),
+        "importance_marker": "●" if event.brief_importance >= 3 else "",
         "consensus": _format_optional_value(event.consensus),
         "previous": _format_optional_value(event.previous),
     }
+
+
+def _pair_calendar_events(events: list[CalendarEvent]) -> list[tuple[dict[str, str | bool], dict[str, str | bool] | None]]:
+    formatted = [_format_calendar_event(event) for event in events]
+    midpoint = (len(formatted) + 1) // 2
+    left_column = formatted[:midpoint]
+    right_column = formatted[midpoint:]
+    rows: list[tuple[dict[str, str | bool], dict[str, str | bool] | None]] = []
+    for idx, left in enumerate(left_column):
+        right = right_column[idx] if idx < len(right_column) else None
+        rows.append((left, right))
+    return rows
 
 
 def _format_chart(chart: ChartSpec | None, image_url: str | None = None) -> dict[str, str] | None:

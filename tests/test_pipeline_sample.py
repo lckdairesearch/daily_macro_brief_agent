@@ -33,6 +33,13 @@ from app.pipeline import (
 from app.settings import Settings
 
 
+@pytest.fixture
+def isolated_settings(tmp_path):
+    settings = Settings.load()
+    settings.app.output_dir = str(tmp_path / "outputs")
+    return settings
+
+
 def _mock_write_brief(ranked_context, settings, run_date, mode=None):
     """Return a minimal valid BriefDraft without making any LLM call."""
     snap = ranked_context.dashboard_rows[0] if ranked_context.dashboard_rows else None
@@ -83,23 +90,23 @@ def mock_delivery():
         yield
 
 
-def test_sample_pipeline_returns_pipeline_result(mock_writer):
+def test_sample_pipeline_returns_pipeline_result(mock_writer, isolated_settings):
     """run_pipeline(sample) returns a PipelineResult instance."""
-    settings = Settings.load()
+    settings = isolated_settings
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert isinstance(result, PipelineResult)
 
 
-def test_sample_pipeline_success(mock_writer):
+def test_sample_pipeline_success(mock_writer, isolated_settings):
     """run_pipeline(sample) returns success=True."""
-    settings = Settings.load()
+    settings = isolated_settings
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.success is True
 
 
-def test_sample_pipeline_run_metadata_populated(mock_writer):
+def test_sample_pipeline_run_metadata_populated(mock_writer, isolated_settings):
     """RunMetadata has required fields populated."""
-    settings = Settings.load()
+    settings = isolated_settings
     result = run_pipeline(RunMode.SAMPLE, settings)
     meta = result.run_metadata
     assert re.fullmatch(r"\d{8}_\d{6}_sample", meta.run_id)
@@ -110,16 +117,15 @@ def test_sample_pipeline_run_metadata_populated(mock_writer):
     assert meta.llm_provider == "litellm"
 
 
-def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer):
+def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer, isolated_settings):
     """Sample pipeline can be smoke-tested without sending real email."""
-    settings = Settings.load()
+    settings = isolated_settings
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.run_metadata.delivery_status != DeliveryStatus.SUCCESS
 
 
-def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(tmp_path):
-    settings = Settings.load()
-    settings.app.output_dir = str(tmp_path / "outputs")
+def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(isolated_settings):
+    settings = isolated_settings
 
     def _mock_writer_with_warning(ranked_context, settings, run_date, mode=None):
         draft, usage = _mock_write_brief(ranked_context, settings, run_date, mode)
@@ -132,10 +138,9 @@ def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(tmp_path):
     assert "only 2 evidence cards available" in result.run_metadata.warnings
 
 
-def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_path):
+def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolated_settings):
     """Sample pipeline writes artifacts to a date/run-specific artifact path."""
-    settings = Settings.load()
-    settings.app.output_dir = str(tmp_path / "outputs")
+    settings = isolated_settings
 
     result = run_pipeline(RunMode.SAMPLE, settings)
 
@@ -149,6 +154,11 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_pat
     market_path = Path(result.run_metadata.output_paths["market_snapshots"])
     calendar_path = Path(result.run_metadata.output_paths["calendar_events"])
     brief_draft_path = Path(result.run_metadata.output_paths["brief_draft"])
+    chart_candidates_path = Path(result.run_metadata.output_paths["chart_candidates"])
+    chart_plan_path = Path(result.run_metadata.output_paths["chart_plan"])
+    stable_html_path = Path(settings.app.output_dir) / "samples" / "sample_brief.html"
+    stable_text_path = Path(settings.app.output_dir) / "samples" / "sample_brief.txt"
+    stable_chart_path = Path(settings.app.output_dir) / "samples" / "sample_chart.png"
 
     for path in (
         html_path,
@@ -161,9 +171,11 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_pat
         market_path,
         calendar_path,
         brief_draft_path,
+        chart_candidates_path,
+        chart_plan_path,
     ):
         assert path.exists()
-        assert path.parent.parent.parent.name == "runs"
+        assert path.parent.parent.parent.name == "samples"
 
     assert html_path.name == "brief.html"
     assert text_path.name == "brief.txt"
@@ -173,7 +185,10 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_pat
     assert re.fullmatch(r"\d{8}_\d{6}_sample", result.run_metadata.run_id)
     assert evidence_path.parent.name == result.run_metadata.run_id
     assert evidence_path.parent.parent.name == result.run_metadata.data_cutoff_at.strftime("%Y-%m-%d")
-    assert evidence_path.parent.parent.parent.name == "runs"
+    assert evidence_path.parent.parent.parent.name == "samples"
+    assert stable_html_path.exists()
+    assert stable_text_path.exists()
+    assert stable_chart_path.exists()
 
     cards = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert isinstance(cards, list)
@@ -181,8 +196,8 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_pat
     assert all("id" in card for card in cards)
 
 
-def test_pipeline_uses_data_cutoff_override(mock_writer):
-    settings = Settings.load()
+def test_pipeline_uses_data_cutoff_override(mock_writer, isolated_settings):
+    settings = isolated_settings
     override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
 
     result = run_pipeline(RunMode.SAMPLE, settings, data_cutoff=override)
@@ -190,8 +205,8 @@ def test_pipeline_uses_data_cutoff_override(mock_writer):
     assert result.run_metadata.data_cutoff_at == override
 
 
-def test_pipeline_progress_callback_reports_steps(mock_writer):
-    settings = Settings.load()
+def test_pipeline_progress_callback_reports_steps(mock_writer, isolated_settings):
+    settings = isolated_settings
     events: list[str] = []
 
     result = run_pipeline(RunMode.SAMPLE, settings, progress=events.append)
@@ -201,8 +216,8 @@ def test_pipeline_progress_callback_reports_steps(mock_writer):
     assert events[-1] == "Record metadata"
 
 
-def test_pipeline_records_step_and_scout_timings(mock_writer):
-    settings = Settings.load()
+def test_pipeline_records_step_and_scout_timings(mock_writer, isolated_settings):
+    settings = isolated_settings
 
     result = run_pipeline(RunMode.SAMPLE, settings)
 
@@ -214,8 +229,8 @@ def test_pipeline_records_step_and_scout_timings(mock_writer):
     assert all(isinstance(t["seconds"], float) for t in timings)
 
 
-def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer):
-    settings = Settings.load()
+def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer, isolated_settings):
+    settings = isolated_settings
     override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
     snapshot = MarketSnapshot(
         as_of=override,
@@ -241,10 +256,11 @@ def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer):
 
     assert result.run_metadata.data_cutoff_at == override
     mock_fetch.assert_called_once_with(settings, {}, override)
+    assert "/dry-runs/" in result.run_metadata.output_paths["market_snapshots"]
 
 
-def test_dry_run_pipeline_calls_calendar_provider_with_cutoff_date(mock_writer):
-    settings = Settings.load()
+def test_dry_run_pipeline_calls_calendar_provider_with_cutoff_date(mock_writer, isolated_settings):
+    settings = isolated_settings
     override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
 
     with patch("app.pipeline.load_vol_params", return_value={}), \
@@ -264,7 +280,7 @@ def test_chart_output_path_sample_uses_tracked_artifact():
 
     path = _chart_output_path(RunMode.SAMPLE, settings, data_cutoff)
 
-    assert path == f"{settings.app.output_dir}/sample_chart.png"
+    assert path == f"{settings.app.output_dir}/samples/sample_chart.png"
 
 
 def test_chart_output_path_live_uses_data_cutoff_timestamp():
@@ -273,7 +289,7 @@ def test_chart_output_path_live_uses_data_cutoff_timestamp():
 
     path = _chart_output_path(RunMode.LIVE, settings, data_cutoff)
 
-    assert path == f"{settings.app.output_dir}/chart_20260509_0830.png"
+    assert path == f"{settings.app.output_dir}/runs/chart_20260509_0830.png"
 
 
 def test_chart_output_path_dry_run_uses_data_cutoff_timestamp():
@@ -282,7 +298,7 @@ def test_chart_output_path_dry_run_uses_data_cutoff_timestamp():
 
     path = _chart_output_path(RunMode.DRY_RUN, settings, data_cutoff)
 
-    assert path == f"{settings.app.output_dir}/chart_20260509_0645.png"
+    assert path == f"{settings.app.output_dir}/dry-runs/chart_20260509_0645.png"
 
 
 def test_data_cutoff_override_naive_uses_configured_timezone():

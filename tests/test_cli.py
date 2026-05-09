@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
+from os import environ
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -14,12 +16,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _run(mode: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "app.main", "--mode", mode],
-        capture_output=True,
-        text=True,
-        cwd=PROJECT_ROOT,
-    )
+    with tempfile.TemporaryDirectory(prefix="daily-macro-cli-") as tmp_dir:
+        env = dict(environ)
+        env["OUTPUT_DIR"] = str(Path(tmp_dir) / "outputs")
+        return subprocess.run(
+            [sys.executable, "-m", "app.main", "--mode", mode],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            env=env,
+        )
 
 
 def test_invalid_mode_exits_nonzero():

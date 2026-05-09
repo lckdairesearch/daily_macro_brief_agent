@@ -72,7 +72,7 @@ def run_pipeline(
     _step_started = perf_counter()
     data_cutoff = _data_cutoff(settings, tz, data_cutoff)
     run_id = _run_id(mode, started_at)
-    run_output_dir = _run_output_dir(settings, data_cutoff, run_id)
+    run_output_dir = _run_output_dir(settings, mode, data_cutoff, run_id)
     llm_cfg = settings.sources.get("llm", {})
     llm_provider = llm_cfg.get("provider", "litellm")
     llm_model = llm_cfg.get("synthesis_model", "")
@@ -144,7 +144,7 @@ def run_pipeline(
     _step_started = perf_counter()
     from app.synthesis.deduper import deduplicate
     deduped_evidence = deduplicate(evidence_cards)
-    _save_evidence_cards(settings, data_cutoff, run_id, deduped_evidence, output_paths)
+    _save_evidence_cards(settings, mode, data_cutoff, run_id, deduped_evidence, output_paths)
     _record_timing(timings, "Deduplicate evidence", _step_started)
 
     # --- Step 7: Rank evidence and events ---
@@ -331,6 +331,8 @@ def run_pipeline(
             )
             output_paths.update(render_paths)
             _save_rendered_html_artifact(run_output_dir, output_paths)
+            if mode == RunMode.SAMPLE:
+                _save_sample_alias_artifacts(run_output_dir, output_paths)
         except Exception as render_exc:
             _log.warning("Brief rendering failed: %s", render_exc)
             warnings.append(f"Brief rendering failed: {render_exc}")
@@ -434,9 +436,9 @@ def _chart_output_path(
 ) -> str:
     """Return deterministic sample chart path or timestamped run-scoped chart path."""
     if run_id is not None:
-        output_dir = _run_output_dir(settings, data_cutoff, run_id)
+        output_dir = _run_output_dir(settings, mode, data_cutoff, run_id)
     else:
-        output_dir = Path(settings.app.output_dir)
+        output_dir = _artifact_root_dir(settings, mode)
     if mode == RunMode.SAMPLE:
         return str(output_dir / "sample_chart.png")
 
@@ -444,9 +446,19 @@ def _chart_output_path(
     return str(output_dir / f"chart_{timestamp}.png")
 
 
-def _run_output_dir(settings: "Settings", data_cutoff: datetime, run_id: str) -> Path:
+def _artifact_root_dir(settings: "Settings", mode: RunMode) -> Path:
+    """Return the mode-specific artifact root directory."""
+    root = Path(settings.app.output_dir)
+    if mode == RunMode.SAMPLE:
+        return root / "samples"
+    if mode == RunMode.DRY_RUN:
+        return root / "dry-runs"
+    return root / "runs"
+
+
+def _run_output_dir(settings: "Settings", mode: RunMode, data_cutoff: datetime, run_id: str) -> Path:
     """Return the per-run artifact directory."""
-    return Path(settings.app.output_dir) / "runs" / data_cutoff.strftime("%Y-%m-%d") / run_id
+    return _artifact_root_dir(settings, mode) / data_cutoff.strftime("%Y-%m-%d") / run_id
 
 
 def _run_id(mode: RunMode, started_at: datetime) -> str:
@@ -457,20 +469,21 @@ def _run_id(mode: RunMode, started_at: datetime) -> str:
     return run_id
 
 
-def _evidence_output_path(settings: "Settings", data_cutoff: datetime, run_id: str) -> Path:
+def _evidence_output_path(settings: "Settings", mode: RunMode, data_cutoff: datetime, run_id: str) -> Path:
     """Return the per-run path for persisted evidence cards."""
-    return _run_output_dir(settings, data_cutoff, run_id) / "evidence_cards.json"
+    return _run_output_dir(settings, mode, data_cutoff, run_id) / "evidence_cards.json"
 
 
 def _save_evidence_cards(
     settings: "Settings",
+    mode: RunMode,
     data_cutoff: datetime,
     run_id: str,
     evidence_cards: list[EvidenceCard],
     output_paths: dict[str, str],
 ) -> None:
     """Persist deduplicated evidence cards for later review."""
-    evidence_path = _evidence_output_path(settings, data_cutoff, run_id)
+    evidence_path = _evidence_output_path(settings, mode, data_cutoff, run_id)
     evidence_path.parent.mkdir(parents=True, exist_ok=True)
     evidence_path.write_text(
         json.dumps(
@@ -482,6 +495,28 @@ def _save_evidence_cards(
         encoding="utf-8",
     )
     output_paths["evidence_cards"] = str(evidence_path)
+
+
+def _save_sample_alias_artifacts(
+    run_output_dir: Path,
+    output_paths: dict[str, str],
+) -> None:
+    """Refresh stable sample artifact paths for reviewers."""
+    sample_root = run_output_dir.parent.parent
+    aliases = {
+        "sample_brief.html": output_paths.get("html"),
+        "sample_brief.txt": output_paths.get("text"),
+        "sample_chart.png": output_paths.get("chart"),
+    }
+    sample_root.mkdir(parents=True, exist_ok=True)
+    for filename, src in aliases.items():
+        if not src:
+            continue
+        src_path = Path(src)
+        if not src_path.exists():
+            continue
+        dst_path = sample_root / filename
+        dst_path.write_bytes(src_path.read_bytes())
 
 
 def _save_json_artifact(path: Path, payload: object, output_paths: dict[str, str], key: str) -> None:

@@ -20,7 +20,7 @@ Sample mode can run without live market credentials. Add Postmark credentials wh
 ```bash
 cp .env.example .env      # add at minimum: OPENAI_API_KEY
 make install
-make run-sample           # produces outputs/runs/YYYY-MM-DD/<run_id>/...
+make run-sample           # produces outputs/samples/YYYY-MM-DD/<run_id>/...
 make test
 ```
 
@@ -59,7 +59,15 @@ Validation warnings appear as a banner at the top of the email. Production email
 
 GitHub Actions runs `.github/workflows/daily_brief.yml` on cron `15 23 * * 0-4` (07:15 HKT Mon–Fri). Secrets must be configured in the repository settings. Manual dispatch is supported via `workflow_dispatch`.
 
-Output artifacts are saved to `outputs/runs/YYYY-MM-DD/<run_id>/` for each run.
+Output artifacts are saved by mode:
+- `sample` -> `outputs/samples/YYYY-MM-DD/<run_id>/`
+- `dry-run` -> `outputs/dry-runs/YYYY-MM-DD/<run_id>/`
+- `live` -> `outputs/runs/YYYY-MM-DD/<run_id>/`
+
+Stable reviewer-facing sample files are refreshed at:
+- `outputs/samples/sample_brief.html`
+- `outputs/samples/sample_brief.txt`
+- `outputs/samples/sample_chart.png`
 
 The rendered overnight dashboard shows a fixed configured core set first, then appends a capped number of additional instruments whose 1D moves are significant enough to matter.
 

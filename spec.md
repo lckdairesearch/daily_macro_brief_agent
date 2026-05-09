@@ -151,7 +151,7 @@ Format:
 - One generated or scraped chart.
 - Caption no more than 30 words.
 - Must be tied to one of the day’s key themes.
-- Save as `outputs/sample_chart.png` for sample run.
+- Save as `outputs/samples/sample_chart.png` for sample run.
 
 Initial chart candidates:
 
@@ -435,7 +435,7 @@ The canonical repository structure including `app/llm/`, `tests/fixtures/`, and 
 
 V1 is acceptable when:
 
-- `make run-sample` generates `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
+- `make run-sample` generates `outputs/samples/sample_brief.html`, `outputs/samples/sample_brief.txt`, and `outputs/samples/sample_chart.png`.
 - `make test` passes.
 - The brief includes all six required sections.
 - Market numbers in live mode come from APIs/scraping/cached data, not LLM generation.

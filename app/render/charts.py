@@ -35,7 +35,7 @@ def build_chart(
     draft: BriefDraft,
     chart_plan: ChartPlan,
     settings: "Settings",
-    output_path: str = "outputs/sample_chart.png",
+    output_path: str = "outputs/samples/sample_chart.png",
     sample_mode: bool = True,
     as_of: datetime | None = None,
 ) -> ChartSpec:

@@ -114,7 +114,7 @@ Behavior:
 - Uses fixture calendar data.
 - Uses fixture source/evidence items.
 - Uses deterministic sample-mode brief writing and does not require live credentials or an OpenAI key.
-- Produces `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
+- Produces `outputs/samples/sample_brief.html`, `outputs/samples/sample_brief.txt`, and `outputs/samples/sample_chart.png`.
 - Sends test email to `POSTMARK_MAINTAINER_EMAIL` only when Postmark credentials are present.
 
 Suggested command:
@@ -1314,7 +1314,7 @@ Role:
 
 - Select or build one chart worth seeing.
 - Use real or fixture data.
-- Save chart to `outputs/sample_chart.png` or run-specific output path.
+- Save chart to `outputs/samples/sample_chart.png` or a mode-specific run output path.
 
 V1 charting:
 

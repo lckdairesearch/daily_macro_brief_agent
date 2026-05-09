@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from app import settings as settings_module
@@ -44,7 +45,7 @@ def _settings_without_credentials() -> Settings:
         cache_dir=None,
         output_dir=None,
     )
-    return Settings(
+    settings = Settings(
         app=AppConfig(**_load_yaml(CONFIG_DIR / "app.yaml")),
         creds=creds,
         portfolio=_load_yaml(CONFIG_DIR / "portfolio.yaml"),
@@ -53,6 +54,8 @@ def _settings_without_credentials() -> Settings:
         chart_templates=_load_yaml(CONFIG_DIR / "chart_templates.yaml"),
         config_dir=CONFIG_DIR,
     )
+    settings.app.output_dir = tempfile.mkdtemp(prefix="daily-macro-sample-outputs-")
+    return settings
 
 
 def test_sample_mode_validation_does_not_require_openai_key():
@@ -142,14 +145,16 @@ def test_sample_cli_runs_without_openai_key_or_live_llm():
         }:
             env[name.upper()] = ""
     env["ENABLE_EMAIL_DELIVERY"] = "false"
+    with tempfile.TemporaryDirectory(prefix="daily-macro-sample-cli-") as tmp_dir:
+        env["OUTPUT_DIR"] = str(Path(tmp_dir) / "outputs")
 
-    result = subprocess.run(
-        [sys.executable, "-m", "app.main", "--mode", "sample"],
-        capture_output=True,
-        text=True,
-        cwd=PROJECT_ROOT,
-        env=env,
-    )
+        result = subprocess.run(
+            [sys.executable, "-m", "app.main", "--mode", "sample"],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            env=env,
+        )
 
     assert result.returncode == 0, result.stderr
     assert "[OK]" in result.stdout
