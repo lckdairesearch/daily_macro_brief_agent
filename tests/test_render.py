@@ -28,7 +28,7 @@ from app.render.chart_codegen import (
     execute_chart_code,
     select_instruments,
 )
-from app.render.chart_selector import build_chart_candidates, shortlist_chart_candidates
+from app.render.chart_selector import build_chart_candidates, select_chart_plan, shortlist_chart_candidates
 from app.render.charts import _hardcoded_fallback
 
 _AS_OF = datetime(2026, 5, 9, 6, 45, tzinfo=timezone.utc)
@@ -84,6 +84,7 @@ def _make_draft(supporting_market_ids: list[str] | None = None, with_calendar: b
                 country_or_region="US",
                 event_name="FOMC Minutes",
                 importance=3,
+                brief_importance=3,
                 source="fixture",
             )
         ]
@@ -312,7 +313,7 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
             _hidden_params={},
         )
 
-    monkeypatch.setattr(provider_mod.litellm, "completion", _fake_completion)
+    monkeypatch.setattr(provider_mod.litellm_compat, "completion", _fake_completion)
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
@@ -332,6 +333,40 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
     assert spec.code_generated is True
 
 
+def test_build_chart_prefers_chart_plan_caption(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import app.llm.provider as provider_mod
+    from app.render.charts import build_chart
+
+    viz_code = _make_fake_viz_code()
+
+    def _fake_completion(**kwargs):
+        return SimpleNamespace(
+            model="openai/gpt-4o",
+            choices=[SimpleNamespace(message=SimpleNamespace(content=viz_code))],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=100, total_tokens=110),
+            _hidden_params={},
+        )
+
+    monkeypatch.setattr(provider_mod.litellm_compat, "completion", _fake_completion)
+
+    settings = _make_settings()
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    chart_plan = _make_chart_plan(caption="This caption comes from the selected chart plan and should win.")
+    output = str(tmp_path / "chart.png")
+
+    spec = build_chart(
+        draft,
+        chart_plan=chart_plan,
+        settings=settings,
+        output_path=output,
+        sample_mode=True,
+        as_of=_AS_OF,
+    )
+    assert spec.caption == chart_plan.caption
+
+
 def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
     import app.llm.provider as provider_mod
     from app.render.charts import build_chart
@@ -339,7 +374,7 @@ def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
     def _bad_completion(**kwargs):
         raise RuntimeError("LLM unavailable")
 
-    monkeypatch.setattr(provider_mod.litellm, "completion", _bad_completion)
+    monkeypatch.setattr(provider_mod.litellm_compat, "completion", _bad_completion)
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
@@ -377,6 +412,7 @@ def test_chart_codegen_prompt_aligns_one_day_bar_chart_dates():
     assert "chart_window == \"1m\"" in prompt.text
     assert "Do not choose a different window or a different series" in prompt.text
     assert "missing dates across series are acceptable" in prompt.text
+    assert "Ignore the `events` variable entirely" in prompt.text
 
 
 def test_chart_selector_candidates_include_daily_and_reinforcing_pair():
@@ -416,6 +452,44 @@ def test_chart_selector_prompt_exists_and_restricts_choice_to_shortlist():
     prompt = load_prompt("chart_selector")
     assert "Pick exactly one candidate from the supplied shortlist" in prompt.text
     assert "`candidate_id` must match one of the supplied `chart_candidates`" in prompt.text
+
+
+def test_chart_selector_falls_back_when_llm_selection_errors(monkeypatch):
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    settings = _make_settings()
+    settings.portfolio = {
+        "core_positions": [],
+        "tactical_overlays": [],
+        "macro_sensitivities": [],
+    }
+    ranked_context = SimpleNamespace(dashboard_rows=draft.overnight_dashboard)
+
+    def fake_fetch_chart_series(*, instruments, lookback_days, as_of, settings, sample_mode):
+        return fetch_chart_series(
+            instruments,
+            lookback_days=lookback_days,
+            as_of=as_of,
+            sample_mode=True,
+        )
+
+    def fake_generate_structured(self, *, system_prompt, user_payload, schema):
+        raise RuntimeError("insufficient_quota")
+
+    monkeypatch.setattr("app.render.chart_selector.fetch_chart_series", fake_fetch_chart_series)
+    monkeypatch.setattr("app.render.chart_selector.LLMClient.generate_structured", fake_generate_structured)
+
+    plan, shortlist, usage = select_chart_plan(
+        ranked_context=ranked_context,
+        brief_draft=draft,
+        settings=settings,
+        as_of=_AS_OF,
+        sample_mode=False,
+    )
+
+    assert usage is None
+    assert len(shortlist) > 1
+    assert plan.selection_method == ChartSelectionMethod.DETERMINISTIC_FALLBACK
+    assert plan.title == shortlist[0].title
 
 
 # ---------------------------------------------------------------------------
@@ -514,6 +588,42 @@ def test_build_render_context_does_not_duplicate_significant_core_assets():
     assert assets.count("US 10Y Yield") == 1
 
 
+def test_build_render_context_pairs_calendar_events_for_two_column_layout():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    second = CalendarEvent(
+        event_time_local=datetime(2026, 5, 9, 15, 0, tzinfo=timezone.utc),
+        event_time_hkt=datetime(2026, 5, 9, 15, 0, tzinfo=timezone.utc),
+        session="US",
+        country_or_region="US",
+        event_name="Jobless Claims",
+        importance=2,
+        brief_importance=2,
+        source="fixture",
+    )
+    third = CalendarEvent(
+        event_time_local=datetime(2026, 5, 9, 16, 0, tzinfo=timezone.utc),
+        event_time_hkt=datetime(2026, 5, 9, 16, 0, tzinfo=timezone.utc),
+        session="US",
+        country_or_region="US",
+        event_name="Retail Sales",
+        importance=3,
+        brief_importance=3,
+        source="fixture",
+    )
+    draft = _make_draft(with_calendar=True).model_copy(
+        update={"todays_calendar": _make_draft(with_calendar=True).todays_calendar + [second, third]}
+    )
+
+    ctx = build_render_context(draft, settings, vol_params={})
+    assert len(ctx["calendar_event_rows"]) == 2
+    assert ctx["calendar_event_rows"][0][0]["event_name"] == "FOMC Minutes"
+    assert ctx["calendar_event_rows"][1][0]["event_name"] == "Jobless Claims"
+    assert ctx["calendar_event_rows"][0][1]["event_name"] == "Retail Sales"
+    assert ctx["calendar_event_rows"][1][1] is None
+
+
 def test_render_brief_excludes_filtered_dashboard_assets(tmp_path):
     from app.render.email import render_brief
 
@@ -574,6 +684,39 @@ def test_render_brief_writes_html_and_text(tmp_path):
     assert "cid:chart@brief" in html
     assert str(chart_path) in text
     assert "OVERNIGHT BOOK IMPACT" in text
+
+
+def test_render_brief_calendar_uses_two_column_table_and_inline_marker(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    extra_event = CalendarEvent(
+        event_time_local=datetime(2026, 5, 9, 15, 0, tzinfo=timezone.utc),
+        event_time_hkt=datetime(2026, 5, 9, 15, 0, tzinfo=timezone.utc),
+        session="US",
+        country_or_region="US",
+        event_name="Jobless Claims",
+        importance=2,
+        brief_importance=2,
+        source="fixture",
+    )
+    draft = _make_draft(with_calendar=True).model_copy(
+        update={"todays_calendar": _make_draft(with_calendar=True).todays_calendar + [extra_event]}
+    )
+
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+
+    assert 'class="calendar-table"' in html
+    assert "All times indicated are in HKT." in html
+    assert '<span class="cal-marker">●</span>' in html
+    assert "::before" not in html
+
+
+def test_runtime_template_sets_explicit_calendar_event_font_size():
+    template = Path("app/render/templates/brief_template.html").read_text(encoding="utf-8")
+    assert ".cal-event" in template
+    assert "font-size: 13px" in template
 
 
 def test_warnings_do_not_render_in_html_or_text(tmp_path):

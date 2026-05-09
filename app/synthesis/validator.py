@@ -147,6 +147,10 @@ def _check_word_limits(draft: BriefDraft, result: ValidationResult) -> None:
 
     if draft.chart and draft.chart.caption:
         wc = _word_count(draft.chart.caption)
+        if wc < 10:
+            result.warnings.append(
+                f"chart caption is {wc} words (minimum 10)"
+            )
         if wc > 30:
             result.warnings.append(
                 f"chart caption is {wc} words (limit 30)"

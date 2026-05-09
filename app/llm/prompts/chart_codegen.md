@@ -7,8 +7,7 @@ The chart is embedded in an HTML email. It must be clean, professional, and imme
 ## Hard constraints
 
 - Use ONLY the data in the injected variables below. Never invent prices, dates, or event labels.
-- Annotate ONLY entries from the `events` list. Do not add "Sharp move", outlier markers, or any annotation you derive from the price data.
-- Do NOT truncate event labels. Print the full `lbl` string exactly as provided — never slice it with `[:n]` or any other truncation.
+- Do NOT annotate calendar events or context events on the plot. Ignore the `events` variable entirely.
 - Do NOT call `plt.show()`. Save with the exact pattern shown in the **Output** section.
 - Restrict imports to: `matplotlib.pyplot`, `matplotlib.dates`, `matplotlib.ticker`, `datetime`, `numpy` (arithmetic only if needed).
 - Return ONLY Python code. No markdown fences, no explanations, no inline comments.
@@ -22,7 +21,7 @@ series_dates  # dict[str, list[str]] — {display_name: own ISO dates, only trad
 series        # dict[str, list[float]] — {display_name: [close_values aligned to series_dates[name]]}
 units         # dict[str, str] — {display_name: "price" | "%" | "bps" | "index"}
 asset_classes # dict[str, str] — {display_name: "equity"|"rates"|"fx"|"commodity"|"volatility"|"credit"|"crypto"}
-events        # list[dict] — [{date: "YYYY-MM-DD", label: str, source: "calendar"|"context"}]
+events        # list[dict] — present for compatibility only; ignore it and do not annotate from it
 title         # str — chart title
 output_path   # str — file path to save the PNG
 ```
@@ -55,7 +54,7 @@ The selector has already chosen the window and the series. Your job is to render
 - Assume `chart_type == "line"` for the code you generate here.
 - Plot the selected series only. Do not add extra series and do not drop one of the selected series.
 
-For **line charts**: missing dates across series are acceptable. Slice each series to the chosen window by taking the last N entries of `series_dates[name]` and `series[name]` before plotting. Keep the sliced dates in a local variable (e.g. `plot_dates`) — use it for axis bounds, ticks, and event lookups in place of the full `dates` list.
+For **line charts**: missing dates across series are acceptable. Slice each series to the chosen window by taking the last N entries of `series_dates[name]` and `series[name]` before plotting. Keep the sliced dates in a local variable (e.g. `plot_dates`) — use it for axis bounds and ticks in place of the full `dates` list.
 
 ## Axis assignment — scale-based, NOT unit-based
 
@@ -90,7 +89,11 @@ COLORS = {
 }
 ```
 
-Plot all lines with `linewidth=2.0`, no markers.
+Plot all lines with `linewidth=2.0`. Avoid full-series markers.
+
+To reduce visual artefacts:
+- Add a small horizontal margin with `ax.margins(x=0.03)` so the first and last observations are not glued to the frame.
+- If two series on the same axis have nearly identical first or last values, add small hollow endpoint markers only at those overlapping endpoints so both series remain readable.
 
 ## Plotting lines
 
@@ -121,33 +124,7 @@ else:
 plt.setp(ax.xaxis.get_majorticklabels(), rotation=0, ha='center', fontsize=8)
 ```
 
-Do NOT use `AutoDateLocator`, `ConciseDateFormatter`, or any other date formatter. Use `plot_date_objs` (not the full `dates`) for event annotation lookups too.
-
-## Event annotations
-
-Pre-group events by date, then draw one dashed line and stacked labels per date:
-
-```python
-from collections import defaultdict
-in_window = [e for e in events if plot_dates[0] <= e["date"] <= plot_dates[-1]]
-in_window = sorted(in_window, key=lambda e: e["source"] != "calendar")[:3]
-by_date = defaultdict(list)
-for e in in_window: by_date[e["date"]].append(e["label"])
-trans = ax.get_xaxis_transform()
-total_span = max((plot_date_objs[-1] - plot_date_objs[0]).days, 1)
-prev_x = None
-for date_str in sorted(by_date):
-    labels = by_date[date_str]
-    idx = min(range(len(plot_dates)), key=lambda k: abs((datetime.date.fromisoformat(plot_dates[k]) - datetime.date.fromisoformat(date_str)).days))
-    x_pos = plot_date_objs[idx]
-    y_ann = 0.93 if prev_x is None or abs((x_pos - prev_x).days) >= 5 else 0.83
-    ha = "right" if (x_pos - plot_date_objs[0]).days / total_span > 0.5 else "left"
-    ax.axvline(x_pos, linestyle="--", color="#94A3B8", linewidth=0.8, alpha=0.7)
-    for lbl in labels: ax.text(x_pos, y_ann, lbl, transform=trans, fontsize=7, color="#64748B", rotation=0, ha=ha, va="top"); y_ann -= 0.09
-    prev_x = x_pos
-```
-
-Do not add any annotations beyond what is in `events`. Do not invent labels or markers from the price data.
+Do NOT use `AutoDateLocator`, `ConciseDateFormatter`, or any other date formatter.
 
 ## Legend and title
 

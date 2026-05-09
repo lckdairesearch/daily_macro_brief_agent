@@ -73,9 +73,7 @@ def build_chart(
         for iid in series_data
     }
 
-    series_dates = {r["date"] for rows in series_data.values() for r in rows}
-    events = _extract_events(draft, series_dates)
-    caption = draft.chart.caption if draft.chart else "Market overview"
+    caption = chart_plan.caption or (draft.chart.caption if draft.chart else "Macro cross-asset setup into the session.")
 
     error_context = ""
     for attempt in range(2):
@@ -86,7 +84,7 @@ def build_chart(
                 display_names=display_names,
                 asset_classes=asset_classes,
                 units=units,
-                events=events,
+                events=[],
                 output_path=output_path,
                 settings=settings,
                 error_context=error_context,
@@ -111,21 +109,6 @@ def build_chart(
 
     _log.warning("build_chart: both attempts failed — using hardcoded fallback")
     return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
-
-
-def _extract_events(draft: BriefDraft, series_dates: set[str]) -> list[dict]:
-    events = []
-    for evt in draft.todays_calendar:
-        date_str = evt.event_time_hkt.date().isoformat()
-        if date_str in series_dates and evt.importance >= 2:
-            events.append({
-                "date": date_str,
-                "label": evt.event_name[:20],
-                "source": "calendar",
-            })
-    return events
-
-
 def _hardcoded_fallback(
     draft: BriefDraft,
     output_path: str,

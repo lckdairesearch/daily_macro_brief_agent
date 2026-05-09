@@ -307,6 +307,14 @@ def test_chart_caption_over_30_words_is_warning():
     assert any("30" in w for w in result.warnings)
 
 
+def test_chart_caption_under_10_words_is_warning():
+    short_caption = "too short for this chart"
+    chart = ChartSpec(title="t", caption=short_caption, chart_type="line", data_source="f")
+    draft = _valid_draft(chart=chart)
+    result = validate_brief(draft)
+    assert any("minimum 10" in w for w in result.warnings)
+
+
 # ---------------------------------------------------------------------------
 # Minor: so_what present
 # ---------------------------------------------------------------------------
