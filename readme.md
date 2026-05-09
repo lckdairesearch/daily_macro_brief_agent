@@ -81,7 +81,3 @@ make lint     # ruff / mypy
 | `plan.md` | Implementation steps, agent workflow, milestone map |
 | `costs.md` | Daily run cost estimates |
 | `memo/memo.md` | Design tradeoffs, assumptions, V2 path, hours spent |
-
----
-
-> **PS — Chart selection:** One chart is generated per run, tied to the day's top-ranked theme. Candidates are defined in `app/config/chart_templates.yaml` (e.g. cross-asset risk move, rates/FX divergence, gold vs real-yield proxy, VIX/MOVE stress). The ranker selects the most relevant candidate based on the day's market moves and evidence rankings. In V2, chart selection could be made fully dynamic with the LLM choosing and configuring the chart from candidates at runtime.
