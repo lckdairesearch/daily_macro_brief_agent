@@ -361,16 +361,18 @@ def test_build_payload_available_x_evidence_empty_when_no_social_cards():
     assert payload["available_x_evidence"] == []
 
 
-def test_brief_writer_prompt_mentions_so_what_diversity_and_x_radar():
+def test_brief_writer_prompt_mentions_support_first_so_what_rules():
     from app.llm.prompt_registry import clear_prompt_cache, load_prompt
 
     clear_prompt_cache()
     prompt = load_prompt("brief_writer")
 
-    assert "Treat all `three_things.so_what` and `radar_items.so_what` as one diversity pool." in prompt.text
     assert "If `available_x_evidence` is non-empty, try to include at least one radar item" in prompt.text
-    assert "Keep a professional house style, but vary sentence openings and cadence" in prompt.text
+    assert "Do not force a different implication just for variety" in prompt.text
+    assert "Keep a professional house style, but vary sentence openings, cadence, and implication phrasing" in prompt.text
+    assert "It does not need to begin with a fixed phrase." in prompt.text
     assert "`so_what` should answer: what matters for the book today or into the next event?" in prompt.text
+    assert "Macro events like payrolls, wages, CPI, or Fed communication should usually map first to rates, policy, or USD implications" in prompt.text
     assert "Radar `so_what` should answer: what does this reinforce, weaken, or change in the medium-term book thesis?" in prompt.text
 
 
