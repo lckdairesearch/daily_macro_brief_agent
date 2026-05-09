@@ -82,6 +82,12 @@ def test_parse_data_cutoff_naive_uses_app_timezone():
     assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
 
 
+def test_parse_data_cutoff_bare_date_uses_default_morning_cutoff():
+    cutoff = _parse_data_cutoff("2026-05-08", ZoneInfo("Asia/Hong_Kong"))
+
+    assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+
+
 def test_parse_data_cutoff_zulu_converts_to_app_timezone():
     cutoff = _parse_data_cutoff("2026-05-07T22:45:00Z", ZoneInfo("Asia/Hong_Kong"))
 

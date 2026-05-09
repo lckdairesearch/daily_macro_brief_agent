@@ -273,7 +273,7 @@ def _db_fetch_daily_ohlcv(
 
     # ts_event index is DatetimeIndex[UTC] — reset to access as column
     df = df.reset_index()
-    df["_date"] = df["ts_event"].dt.normalize().dt.strftime("%Y-%m-%d")
+    df["_date"] = df["ts_event"].map(_db_observation_date)
 
     # Deduplicate: for each date keep the highest-volume row (primary publisher)
     df_dedup = df.loc[df.groupby("_date")["volume"].idxmax()]
@@ -287,6 +287,17 @@ def _db_fetch_daily_ohlcv(
 
     rows.sort(key=lambda r: r["date"])
     return rows
+
+
+def _db_observation_date(ts_event: datetime) -> str:
+    """
+    Map Databento ohlcv-1d bar timestamps to their trading/session date.
+
+    Current live probes show Databento daily bars for the covered datasets are labeled at
+    22:00 UTC, the start of the next bar interval. Shifting by two hours preserves the
+    intended session date for the overnight brief without changing close values.
+    """
+    return (ts_event + timedelta(hours=2)).date().isoformat()
 
 
 def _fgbl_price_to_yield_pct(price: float, coupon: float = 6.0, tenor: int = 10) -> float:

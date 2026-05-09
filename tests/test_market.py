@@ -306,7 +306,10 @@ def test_fred_fetch_series_no_data_before_range():
 
 def _make_ohlcv_df(entries: list[dict]) -> pd.DataFrame:
     """Build a DataFrame matching the structure returned by Databento's to_df()."""
-    ts_events = pd.to_datetime([e["date"] + "T00:00:00Z" for e in entries], utc=True)
+    ts_events = pd.to_datetime(
+        [e.get("ts_event", e["date"] + "T00:00:00Z") for e in entries],
+        utc=True,
+    )
     df = pd.DataFrame(
         {
             "close": [e["close"] for e in entries],
@@ -355,9 +358,9 @@ def test_db_fetch_daily_deduplication(db_client_mock):
     from app.data.market import _db_fetch_daily_ohlcv
 
     entries = [
-        {"date": "2026-05-07", "close": 5000.0, "volume": 10000},  # primary (higher vol)
-        {"date": "2026-05-07", "close": 5001.0, "volume": 500},    # secondary
-        {"date": "2026-05-08", "close": 5010.0, "volume": 12000},
+        {"date": "2026-05-07", "ts_event": "2026-05-06T22:00:00Z", "close": 5000.0, "volume": 10000},
+        {"date": "2026-05-07", "ts_event": "2026-05-06T22:00:00Z", "close": 5001.0, "volume": 500},
+        {"date": "2026-05-08", "ts_event": "2026-05-07T22:00:00Z", "close": 5010.0, "volume": 12000},
     ]
     store = MagicMock()
     store.to_df.return_value = _make_ohlcv_df(entries)
@@ -368,13 +371,15 @@ def test_db_fetch_daily_deduplication(db_client_mock):
 
     assert len(rows) == 2
     assert rows[0]["close"] == pytest.approx(5000.0)  # high-volume row for 2026-05-07
+    assert rows[0]["date"] == "2026-05-07"
+    assert rows[1]["date"] == "2026-05-08"
 
 
 def test_db_fetch_daily_price_to_yield(db_client_mock):
     """price_to_yield=True converts FGBL close price to YTM percent."""
     from app.data.market import _db_fetch_daily_ohlcv
 
-    entries = [{"date": "2026-05-08", "close": 130.6, "volume": 8000}]
+    entries = [{"date": "2026-05-08", "ts_event": "2026-05-07T22:00:00Z", "close": 130.6, "volume": 8000}]
     store = MagicMock()
     store.to_df.return_value = _make_ohlcv_df(entries)
     db_client_mock.timeseries.get_range.return_value = store
@@ -386,6 +391,25 @@ def test_db_fetch_daily_price_to_yield(db_client_mock):
 
     assert len(rows) == 1
     assert 2.0 < rows[0]["close"] < 3.0  # ≈2.5% yield
+    assert rows[0]["date"] == "2026-05-08"
+
+
+def test_db_fetch_daily_maps_22utc_bar_to_trading_date(db_client_mock):
+    """Databento 22:00 UTC daily bars should map to the following session date."""
+    from app.data.market import _db_fetch_daily_ohlcv
+
+    entries = [
+        {"date": "2026-05-07", "ts_event": "2026-05-06T22:00:00Z", "close": 70.0, "volume": 10000},
+        {"date": "2026-05-08", "ts_event": "2026-05-07T22:00:00Z", "close": 72.0, "volume": 12000},
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+
+    with patch("databento.Historical", return_value=db_client_mock):
+        rows = _db_fetch_daily_ohlcv("GLBX.MDP3", "CL.c.0", "key", _START, _END)
+
+    assert [row["date"] for row in rows] == ["2026-05-07", "2026-05-08"]
 
 
 def test_db_fetch_daily_schema_is_ohlcv_1d(db_client_mock):

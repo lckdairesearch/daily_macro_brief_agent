@@ -28,7 +28,8 @@ def main() -> None:
         "--data-cutoff",
         help=(
             "Optional data cutoff datetime. Naive values are interpreted in the configured "
-            "app timezone. Examples: 2026-05-08T06:45, '2026-05-08 06:45', "
+            "app timezone. A bare date uses the configured morning cutoff time. "
+            "Examples: 2026-05-08, 2026-05-08T06:45, '2026-05-08 06:45', "
             "2026-05-07T22:45:00Z"
         ),
     )
@@ -37,7 +38,11 @@ def main() -> None:
 
     settings = Settings.load()
     try:
-        data_cutoff = _parse_data_cutoff(args.data_cutoff, ZoneInfo(settings.app.timezone))
+        data_cutoff = _parse_data_cutoff(
+            args.data_cutoff,
+            ZoneInfo(settings.app.timezone),
+            settings.app.data_cutoff_hkt,
+        )
     except ValueError as exc:
         parser.error(str(exc))
 
@@ -75,11 +80,26 @@ def main() -> None:
         sys.exit(1)
 
 
-def _parse_data_cutoff(value: str | None, tz: ZoneInfo) -> datetime | None:
+def _parse_data_cutoff(
+    value: str | None,
+    tz: ZoneInfo,
+    default_time_hhmm: str = "06:45",
+) -> datetime | None:
     if not value:
         return None
 
     normalized = value.strip()
+    if len(normalized) == 10:
+        try:
+            parsed_date = datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise ValueError(
+                "Invalid --data-cutoff. Use ISO format like 2026-05-08, "
+                "2026-05-08T06:45, or '2026-05-08 06:45'."
+            ) from exc
+        hour, minute = (int(part) for part in default_time_hhmm.split(":"))
+        return parsed_date.replace(hour=hour, minute=minute, second=0, microsecond=0, tzinfo=tz)
+
     if normalized.endswith("Z"):
         normalized = f"{normalized[:-1]}+00:00"
 
@@ -87,8 +107,8 @@ def _parse_data_cutoff(value: str | None, tz: ZoneInfo) -> datetime | None:
         parsed = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise ValueError(
-            "Invalid --data-cutoff. Use ISO format like 2026-05-08T06:45 "
-            "or '2026-05-08 06:45'."
+            "Invalid --data-cutoff. Use ISO format like 2026-05-08, "
+            "2026-05-08T06:45, or '2026-05-08 06:45'."
         ) from exc
 
     if parsed.tzinfo is None:
