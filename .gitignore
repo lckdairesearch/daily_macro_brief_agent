@@ -8,6 +8,7 @@ env/
 
 # Cache and data
 .cache/
+.claude/
 __pycache__/
 *.py[cod]
 *.pyo

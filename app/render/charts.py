@@ -126,7 +126,8 @@ def _extract_events(draft: BriefDraft, series_dates: set[str]) -> list[dict]:
 
 def _hardcoded_fallback(draft: BriefDraft, output_path: str) -> ChartSpec:
     """Horizontal bar chart of 1-day changes — always works without LLM."""
-    configure_matplotlib_cache_env()
+    import os
+    os.environ.setdefault("MPLBACKEND", "Agg")
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
