@@ -415,7 +415,7 @@ All `MarketSnapshot.instrument_id` values must use these strings exactly. `vol_p
 | `BTC` | Alpha Vantage | DIGITAL_CURRENCY_DAILY |
 | `US2Y` | Alpha Vantage | TREASURY_YIELD maturity=2year; change unit = bps |
 | `US10Y` | Alpha Vantage | TREASURY_YIELD maturity=10year; change unit = bps |
-| `FESX` | Databento | dataset=XEUR.EOBI; front-month futures; change unit = % |
+| `FEZ` | Alpha Vantage | TIME_SERIES_DAILY; USD-based ETF proxy; change unit = % |
 | `DE10Y` | Databento | dataset=XEUR.EOBI; yield derived from FGBL price; change unit = bps |
 | `COPPER` | Databento | dataset=GLBX.MDP3; HG front-month futures; change unit = % |
 | `VIX` | yfinance | ticker=^VIX (spot index); change unit = % |
@@ -503,7 +503,7 @@ Instrument → change unit → SD formula:
 
 | instrument_id | Change unit | SD formula |
 |---|---|---|
-| SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, SILVER, WTI, BRENT, COPPER, BTC, FESX, VIX, MOVE | `%` | `pct_change().std(ddof=1) * 100` |
+| SPY, QQQ, FEZ, UUP, USDJPY, EURUSD, USDCNH, GOLD, SILVER, WTI, BRENT, COPPER, BTC, VIX, MOVE | `%` | `pct_change().std(ddof=1) * 100` |
 | US2Y, US10Y, DE10Y, HY_OAS | `bps` | `diff().std(ddof=1) * 100` (AV/FRED return percent; multiply to get true bps) |
 
 Rules:
@@ -597,7 +597,7 @@ Each class implements `fetch_watchlist(instruments, as_of) -> list[MarketSnapsho
 
 ```python
 class AlphaVantageMarketProvider:   # SPY, QQQ, UUP, USDJPY, EURUSD, USDCNH, GOLD, SILVER, WTI, BRENT, BTC, US2Y, US10Y
-class DatabentoMarketProvider:      # FESX, DE10Y, COPPER — continuous front-month futures
+class DatabentoMarketProvider:      # DE10Y, COPPER — continuous front-month futures
 class FredMarketProvider:           # HY_OAS
 class YfinanceMarketProvider:       # VIX (^VIX), MOVE (^MOVE) — both LOW_RELIABILITY
 ```

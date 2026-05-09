@@ -890,7 +890,7 @@ def load_cached_market(cache_dir: Path) -> list[MarketSnapshot]:
 _START_PRICES: dict[str, float] = {
     "SPY": 510.0, "QQQ": 430.0, "GOLD": 3100.0, "VIX": 20.0,
     "US10Y": 4.3, "US2Y": 4.8, "USDJPY": 148.0, "EURUSD": 1.085,
-    "WTI": 72.0, "BRENT": 76.0, "FESX": 5100.0, "DE10Y": 2.5,
+    "WTI": 72.0, "BRENT": 76.0, "FEZ": 5100.0, "DE10Y": 2.5,
     "HY_OAS": 320.0, "MOVE": 100.0, "BTC": 85000.0, "COPPER": 4.5,
     "UUP": 27.0, "SILVER": 32.0, "USDCNH": 7.25,
 }

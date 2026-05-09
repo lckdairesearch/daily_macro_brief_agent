@@ -98,7 +98,7 @@ As implemented in the current codebase:
 - `app/synthesis/deduper.py` and `app/synthesis/ranker.py` implement evidence deduplication and ranking.
 - `app/synthesis/writer.py` writes a structured grounded brief through LiteLLM in live/dry-run mode and uses a deterministic fake response path in sample mode.
 - `app/synthesis/validator.py` checks required sections, unsupported market IDs, unsupported URLs/numbers, word limits, missing `so what`, and stale-data warning disclosure.
-- `app/render/` generates chart PNGs, renders HTML/text email output, and can push chart artifacts to GitHub for raw URL hosting.
+- `app/render/` generates chart PNGs, renders HTML/text email output, can push chart artifacts to GitHub for raw URL hosting, and currently renders a dashboard consisting of configured core instruments plus a capped set of additional significant movers.
 - `app/delivery.py` implements Postmark and no-op delivery providers.
 - `app/pipeline.py` runs the current end-to-end sample pipeline through data loading, discovery, dedupe, ranking, writing, validation, charting, rendering, optional delivery, and metadata. The main remaining implementation gap is live calendar wiring and reusable consensus enrichment.
 
@@ -679,7 +679,7 @@ Confirmed V1 provider assignments. The `instrument_id` column is the canonical s
 |---|---|---|---|---|
 | `SPY` | S&P 500 | Alpha Vantage | SPY | ETF proxy |
 | `QQQ` | Nasdaq 100 | Alpha Vantage | QQQ | ETF proxy |
-| `FESX` | Euro Stoxx 50 | Databento (XEUR.EOBI) | FESX front month | Actual EU session close |
+| `FEZ` | Euro Stoxx 50 | Alpha Vantage | FEZ | USD-based ETF proxy |
 | `US2Y` | US 2Y Yield | Alpha Vantage | TREASURY_YIELD maturity=2year | change unit = bps |
 | `US10Y` | US 10Y Yield | Alpha Vantage | TREASURY_YIELD maturity=10year | change unit = bps |
 | `DE10Y` | German 10Y (Bund) | Databento (XEUR.EOBI) | FGBL front month | Yield derived from FGBL price; change unit = bps |
@@ -697,7 +697,7 @@ Confirmed V1 provider assignments. The `instrument_id` column is the canonical s
 | `HY_OAS` | HY OAS | FRED | BAMLH0A0HYM2 | Free; change unit = bps |
 | `MOVE` | MOVE Index | yfinance | ^MOVE | No official API |
 
-Databento FGBL/FESX/HG wrappers use continuous front-month symbols and must guard against accidental broad downloads. FGBL is converted to an approximate 10Y Bund yield in percent before bps changes are computed.
+Databento FGBL/HG wrappers use continuous front-month symbols and must guard against accidental broad downloads. FGBL is converted to an approximate 10Y Bund yield in percent before bps changes are computed.
 
 Fixture data is used for sample/demo tests only.
 
@@ -715,7 +715,7 @@ Provider-specific classes:
 
 ```text
 AlphaVantageMarketProvider    primary — equities, FX, commodities, yields, crypto
-DatabentoMarketProvider       FESX, FGBL, HG copper — continuous front-month symbols
+DatabentoMarketProvider       FGBL, HG copper — continuous front-month symbols
 FredMarketProvider            HY OAS (BAMLH0A0HYM2)
 YfinanceMarketProvider        ^VIX (spot VIX), ^MOVE
 FixtureMarketProvider         sample/demo mode only

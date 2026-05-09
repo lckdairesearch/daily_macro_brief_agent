@@ -35,8 +35,8 @@
     },
     {
       "as_of": "2026-05-08T06:45:00+08:00",
-      "instrument_id": "FESX",
-      "display_name": "Euro Stoxx 50",
+      "instrument_id": "FEZ",
+      "display_name": "Euro Stoxx 50 (FEZ, proxy, USD-based)",
       "asset_class": "equity",
       "region": "EU",
       "last_price_or_level": 4850.0,

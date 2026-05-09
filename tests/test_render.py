@@ -397,6 +397,87 @@ def test_dashboard_render_row_flattens_small_five_day_move():
     assert row["trend_class"] == "flat"
 
 
+def test_build_render_context_filters_dashboard_to_core_plus_significant_extras():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    dashboard = [
+        _snapshot("SPY", "S&P 500 (proxy)", AssetClass.EQUITY, -1.2),
+        _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+        _snapshot("USDJPY", "USD/JPY", AssetClass.FX, 0.3),
+        _snapshot("GOLD", "Gold (spot)", AssetClass.COMMODITY, 0.5),
+        _snapshot("WTI", "WTI (front-month)", AssetClass.COMMODITY, -0.2),
+        _snapshot("VIX", "VIX", AssetClass.VOLATILITY, 8.0, flagged=True),
+        _snapshot("QQQ", "Nasdaq 100 (proxy)", AssetClass.EQUITY, -2.1, flagged=True),
+        _snapshot("US2Y", "US 2Y Yield", AssetClass.RATES, 3.5, flagged=True),
+        _snapshot("MOVE", "MOVE Index", AssetClass.VOLATILITY, 3.0, flagged=True),
+        _snapshot("BRENT", "Brent (front-month)", AssetClass.COMMODITY, -2.5, flagged=True),
+        _snapshot("EURUSD", "EUR/USD", AssetClass.FX, 0.1),
+    ]
+    draft = _make_draft().model_copy(update={"overnight_dashboard": dashboard})
+
+    ctx = build_render_context(draft, settings, vol_params={})
+
+    assert [row["asset"] for row in ctx["dashboard_rows"]] == [
+        "S&P 500 (proxy)",
+        "US 10Y Yield",
+        "USD/JPY",
+        "Gold (spot)",
+        "WTI (front-month)",
+        "VIX",
+        "US 2Y Yield",
+        "MOVE Index",
+        "Brent (front-month)",
+        "Nasdaq 100 (proxy)",
+    ]
+
+
+def test_build_render_context_does_not_duplicate_significant_core_assets():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    draft = _make_draft()
+    ctx = build_render_context(draft, settings, vol_params={})
+    assets = [row["asset"] for row in ctx["dashboard_rows"]]
+
+    assert assets.count("VIX") == 1
+    assert assets.count("US 10Y Yield") == 1
+
+
+def test_render_brief_excludes_filtered_dashboard_assets(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    dashboard = [
+        _snapshot("SPY", "S&P 500 (proxy)", AssetClass.EQUITY, -1.2),
+        _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+        _snapshot("USDJPY", "USD/JPY", AssetClass.FX, 0.3),
+        _snapshot("GOLD", "Gold (spot)", AssetClass.COMMODITY, 0.5),
+        _snapshot("WTI", "WTI (front-month)", AssetClass.COMMODITY, -0.2),
+        _snapshot("VIX", "VIX", AssetClass.VOLATILITY, 8.0, flagged=True),
+        _snapshot("QQQ", "Nasdaq 100 (proxy)", AssetClass.EQUITY, -2.1, flagged=True),
+        _snapshot("EURUSD", "EUR/USD", AssetClass.FX, 0.1),
+    ]
+    draft = _make_draft().model_copy(update={"overnight_dashboard": dashboard})
+
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "Nasdaq 100 (proxy)" in html
+    assert "Nasdaq 100 (proxy)" in text
+    assert "EUR/USD" not in html
+    assert "EUR/USD" not in text
+
+
+def test_fixture_chart_series_provider_supports_fez():
+    provider = FixtureChartSeriesProvider()
+    result = provider.fetch(["FEZ"], lookback_days=30, as_of=_AS_OF)
+
+    assert "FEZ" in result
+    assert len(result["FEZ"]) == 31
+
+
 def test_render_brief_writes_html_and_text(tmp_path):
     from app.render.email import render_brief
 
@@ -510,5 +591,9 @@ def _make_settings():
             databento_api_key=None,
             fred_api_key=None,
         ),
-        app=SimpleNamespace(output_dir="outputs"),
+        app=SimpleNamespace(
+            output_dir="outputs",
+            dashboard_core_instruments=["SPY", "US10Y", "USDJPY", "GOLD", "WTI", "VIX"],
+            dashboard_max_extra_movers=4,
+        ),
     )

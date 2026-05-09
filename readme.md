@@ -43,10 +43,10 @@ See `.env.example` for the full list. Key variables by category:
 
 **Required for live/dry-run**
 - `ALPHA_VANTAGE_API_KEY` — equities, FX, commodities, US Treasury yields, crypto
-- `DATABENTO_API_KEY` — Euro Stoxx 50 (FESX), German Bund (FGBL), VIX (VX)
+- `DATABENTO_API_KEY` — German Bund (FGBL) and copper (HG) futures-derived market data
 - `FRED_API_KEY` — HY OAS spread (free at fred.stlouisfed.org)
 - `XAI_API_KEY` — X/Grok scout
-- `LISTEN_NOTES_API_KEY` — podcast scout
+- `TADDY_USER_ID`, `TADDY_API_KEY` — podcast scout episode discovery
 
 **Required for Postmark delivery**
 - `POSTMARK_API_KEY`, `POSTMARK_FROM_EMAIL`
@@ -60,6 +60,8 @@ Validation warnings appear as a banner at the top of the email. Production email
 GitHub Actions runs `.github/workflows/daily_brief.yml` on cron `15 23 * * 0-4` (07:15 HKT Mon–Fri). Secrets must be configured in the repository settings. Manual dispatch is supported via `workflow_dispatch`.
 
 Output artifacts are saved to `outputs/runs/YYYY-MM-DD/<run_id>/` for each run.
+
+The rendered overnight dashboard shows a fixed configured core set first, then appends a capped number of additional instruments whose 1D moves are significant enough to matter.
 
 ## Tests
 

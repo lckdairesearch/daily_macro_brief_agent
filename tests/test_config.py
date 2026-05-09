@@ -24,6 +24,8 @@ def test_app_yaml_loads():
     assert isinstance(cfg.max_theme_radar_items, int)
     assert cfg.output_dir == "outputs"
     assert cfg.cache_dir == ".cache"
+    assert cfg.dashboard_core_instruments == ["SPY", "US10Y", "USDJPY", "GOLD", "WTI", "VIX"]
+    assert cfg.dashboard_max_extra_movers == 4
 
 
 def test_portfolio_yaml_loads():

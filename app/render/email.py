@@ -122,6 +122,7 @@ def build_render_context(
     metadata = draft.run_metadata or {}
     cutoff = metadata.get("data_cutoff_at")
     header_line = f"{_format_header_date(cutoff)} | Morning Brief"
+    dashboard_snapshots = _select_dashboard_snapshots(draft.overnight_dashboard, settings)
 
     return {
         "header_line": header_line,
@@ -129,7 +130,7 @@ def build_render_context(
         "book_impact": draft.book_impact,
         "dashboard_rows": [
             _format_dashboard_row(snapshot, vol_params or {})
-            for snapshot in draft.overnight_dashboard
+            for snapshot in dashboard_snapshots
         ],
         "three_things": draft.three_things,
         "calendar_events": [_format_calendar_event(event) for event in draft.todays_calendar],
@@ -137,6 +138,47 @@ def build_render_context(
         "radar_items": draft.radar_items,
         "contrarian_corner": draft.contrarian_corner,
     }
+
+
+def _select_dashboard_snapshots(
+    snapshots: list[MarketSnapshot],
+    settings: "Settings",
+) -> list[MarketSnapshot]:
+    core_ids = list(getattr(settings.app, "dashboard_core_instruments", []) or [])
+    if not core_ids:
+        return snapshots
+
+    by_id = {snapshot.instrument_id: snapshot for snapshot in snapshots}
+    core_snapshots = [by_id[instrument_id] for instrument_id in core_ids if instrument_id in by_id]
+    if not core_snapshots:
+        return snapshots
+
+    selected_ids = {snapshot.instrument_id for snapshot in core_snapshots}
+    indexed_snapshots = list(enumerate(snapshots))
+    extra_snapshots = [
+        (index, snapshot)
+        for index, snapshot in indexed_snapshots
+        if snapshot.instrument_id not in selected_ids and _is_significant_move(snapshot)
+    ]
+    extra_snapshots.sort(
+        key=lambda item: (
+            -(abs(item[1].one_day_zscore) if item[1].one_day_zscore is not None else 0.0),
+            -abs(item[1].one_day_change),
+            item[0],
+        )
+    )
+
+    max_extra_movers = max(int(getattr(settings.app, "dashboard_max_extra_movers", 0) or 0), 0)
+    extras = [snapshot for _, snapshot in extra_snapshots[:max_extra_movers]]
+    return core_snapshots + extras
+
+
+def _is_significant_move(snapshot: MarketSnapshot) -> bool:
+    if snapshot.threshold_flag:
+        return True
+    if snapshot.one_day_zscore is None:
+        return False
+    return abs(snapshot.one_day_zscore) >= 1.0
 
 
 def _format_dashboard_row(

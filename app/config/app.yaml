@@ -10,3 +10,11 @@ cache_dir: .cache
 email_enabled: false
 max_discovery_items: 30
 max_theme_radar_items: 3
+dashboard_core_instruments:
+  - SPY
+  - US10Y
+  - USDJPY
+  - GOLD
+  - WTI
+  - VIX
+dashboard_max_extra_movers: 4

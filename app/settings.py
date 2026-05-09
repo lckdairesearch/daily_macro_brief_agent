@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import RunMode
@@ -34,6 +34,10 @@ class AppConfig(BaseModel):
     email_enabled: bool = False
     max_discovery_items: int = 30
     max_theme_radar_items: int = 3
+    dashboard_core_instruments: list[str] = Field(
+        default_factory=lambda: ["SPY", "US10Y", "USDJPY", "GOLD", "WTI", "VIX"]
+    )
+    dashboard_max_extra_movers: int = 4
 
 
 class Credentials(BaseSettings):

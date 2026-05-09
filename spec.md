@@ -82,7 +82,7 @@ Format:
 - Table, not chart.
 - Include 1D move and optionally 5D move.
 - Include freshness timestamp/source.
-- Include only relevant instruments from configured watchlists.
+- Render a stable configured core set of dashboard instruments first, then optionally append a small number of additional significant movers from the wider watchlist.
 
 Initial asset coverage:
 
@@ -234,12 +234,12 @@ Confirmed V1 provider stack:
 
 | Provider | Instruments covered | Key |
 |---|---|---|
-| **Alpha Vantage** | SPY (S&P 500 proxy), QQQ (Nasdaq proxy), UUP (DXY proxy), USD/JPY, EUR/USD, USD/CNH, Gold spot, Silver spot, WTI, Brent, BTC, US 2Y yield, US 10Y yield | `ALPHA_VANTAGE_API_KEY` |
-| **Databento** | FESX/Eurex (Euro Stoxx 50), FGBL/Eurex (German 10Y Bund proxy/yield derivation), HG/CME copper front-month | `DATABENTO_API_KEY` |
+| **Alpha Vantage** | SPY (S&P 500 proxy), QQQ (Nasdaq proxy), FEZ (Euro Stoxx 50 proxy), UUP (DXY proxy), USD/JPY, EUR/USD, USD/CNH, Gold spot, Silver spot, WTI, Brent, BTC, US 2Y yield, US 10Y yield | `ALPHA_VANTAGE_API_KEY` |
+| **Databento** | FGBL/Eurex (German 10Y Bund proxy/yield derivation), HG/CME copper front-month | `DATABENTO_API_KEY` |
 | **FRED** | BAMLH0A0HYM2 (ICE BofA HY OAS) | `FRED_API_KEY` (free) |
 | **yfinance** | `^VIX` (CBOE VIX spot), `^MOVE` (MOVE index) — no API key | None |
 
-Databento is used for instruments Alpha Vantage cannot cover cleanly in daily form: Euro Stoxx 50 close via FESX, German Bund proxy via FGBL with an approximate yield conversion, and copper via HG front-month because the Alpha Vantage copper endpoint was not suitable for daily move detection. Gold and silver use Alpha Vantage `GOLD_SILVER_HISTORY`. VIX and MOVE are sourced from yfinance.
+Alpha Vantage is used for broad daily coverage, including the Euro Stoxx 50 through the USD-based `FEZ` proxy. Databento is still used where the current stack needs futures-derived data that Alpha Vantage does not cover cleanly in daily form: German Bund proxy via FGBL with an approximate yield conversion, and copper via HG front-month because the Alpha Vantage copper endpoint was not suitable for daily move detection. Gold and silver use Alpha Vantage `GOLD_SILVER_HISTORY`. VIX and MOVE are sourced from yfinance.
 
 The implementation should hide provider-specific logic behind small wrappers so a source can be replaced without rewriting the pipeline.
 
