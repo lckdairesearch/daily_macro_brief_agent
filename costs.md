@@ -1,15 +1,19 @@
 # costs.md — Daily Macro Brief Agent
 
-Daily run cost estimates. To be completed per spec.md §9.4.
+This file tracks the cost surfaces for the current design. It is intentionally short; exact pricing should be updated when provider/model choices change.
 
-## Cost categories
+## Current Cost Drivers
 
-- LLM token usage (synthesis, scouts, critic/validator pass)
-- Market/calendar data provider costs
-- Hosting/scheduling (GitHub Actions)
-- Email delivery (SendGrid)
-- Free-tier assumptions
+- LLM usage for synthesis, chart selection, and scout-related extraction
+- market data usage across Alpha Vantage, Databento, and FRED
+- optional X and podcast discovery usage
+- Postmark delivery in live mode
+- GitHub Actions or local compute for scheduling and execution
+- optional Cloudflare R2 storage/bandwidth for chart hosting
 
-## Status
+## Notes
 
-Placeholder — fill in once LLM prompts and provider choices are finalized in Step 4.
+- Sample mode is the cheapest verification path because it uses fixtures and a deterministic fake writer.
+- Dry-run avoids delivery cost because it never sends email.
+- Live delivery cost is incurred only when `ENABLE_EMAIL_DELIVERY=true`.
+- Any serious cost review should use `run_metadata` token/cost output plus current provider pricing, not static guesses in this file.

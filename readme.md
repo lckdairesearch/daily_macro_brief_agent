@@ -1,105 +1,102 @@
 # Daily Macro Brief Agent
 
-A scheduled Python pipeline that runs at **07:15 HKT, Monday–Friday** and delivers a PM-facing morning brief answering one question: *what changed overnight, and so what for our book?*
+A scheduled Python pipeline that produces a PM-facing morning macro brief focused on one question:
 
-All market numbers come from APIs and data sources — not the LLM. The LLM synthesizes only.
+> what changed overnight, and so what for our book?
 
-## Brief sections
+The system uses real or fixture-backed market, calendar, and source inputs. The LLM is used for grounded synthesis, not for making up facts.
+
+## Brief Shape
+
+The standard brief contains:
 
 1. Overnight market dashboard
 2. Three things that matter today
-3. Today's calendar
+3. Today’s calendar
 4. One chart worth seeing
 5. Theme radar
 6. Contrarian corner
 
 ## Quickstart
 
-Sample mode can run without live market credentials. Add Postmark credentials when you want sample or dry-run output delivered to the maintainer inbox.
+Sample mode is the default path for local verification and does not require live credentials.
 
 ```bash
-cp .env.example .env      # add at minimum: OPENAI_API_KEY
+cp .env.example .env
 make install
-make run-sample           # produces outputs/samples/YYYY-MM-DD/<run_id>/...
+make run-sample
 make test
 ```
 
-## Runtime modes
+Sample outputs are written under `outputs/samples/YYYY-MM-DD/<run_id>/` and stable aliases are refreshed at:
 
-| Mode | Command | Data source | Email sent |
-|---|---|---|---|
-| Sample | `make run-sample` | Fixture data + deterministic writer | To `POSTMARK_MAINTAINER_EMAIL` when Postmark credentials are present |
-| Dry-run | `make dry-run` | Live APIs | To `POSTMARK_MAINTAINER_EMAIL` when Postmark credentials are present |
-| Live | `make run-live` | Live APIs | Yes, if `ENABLE_EMAIL_DELIVERY=true` |
-
-Use `make dry-run DATA_CUTOFF="2026-05-08 06:45"` to run with a specific cutoff. Naive datetimes are interpreted in the configured app timezone.
-
-## Environment variables
-
-See `.env.example` for the full list. Key variables by category:
-
-**Always required**
-- `OPENAI_API_KEY` — LLM synthesis, web-search scouts, Whisper transcription
-
-**Required for live/dry-run**
-- `ALPHA_VANTAGE_API_KEY` — equities, FX, commodities, US Treasury yields, crypto
-- `DATABENTO_API_KEY` — German Bund (FGBL) and copper (HG) futures-derived market data
-- `FRED_API_KEY` — HY OAS spread (free at fred.stlouisfed.org)
-- `XAI_API_KEY` — X/Grok scout
-- `TADDY_USER_ID`, `TADDY_API_KEY` — podcast scout episode discovery
-
-**Required for Postmark delivery**
-- `POSTMARK_API_KEY`, `POSTMARK_FROM_EMAIL`
-- `POSTMARK_MAINTAINER_EMAIL` — maintainer/test recipient for sample and dry-run sends
-- `POSTMARK_TO_EMAIL` — comma-separated production recipient list for live sends
-
-Validation warnings appear as a banner at the top of the email. Production email delivery is off by default; set `ENABLE_EMAIL_DELIVERY=true` to enable live sends.
-
-## How live mode works
-
-GitHub Actions runs `.github/workflows/daily_brief.yml` on cron `15 23 * * 0-4` (07:15 HKT Mon–Fri). Secrets must be configured in the repository settings. Manual dispatch is supported via `workflow_dispatch`.
-
-Output artifacts are saved by mode:
-- `sample` -> `outputs/samples/YYYY-MM-DD/<run_id>/`
-- `dry-run` -> `outputs/dry-runs/YYYY-MM-DD/<run_id>/`
-- `live` -> `outputs/runs/YYYY-MM-DD/<run_id>/`
-
-Stable reviewer-facing sample files are refreshed at:
 - `outputs/samples/sample_brief.html`
 - `outputs/samples/sample_brief.txt`
 - `outputs/samples/sample_chart.png`
 
-The rendered overnight dashboard shows a fixed configured core set first, then appends a capped number of additional instruments whose 1D moves are significant enough to matter.
+## Runtime Modes
 
-## Tests
+| Mode | Command | Behavior | Delivery |
+|---|---|---|---|
+| Sample | `make run-sample` | Fixture-backed, deterministic, no live credentials required | None |
+| Dry-run | `make dry-run` | Live/cached data path without delivery | None |
+| Live | `make run-live` | Full live pipeline | Postmark only when `ENABLE_EMAIL_DELIVERY=true` |
 
-```bash
-make test     # full pytest suite
-make lint     # ruff / mypy
-```
-
-The default test suite is offline-safe and does not send email. To run the live
-Postmark integration test, set `RUN_LIVE_POSTMARK_TEST=true` with valid
-`POSTMARK_API_KEY` and `POSTMARK_TO_EMAIL`, then run:
+You can override the cutoff for dry-run:
 
 ```bash
-.venv/bin/pytest tests/test_delivery.py -q
+make dry-run DATA_CUTOFF="2026-05-08 06:45"
 ```
 
-## Known limitations
+## Key Environment Variables
 
-- **Calendar data:** Investing.com backend endpoint is a prototype dependency, not a licensed feed. Treat consensus values as indicative only. Future production should use a paid calendar API.
-- **MOVE index:** Sourced from Yahoo Finance (`^MOVE`) via yfinance — no official API.
-- **HY OAS:** FRED series `BAMLH0A0HYM2` limited to 3 years of history from April 2026.
-- **X scout:** Uses Grok/xAI by default. Model is configurable via `x_scout_model` in `app/config/sources.yaml` through LiteLLM — swapping to another model is a one-line config change.
-- **Podcast scout:** Uses Listen Notes API (free tier) for episode discovery, OpenAI Whisper for transcription, with Gemini as fallback for both audio and YouTube-hosted episodes.
+See `.env.example` for the full list.
 
-## Design documents
+Core:
 
-| File | Purpose |
-|---|---|
-| `spec.md` | Product behavior, brief sections, acceptance criteria, non-goals |
-| `architecture.md` | System shape, module boundaries, data contracts, provider design |
-| `plan.md` | Implementation steps, agent workflow, milestone map |
-| `costs.md` | Daily run cost estimates |
-| `memo/memo.md` | Design tradeoffs, assumptions, V2 path, hours spent |
+- `OPENAI_API_KEY`
+- `ALPHA_VANTAGE_API_KEY`
+- `DATABENTO_API_KEY`
+- `FRED_API_KEY`
+- `XAI_API_KEY`
+- `TADDY_USER_ID`
+- `TADDY_API_KEY`
+
+Delivery:
+
+- `POSTMARK_API_KEY`
+- `POSTMARK_FROM_EMAIL`
+- `POSTMARK_TO_EMAIL`
+- `ENABLE_EMAIL_DELIVERY`
+
+Optional chart hosting:
+
+- `CLOUDFLARE_R2_ACCOUNT_ID`
+- `CLOUDFLARE_R2_ACCESS_KEY_ID`
+- `CLOUDFLARE_R2_SECRET_ACCESS_KEY`
+- `CLOUDFLARE_R2_BUCKET`
+- `CLOUDFLARE_R2_PUBLIC_BASE_URL`
+- `CLOUDFLARE_R2_PREFIX`
+
+## Useful Commands
+
+```bash
+make lint
+make test
+make run-sample
+make dry-run
+make run-live
+make update-vol-params
+```
+
+## Design Docs
+
+- `spec.md`: product contract
+- `architecture.md`: current system shape
+- `plan.md`: contributor blueprint
+
+## Known Gaps
+
+- consensus enrichment is not yet active in the pipeline
+- sample and dry-run do not send email by design
+- Investing.com calendar data is a prototype dependency, not a licensed feed

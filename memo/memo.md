@@ -1,15 +1,16 @@
-# memo/memo.md — Daily Macro Brief Agent
+# memo.md — Daily Macro Brief Agent
 
-Design memo covering tradeoffs, assumptions, deferred features, and hours spent.
+This memo is the lightweight design handoff for humans reviewing the project.
 
-## Status
+## What It Should Cover
 
-Placeholder — to be completed at Step 8 (finalization) per spec.md §12.2.
+- why the system uses typed boundaries and a boring pipeline
+- why sample mode is deterministic and credential-free
+- where the LLM is allowed to operate and where it is forbidden
+- key provider choices and why they are isolated behind module boundaries
+- current known gaps, especially consensus enrichment and live-data reliability
+- the next 30-day improvement path
 
-## Required sections (fill in at Step 8)
+## Current Position
 
-- Design tradeoffs and rationale
-- Assumed portfolio positions and themes (synthetic/demo)
-- Deferred features and why deferred
-- One-month extension path
-- Actual hours spent
+At the moment, the code is a working V1 prototype with stronger implementation coverage than its markdown set had reflected. The main documentation task is to keep the written blueprint aligned with the code and tests rather than to restate every implementation detail.
