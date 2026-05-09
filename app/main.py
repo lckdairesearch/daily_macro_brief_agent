@@ -3,6 +3,8 @@
 import argparse
 import sys
 import warnings
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # litellm calls asyncio.get_event_loop() at import time — harmless noise in Python 3.10+.
 warnings.filterwarnings("ignore", message="There is no current event loop")
@@ -10,6 +12,8 @@ warnings.filterwarnings("ignore", message="There is no current event loop")
 from app.models import RunMode
 from app.pipeline import run_pipeline
 from app.settings import Settings
+
+_PROGRESS_STEPS = 12
 
 
 def main() -> None:
@@ -20,10 +24,22 @@ def main() -> None:
         default="sample",
         help="Run mode: sample (fixtures), live (APIs + delivery), dry-run (APIs, no delivery)",
     )
+    parser.add_argument(
+        "--data-cutoff",
+        help=(
+            "Optional data cutoff datetime. Naive values are interpreted in the configured "
+            "app timezone. Examples: 2026-05-08T06:45, '2026-05-08 06:45', "
+            "2026-05-07T22:45:00Z"
+        ),
+    )
     args = parser.parse_args()
     mode = RunMode(args.mode)
 
     settings = Settings.load()
+    try:
+        data_cutoff = _parse_data_cutoff(args.data_cutoff, ZoneInfo(settings.app.timezone))
+    except ValueError as exc:
+        parser.error(str(exc))
 
     missing = settings.validate_for_mode(mode)
     if missing:
@@ -34,7 +50,12 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        result = run_pipeline(mode=mode, settings=settings)
+        result = run_pipeline(
+            mode=mode,
+            settings=settings,
+            data_cutoff=data_cutoff,
+            progress=_progress_printer(),
+        )
     except Exception as exc:
         print(f"FATAL: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -45,11 +66,59 @@ def main() -> None:
     if meta.output_paths:
         for name, path in meta.output_paths.items():
             print(f"  {name}: {path}")
+    if meta.timings:
+        _print_timing_table(meta.timings)
 
     if not result.success:
         if result.error_message:
             print(f"ERROR: {result.error_message}", file=sys.stderr)
         sys.exit(1)
+
+
+def _parse_data_cutoff(value: str | None, tz: ZoneInfo) -> datetime | None:
+    if not value:
+        return None
+
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(
+            "Invalid --data-cutoff. Use ISO format like 2026-05-08T06:45 "
+            "or '2026-05-08 06:45'."
+        ) from exc
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=tz)
+
+    return parsed.astimezone(tz)
+
+
+def _progress_printer():
+    step = 0
+
+    def _print(message: str) -> None:
+        nonlocal step
+        step += 1
+        print(f"[{step}/{_PROGRESS_STEPS}] {message}", flush=True)
+
+    return _print
+
+
+def _print_timing_table(timings: list[dict]) -> None:
+    print()
+    print("Timing summary")
+    print("Component                   Status      Seconds  Cards")
+    print("--------------------------  ----------  -------  -----")
+    for item in timings:
+        component = str(item.get("component", ""))[:26]
+        status = str(item.get("status", ""))
+        seconds = float(item.get("seconds") or 0.0)
+        cards = item.get("cards", "")
+        print(f"{component:<26}  {status:<10}  {seconds:>7.3f}  {cards:>5}")
 
 
 if __name__ == "__main__":

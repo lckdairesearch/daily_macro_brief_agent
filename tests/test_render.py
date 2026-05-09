@@ -401,6 +401,8 @@ def test_render_brief_writes_html_and_text(tmp_path):
     from app.render.email import render_brief
 
     settings = _make_settings()
+    chart_path = tmp_path / "sample_chart.png"
+    chart_path.write_bytes(b"fake png")
     draft = _make_draft().model_copy(
         update={
             "book_impact": "Higher yields support the short-duration sleeve.",
@@ -409,7 +411,7 @@ def test_render_brief_writes_html_and_text(tmp_path):
                 caption="Chart caption.",
                 chart_type="line",
                 data_source="fixture",
-                file_path="sample_chart.png",
+                file_path=str(chart_path),
             ),
         }
     )
@@ -418,7 +420,8 @@ def test_render_brief_writes_html_and_text(tmp_path):
     text = Path(paths["text"]).read_text(encoding="utf-8")
     assert "Overnight Book Impact" in html
     assert "Higher yields support" in html
-    assert "sample_chart.png" in html
+    assert "cid:chart@brief" in html
+    assert str(chart_path) in text
     assert "OVERNIGHT BOOK IMPACT" in text
 
 

@@ -89,15 +89,18 @@ app/pipeline.py
 
 ### 3.1 Current implementation status
 
-As of the latest Step 5-9 implementation:
+As implemented in the current codebase:
 
 - `app/data/market.py` implements fixture and live market providers, move detection, generated `vol_params.yaml`, and cache fallback.
-- `app/data/calendar.py` implements fixture loading, Investing.com normalization/caching, and consensus-candidate guardrails.
+- `app/data/calendar.py` implements fixture loading, Investing.com normalization/caching, and consensus-candidate guardrails. The end-to-end pipeline still uses fixture calendar data in sample mode and currently does not wire the live Investing.com provider into live/dry-run runs.
 - `app/llm/` implements the LiteLLM-backed synthesis wrapper and prompt registry.
-- `app/discovery/` implements fixture, news, central bank, research, podcast, and X scouts with optional-failure handling.
+- `app/discovery/` implements fixture, news, central bank, research, Taddy-backed podcast, and xAI/Grok X scouts with optional-failure handling.
 - `app/synthesis/deduper.py` and `app/synthesis/ranker.py` implement evidence deduplication and ranking.
-- `scripts/live_eval_run.py` is a diagnostic runner that exercises live collection, discovery, ranking, LLM markdown generation, and saved evaluation artifacts.
-- `app/pipeline.py` is not yet end-to-end for V1 output: Step 10+ work remains for structured brief writing, deterministic validation, HTML/text/chart rendering, delivery, and production run artifact persistence.
+- `app/synthesis/writer.py` writes a structured grounded brief through LiteLLM in live/dry-run mode and uses a deterministic fake response path in sample mode.
+- `app/synthesis/validator.py` checks required sections, unsupported market IDs, unsupported URLs/numbers, word limits, missing `so what`, and stale-data warning disclosure.
+- `app/render/` generates chart PNGs, renders HTML/text email output, and can push chart artifacts to GitHub for raw URL hosting.
+- `app/delivery.py` implements Postmark and no-op delivery providers.
+- `app/pipeline.py` runs the current end-to-end sample pipeline through data loading, discovery, dedupe, ranking, writing, validation, charting, rendering, optional delivery, and metadata. The main remaining implementation gap is live calendar wiring and reusable consensus enrichment.
 
 ## 4. Runtime modes
 
@@ -110,8 +113,9 @@ Behavior:
 - Uses fixture market data.
 - Uses fixture calendar data.
 - Uses fixture source/evidence items.
-- After Step 10+ is implemented, can either call the configured LLM or use a deterministic sample writer, depending on config.
-- After rendering is wired, must produce `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
+- Uses deterministic sample-mode brief writing and does not require live credentials or an OpenAI key.
+- Produces `outputs/sample_brief.html`, `outputs/sample_brief.txt`, and `outputs/sample_chart.png`.
+- Sends test email to `POSTMARK_MAINTAINER_EMAIL` only when Postmark credentials are present.
 
 Suggested command:
 
@@ -127,11 +131,12 @@ Behavior:
 
 - Pulls market data from Alpha Vantage first.
 - Pulls supplemental market data from Databento where configured.
-- Pulls calendar data from the Investing.com backend calendar endpoint.
-- Uses cached calendar/market data if live calls fail according to reliability rules.
-- Runs discovery scouts.
-- After Step 10+ is implemented, calls the configured model through the LiteLLM-backed `app/llm/provider.py` wrapper for synthesis.
-- After delivery is wired, sends email via Postmark when delivery is enabled.
+- Pulls FRED HY OAS and yfinance VIX/MOVE where configured.
+- Uses cached market data if live market calls fail according to reliability rules.
+- Calendar live provider exists in `app/data/calendar.py`, but live/dry-run pipeline wiring is currently pending and emits a warning with no loaded calendar events.
+- Runs enabled discovery scouts.
+- Calls the configured model through the LiteLLM-backed `app/llm/provider.py` wrapper for synthesis.
+- Generates chart, HTML, text, metadata, and sends email via Postmark when delivery is enabled.
 
 Suggested command:
 
@@ -146,8 +151,8 @@ Purpose: validate the full pipeline without sending email.
 Behavior:
 
 - Runs live or cached data collection.
-- After Step 10+ is implemented, generates outputs.
-- Skips delivery.
+- Generates outputs.
+- Uses Postmark test delivery to `POSTMARK_MAINTAINER_EMAIL` when Postmark credentials are present; otherwise uses no-op delivery. It never sends to production recipients.
 - Useful for local testing and GitHub Actions debugging.
 
 Suggested command:
@@ -353,28 +358,32 @@ Boundary:
 - `app/config/app.yaml` is the source of truth for non-secret defaults such as timezone, cutoff time, output directory, cache directory, and default delivery toggle.
 - `settings.py` is the source of truth for secrets, provider credentials, deployment-specific overrides, and final runtime validation.
 
-Likely environment variables:
+Implemented environment variables:
 
 ```text
 APP_MODE optional override
 
-# LLM — required for all modes
-OPENAI_API_KEY                  synthesis model, web-search scouts (Responses API), podcast content recall
-XAI_API_KEY                     X scout via xai-sdk + grok-4
+# LLM
+OPENAI_API_KEY                  required for live/dry-run synthesis, web-search scouts, podcast content recall
+GEMINI_API_KEY                  currently accepted for compatibility; not required by Settings validation
+XAI_API_KEY                     X scout via xai-sdk + Grok x_search
 
 # LLM optional overrides
 LLM_SCOUT_MODEL                 optional override for sources.yaml llm.scout_model
 LLM_X_SCOUT_MODEL               default: grok-4 (bare model name; grok-4+ required for xAI server-side x_search)
 LLM_SYNTHESIS_MODEL             optional override for sources.yaml llm.synthesis_model
+LLM_CHART_MODEL                 optional override for sources.yaml llm.chart_model
 LLM_TEMPERATURE                 optional override for sources.yaml llm.temperature
 
 # Market data — required for live/dry-run
-ALPHA_VANTAGE_API_KEY
-DATABENTO_API_KEY
-FRED_API_KEY                    free at fred.stlouisfed.org
+ALPHA_VANTAGE_API_KEY           required by Settings validation for live/dry-run
+DATABENTO_API_KEY               used when Databento instruments are enabled
+FRED_API_KEY                    free at fred.stlouisfed.org; used for HY OAS
 
 # Discovery — required for live/dry-run
-LISTEN_NOTES_API_KEY            podcast scout
+TADDY_USER_ID                   podcast scout episode discovery
+TADDY_API_KEY                   podcast scout episode discovery
+LISTEN_NOTES_API_KEY            legacy env compatibility only; current podcast scout uses Taddy
 
 # Delivery
 POSTMARK_API_KEY
@@ -383,10 +392,12 @@ POSTMARK_MAINTAINER_EMAIL       sample/dry-run test recipient
 POSTMARK_TO_EMAIL               comma-separated production recipient list
 ENABLE_EMAIL_DELIVERY           optional override, default false
 
-# Optional
-AZURE_OPENAI_API_KEY            if routing through Azure via LiteLLM
-AZURE_OPENAI_ENDPOINT
-AZURE_OPENAI_DEPLOYMENT
+# GitHub chart hosting
+GITHUB_TOKEN                    used in CI/local when pushing chart artifacts over HTTPS
+GITHUB_REPO                     defaults in pipeline to lckdairesearch/daily_macro_brief_agent
+GITHUB_BRANCH                   defaults in pipeline to master
+
+# Deployment-specific overrides
 CACHE_DIR                       optional override
 OUTPUT_DIR                      optional override
 ```

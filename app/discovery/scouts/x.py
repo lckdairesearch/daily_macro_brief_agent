@@ -11,11 +11,6 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import grpc
-from xai_sdk import Client
-from xai_sdk.chat import user as xai_user
-from xai_sdk.tools import x_search
-
 from app.discovery.scouts.base import (
     DiscoveryContext,
     _parse_or_structure,
@@ -26,6 +21,15 @@ from app.llm.prompt_registry import load_prompt
 from app.models import EvidenceCard, SourceType
 
 logger = logging.getLogger(__name__)
+
+try:
+    import grpc
+except ImportError:  # pragma: no cover - exercised only when dependency is absent
+    grpc = None  # type: ignore[assignment]
+
+Client: Any = None
+xai_user: Any = None
+x_search: Any = None
 
 # Real X post URLs: https://x.com/{username}/status/{numeric_id}
 _X_URL_RE = re.compile(r"https?://(x|twitter)\.com/[\w]{1,50}/status/\d{10,20}$")
@@ -89,18 +93,24 @@ class XScout:
         # Strip provider prefix if present (xai_sdk uses bare model names)
         clean_model = self.model.removeprefix("xai/")
 
-        client = Client(api_key=self.api_key, timeout=_XAI_TIMEOUT_SECONDS)
+        client_cls = _load_client()
+        if client_cls is None:
+            return []
+        user_msg = xai_user or (lambda text: text)
+        search_tool = x_search or (lambda **_: None)
+
+        client = client_cls(api_key=self.api_key, timeout=_XAI_TIMEOUT_SECONDS)
         chat = client.chat.create(
             model=clean_model,
-            tools=[x_search(from_date=since)],
+            tools=[search_tool(from_date=since)],
             temperature=self.temperature,
             max_tokens=_XAI_MAX_TOKENS,
             reasoning_effort="medium",
         )
-        chat.append(xai_user(prompt_text))
+        chat.append(user_msg(prompt_text))
         try:
             result = chat.sample()
-        except grpc.RpcError as exc:
+        except _rpc_error_type() as exc:
             logger.warning("XScout: xAI x_search request failed: %s", exc)
             return []
 
@@ -123,6 +133,32 @@ def _filter_verified(cards: list[EvidenceCard]) -> list[EvidenceCard]:
             continue
         verified.append(card)
     return verified
+
+
+def _load_client() -> Any | None:
+    """Load xai-sdk lazily so optional X scout dependency failures do not break imports."""
+    global Client, xai_user, x_search
+    if Client is not None:
+        return Client
+
+    try:
+        from xai_sdk import Client as sdk_client
+        from xai_sdk.chat import user as sdk_user
+        from xai_sdk.tools import x_search as sdk_x_search
+    except Exception as exc:
+        logger.warning("XScout: xai-sdk unavailable or incompatible: %s", exc)
+        return None
+
+    Client = sdk_client
+    xai_user = sdk_user
+    x_search = sdk_x_search
+    return Client
+
+
+def _rpc_error_type() -> type[BaseException]:
+    if grpc is not None:
+        return grpc.RpcError
+    return RuntimeError
 
 
 def _search_targets(payload: dict[str, Any]) -> list[str]:

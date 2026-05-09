@@ -173,6 +173,22 @@ def test_orchestrator_continues_after_optional_scout_failure():
     assert cards[0].id == "ev_test01"
 
 
+def test_orchestrator_records_scout_timings_for_success_and_failure():
+    ctx = _make_context()
+    failed: list[str] = []
+    timings: list[dict] = []
+
+    cards = run_discovery([_FailingScout(), _SucceedingScout()], ctx, failed, timings)
+
+    assert len(cards) == 1
+    assert timings[0]["component"] == "scout:failing"
+    assert timings[0]["status"] == "failed"
+    assert timings[1]["component"] == "scout:succeeding"
+    assert timings[1]["status"] == "success"
+    assert timings[1]["cards"] == 1
+    assert all(isinstance(t["seconds"], float) for t in timings)
+
+
 def test_orchestrator_raises_for_required_scout_failure():
     class _RequiredFailing:
         name = "required_failing"

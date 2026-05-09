@@ -32,6 +32,8 @@ make test
 | Dry-run | `make dry-run` | Live APIs | To `POSTMARK_MAINTAINER_EMAIL` when Postmark credentials are present |
 | Live | `make run-live` | Live APIs | Yes, if `ENABLE_EMAIL_DELIVERY=true` |
 
+Use `make dry-run DATA_CUTOFF="2026-05-08 06:45"` to run with a specific cutoff. Naive datetimes are interpreted in the configured app timezone.
+
 ## Environment variables
 
 See `.env.example` for the full list. Key variables by category:
@@ -64,6 +66,14 @@ Output artifacts are saved to `outputs/runs/YYYY-MM-DD_HHMM_HKT/` for each run.
 ```bash
 make test     # full pytest suite
 make lint     # ruff / mypy
+```
+
+The default test suite is offline-safe and does not send email. To run the live
+Postmark integration test, set `RUN_LIVE_POSTMARK_TEST=true` with valid
+`POSTMARK_API_KEY` and `POSTMARK_TO_EMAIL`, then run:
+
+```bash
+.venv/bin/pytest tests/test_delivery.py -q
 ```
 
 ## Known limitations

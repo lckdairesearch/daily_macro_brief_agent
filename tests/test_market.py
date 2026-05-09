@@ -24,6 +24,7 @@ from app.data.market import (
     cache_market,
     detect_moves,
     fetch_live_market_with_cache,
+    fetch_live_market,
     load_cached_market,
     load_vol_params,
 )
@@ -683,27 +684,33 @@ def test_av_provider_spy_returns_snapshot():
     assert s.observation_date == "2026-05-08"
 
 
-def test_av_provider_stale_observation_skipped(caplog):
-    payload = {"data": [
-        {"date": "2026-05-01", "value": "118.26"},
-        {"date": "2026-05-04", "value": "109.76"},
-    ]}
+def test_db_provider_wti_stale_observation_skipped(db_client_mock, caplog):
+    entries = [
+        {"date": "2026-05-01", "close": 118.26, "volume": 10000},
+        {"date": "2026-05-04", "close": 109.76, "volume": 12000},
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
     as_of = datetime(2026, 5, 9, 7, 0, tzinfo=timezone.utc)
-    with patch("requests.get", return_value=_mock_response(payload)):
-        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["WTI"], as_of)
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], as_of)
 
     assert snaps == []
     assert "stale observation" in caplog.text
 
 
-def test_av_provider_monday_allows_friday_observation():
-    payload = {"data": [
-        {"date": "2026-05-07", "value": "110.00"},
-        {"date": "2026-05-08", "value": "111.00"},
-    ]}
+def test_db_provider_wti_monday_allows_friday_observation(db_client_mock):
+    entries = [
+        {"date": "2026-05-07", "close": 110.00, "volume": 10000},
+        {"date": "2026-05-08", "close": 111.00, "volume": 12000},
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
     monday_as_of = datetime(2026, 5, 11, 7, 0, tzinfo=timezone.utc)
-    with patch("requests.get", return_value=_mock_response(payload)):
-        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
 
     assert len(snaps) == 1
     assert snaps[0].observation_date == "2026-05-08"
@@ -743,23 +750,23 @@ def test_av_provider_unknown_instrument_skipped():
 
 # --- DatabentoMarketProvider ---
 
-def test_db_provider_fesx_returns_snapshot(db_client_mock):
+def test_db_provider_wti_returns_snapshot(db_client_mock):
     entries = [
-        {"date": "2026-05-07", "close": 4900.0, "volume": 10000},
-        {"date": "2026-05-08", "close": 4950.0, "volume": 12000},
+        {"date": "2026-05-07", "close": 70.0, "volume": 10000},
+        {"date": "2026-05-08", "close": 72.0, "volume": 12000},
     ]
     store = MagicMock()
     store.to_df.return_value = _make_ohlcv_df(entries)
     db_client_mock.timeseries.get_range.return_value = store
 
     with patch("databento.Historical", return_value=db_client_mock):
-        snaps = DatabentoMarketProvider("key").fetch_watchlist(["FESX"], _AS_OF)
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], _AS_OF)
 
     assert len(snaps) == 1
     s = snaps[0]
-    assert s.instrument_id == "FESX"
+    assert s.instrument_id == "WTI"
     assert s.one_day_change_unit == "%"
-    assert s.one_day_change == pytest.approx((4950 - 4900) / 4900 * 100, rel=1e-3)
+    assert s.one_day_change == pytest.approx((72 - 70) / 70 * 100, rel=1e-3)
     assert s.source == "databento"
 
 
@@ -786,16 +793,16 @@ def test_db_provider_de10y_bps_change(db_client_mock):
 
 
 def test_db_provider_uses_continuous_symbols(db_client_mock):
-    """FESX must resolve with FESX.c.0 (continuous), not FESX."""
+    """WTI must resolve with CL.c.0 (continuous), not CL."""
     store = MagicMock()
     store.to_df.return_value = pd.DataFrame()
     db_client_mock.timeseries.get_range.return_value = store
 
     with patch("databento.Historical", return_value=db_client_mock):
-        DatabentoMarketProvider("key").fetch_watchlist(["FESX"], _AS_OF)
+        DatabentoMarketProvider("key").fetch_watchlist(["WTI"], _AS_OF)
 
     resolve_call = db_client_mock.symbology.resolve.call_args
-    assert "FESX.c.0" in resolve_call.kwargs.get("symbols", [])
+    assert "CL.c.0" in resolve_call.kwargs.get("symbols", [])
 
 
 # --- FredMarketProvider ---
@@ -937,6 +944,47 @@ def test_fetch_live_market_with_cache_success(tmp_path):
 
     assert len(result) == 1
     assert result[0].freshness_status.value == "fresh"
+
+
+def test_fetch_live_market_with_cache_uses_as_of_for_fetch_and_cache_date(tmp_path):
+    """Explicit as_of is passed into live fetch and used for dated cache artifact."""
+    snaps = [_make_snap("SPY", 1.0)]
+    settings = _make_settings_mock(tmp_path.name, timezone="Asia/Hong_Kong")
+    as_of = datetime(2026, 5, 6, 6, 45, tzinfo=timezone.utc)
+
+    import app.data.market as mkt
+    original_root = mkt.REPO_ROOT
+    mkt.REPO_ROOT = tmp_path.parent
+    try:
+        with patch("app.data.market.fetch_live_market", return_value=snaps) as mock_fetch:
+            result = fetch_live_market_with_cache(settings, {}, as_of=as_of)
+    finally:
+        mkt.REPO_ROOT = original_root
+
+    assert result == snaps
+    mock_fetch.assert_called_once_with(settings, {}, as_of)
+    assert (tmp_path / "market" / "market_2026-05-06.json").exists()
+
+
+def test_fetch_live_market_passes_as_of_to_all_providers():
+    """Explicit as_of drives provider date windows without changing provider request shapes."""
+    settings = _make_settings_mock("cache", timezone="Asia/Hong_Kong")
+    settings.creds.alpha_vantage_api_key = "av"
+    settings.creds.databento_api_key = "db"
+    settings.creds.fred_api_key = "fred"
+    as_of = datetime(2026, 5, 6, 6, 45, tzinfo=timezone.utc)
+
+    with patch.object(AlphaVantageMarketProvider, "fetch_watchlist", return_value=[]) as mock_av, \
+         patch.object(DatabentoMarketProvider, "fetch_watchlist", return_value=[]) as mock_db, \
+         patch.object(FredMarketProvider, "fetch_watchlist", return_value=[]) as mock_fred, \
+         patch.object(YfinanceMarketProvider, "fetch_watchlist", return_value=[]) as mock_yf:
+        result = fetch_live_market(settings, {}, as_of=as_of)
+
+    assert result == []
+    assert mock_av.call_args.args[1] == as_of
+    assert mock_db.call_args.args[1] == as_of
+    assert mock_fred.call_args.args[1] == as_of
+    assert mock_yf.call_args.args[1] == as_of
 
 
 def test_fetch_live_market_with_cache_fallback_on_failure(tmp_path):

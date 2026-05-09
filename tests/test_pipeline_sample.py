@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -14,11 +15,15 @@ from app.models import (
     BriefItem,
     BriefSection,
     DeliveryStatus,
+    FreshnessStatus,
     LLMUsage,
+    MarketSnapshot,
     PipelineResult,
     RunMode,
 )
 from app.pipeline import (
+    _chart_output_path,
+    _data_cutoff,
     _load_fixture_calendar,
     run_pipeline,
 )
@@ -106,6 +111,130 @@ def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer):
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.run_metadata.delivery_status != DeliveryStatus.SUCCESS
+
+
+def test_pipeline_uses_data_cutoff_override(mock_writer):
+    settings = Settings.load()
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+
+    result = run_pipeline(RunMode.SAMPLE, settings, data_cutoff=override)
+
+    assert result.run_metadata.data_cutoff_at == override
+
+
+def test_pipeline_progress_callback_reports_steps(mock_writer):
+    settings = Settings.load()
+    events: list[str] = []
+
+    result = run_pipeline(RunMode.SAMPLE, settings, progress=events.append)
+
+    assert result.success is True
+    assert events[:3] == ["Determine run window", "Fetch market data", "Fetch calendar"]
+    assert events[-1] == "Record metadata"
+
+
+def test_pipeline_records_step_and_scout_timings(mock_writer):
+    settings = Settings.load()
+
+    result = run_pipeline(RunMode.SAMPLE, settings)
+
+    timings = result.run_metadata.timings
+    components = [t["component"] for t in timings]
+    assert "Fetch market data" in components
+    assert "scout:fixture" in components
+    assert "Record metadata" in components
+    assert all(isinstance(t["seconds"], float) for t in timings)
+
+
+def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer):
+    settings = Settings.load()
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    snapshot = MarketSnapshot(
+        as_of=override,
+        observation_date="2026-05-07",
+        instrument_id="SPY",
+        display_name="S&P 500 (proxy)",
+        asset_class="equity",
+        region="US",
+        last_price_or_level=500.0,
+        one_day_change=1.0,
+        one_day_change_unit="%",
+        source="test",
+        freshness_status=FreshnessStatus.FRESH,
+    )
+
+    with patch("app.pipeline.load_vol_params", return_value={}), \
+         patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]) as mock_fetch, \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
+         patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
+        result = run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+
+    assert result.run_metadata.data_cutoff_at == override
+    mock_fetch.assert_called_once_with(settings, {}, override)
+
+
+def test_dry_run_pipeline_calls_calendar_provider_with_cutoff_date(mock_writer):
+    settings = Settings.load()
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+
+    with patch("app.pipeline.load_vol_params", return_value={}), \
+         patch("app.pipeline.fetch_live_market_with_cache", return_value=[]), \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]) as mock_cal, \
+         patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
+        run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+
+    mock_cal.assert_called_once_with(override)
+
+
+def test_chart_output_path_sample_uses_tracked_artifact():
+    settings = Settings.load()
+    data_cutoff = datetime(2026, 5, 9, 8, 0, tzinfo=timezone.utc)
+
+    path = _chart_output_path(RunMode.SAMPLE, settings, data_cutoff)
+
+    assert path == f"{settings.app.output_dir}/sample_chart.png"
+
+
+def test_chart_output_path_live_uses_data_cutoff_timestamp():
+    settings = Settings.load()
+    data_cutoff = datetime(2026, 5, 9, 8, 30, tzinfo=timezone.utc)
+
+    path = _chart_output_path(RunMode.LIVE, settings, data_cutoff)
+
+    assert path == f"{settings.app.output_dir}/chart_20260509_0830.png"
+
+
+def test_chart_output_path_dry_run_uses_data_cutoff_timestamp():
+    settings = Settings.load()
+    data_cutoff = datetime(2026, 5, 9, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+
+    path = _chart_output_path(RunMode.DRY_RUN, settings, data_cutoff)
+
+    assert path == f"{settings.app.output_dir}/chart_20260509_0645.png"
+
+
+def test_data_cutoff_override_naive_uses_configured_timezone():
+    settings = Settings.load()
+    tz = ZoneInfo(settings.app.timezone)
+    override = datetime(2026, 5, 8, 6, 45)
+
+    cutoff = _data_cutoff(settings, tz, override)
+
+    assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=tz)
+
+
+def test_data_cutoff_override_aware_converts_to_configured_timezone():
+    settings = Settings.load()
+    tz = ZoneInfo(settings.app.timezone)
+    override = datetime(2026, 5, 7, 22, 45, tzinfo=timezone.utc)
+
+    cutoff = _data_cutoff(settings, tz, override)
+
+    assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=tz)
 
 
 def test_load_fixture_market():

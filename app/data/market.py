@@ -691,7 +691,7 @@ class AlphaVantageMarketProvider:
 
 
 class DatabentoMarketProvider:
-    """Live provider for FESX and DE10Y via Databento XEUR.EOBI continuous contracts."""
+    """Live provider for Databento futures/instruments such as DE10Y, copper, WTI, and Brent."""
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
@@ -840,7 +840,11 @@ class YfinanceMarketProvider:
         return snapshots
 
 
-def fetch_live_market(settings: "Settings", vol_params: dict) -> list[MarketSnapshot]:
+def fetch_live_market(
+    settings: "Settings",
+    vol_params: dict,
+    as_of: datetime | None = None,
+) -> list[MarketSnapshot]:
     """
     Compose all four live providers and apply move detection.
 
@@ -848,7 +852,7 @@ def fetch_live_market(settings: "Settings", vol_params: dict) -> list[MarketSnap
     logged as warnings and skipped; a hard provider failure propagates up
     so the 5.F cache-fallback wrapper can recover.
     """
-    as_of = datetime.now(tz=ZoneInfo(settings.app.timezone))
+    as_of = as_of or datetime.now(tz=ZoneInfo(settings.app.timezone))
 
     snapshots: list[MarketSnapshot] = (
         AlphaVantageMarketProvider(settings.creds.alpha_vantage_api_key).fetch_watchlist(AV_INSTRUMENTS, as_of)
@@ -991,6 +995,7 @@ def fetch_chart_series(
 def fetch_live_market_with_cache(
     settings: "Settings",
     vol_params: dict,
+    as_of: datetime | None = None,
 ) -> list[MarketSnapshot]:
     """
     Fetch live market data, cache on success, fall back to stale cache on failure.
@@ -1000,11 +1005,11 @@ def fetch_live_market_with_cache(
     so the pipeline can propagate them into RunMetadata.warnings.
     """
     cache_dir = REPO_ROOT / settings.app.cache_dir
-    today = datetime.now(tz=ZoneInfo(settings.app.timezone)).date()
+    as_of = as_of or datetime.now(tz=ZoneInfo(settings.app.timezone))
 
     try:
-        snapshots = fetch_live_market(settings, vol_params)
-        cache_market(snapshots, cache_dir, today)
+        snapshots = fetch_live_market(settings, vol_params, as_of)
+        cache_market(snapshots, cache_dir, as_of.date())
         return snapshots
     except Exception as exc:
         _log.warning("Live market fetch failed (%s); trying cache fallback.", exc)

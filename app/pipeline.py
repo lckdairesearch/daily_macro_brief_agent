@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from pathlib import Path
+from time import perf_counter
+from typing import TYPE_CHECKING, Callable
 from zoneinfo import ZoneInfo
 
 _log = logging.getLogger(__name__)
@@ -33,7 +35,12 @@ if TYPE_CHECKING:
     from app.settings import Settings
 
 
-def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
+def run_pipeline(
+    mode: RunMode | str,
+    settings: "Settings",
+    data_cutoff: datetime | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> PipelineResult:
     """
     Main pipeline flow:
       1. Determine run window and data cutoff
@@ -54,36 +61,55 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     warnings: list[str] = []
     failed_sources: list[str] = []
     llm_usages: list[LLMUsage] = []
+    timings: list[dict] = []
     run_id = str(uuid.uuid4())
 
     # --- Step 1: Determine run window ---
+    _progress(progress, "Determine run window")
+    _step_started = perf_counter()
     tz = ZoneInfo(settings.app.timezone)
-    data_cutoff = _data_cutoff(settings, tz)
+    data_cutoff = _data_cutoff(settings, tz, data_cutoff)
     llm_cfg = settings.sources.get("llm", {})
     llm_provider = llm_cfg.get("provider", "litellm")
     llm_model = llm_cfg.get("synthesis_model", "")
+    _record_timing(timings, "Determine run window", _step_started)
 
     # --- Step 2: Fetch market data ---
+    _progress(progress, "Fetch market data")
+    _step_started = perf_counter()
     if mode == RunMode.SAMPLE:
         _market_snapshots = FixtureMarketProvider().fetch_watchlist([], data_cutoff)
     else:
         vol_params = load_vol_params(settings.config_dir)
-        _market_snapshots = fetch_live_market_with_cache(settings, vol_params)
+        _market_snapshots = fetch_live_market_with_cache(settings, vol_params, data_cutoff)
         # Propagate stale-cache warnings into run metadata (deduplicated)
         for snap in _market_snapshots:
             if snap.freshness_status == FreshnessStatus.STALE_CACHE and snap.warning:
                 if snap.warning not in warnings:
                     warnings.append(snap.warning)
+    _record_timing(timings, "Fetch market data", _step_started)
 
     # --- Step 3 & 4: Fetch calendar and enrich missing consensus ---
+    _progress(progress, "Fetch calendar")
+    _step_started = perf_counter()
     if mode == RunMode.SAMPLE:
         _calendar_events = _load_fixture_calendar()
     else:
-        # TODO Step 6: InvestingComCalendarProvider + consensus enrichment scout
-        _calendar_events = []
-        warnings.append("Live calendar data not yet implemented — no events loaded")
+        from app.data.calendar import CalendarIngestionError, InvestingCalendarProvider
+        _cal_cfg = settings.sources.get("calendar", {})
+        try:
+            _calendar_events = InvestingCalendarProvider(
+                config=_cal_cfg,
+                cache_dir=Path(settings.app.cache_dir) / "calendar",
+            ).fetch_for_date(data_cutoff)
+        except CalendarIngestionError as exc:
+            _calendar_events = []
+            warnings.append(f"Calendar fetch failed — no events loaded: {exc}")
+    _record_timing(timings, "Fetch calendar", _step_started)
 
     # --- Step 5: Discover source evidence ---
+    _progress(progress, "Discover evidence")
+    _step_started = perf_counter()
     scouts = build_scouts(settings, mode)
     discovery_context = DiscoveryContext(
         market_snapshots=_market_snapshots,
@@ -94,13 +120,19 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         data_cutoff=data_cutoff,
         mode=mode,
     )
-    evidence_cards = run_discovery(scouts, discovery_context, failed_sources)
+    evidence_cards = run_discovery(scouts, discovery_context, failed_sources, timings)
+    _record_timing(timings, "Discover evidence", _step_started)
 
     # --- Step 6: Deduplicate evidence ---
+    _progress(progress, "Deduplicate evidence")
+    _step_started = perf_counter()
     from app.synthesis.deduper import deduplicate
     deduped_evidence = deduplicate(evidence_cards)
+    _record_timing(timings, "Deduplicate evidence", _step_started)
 
     # --- Step 7: Rank evidence and events ---
+    _progress(progress, "Rank context")
+    _step_started = perf_counter()
     from app.synthesis.ranker import rank
     ranked_context = rank(
         market_snapshots=_market_snapshots,
@@ -109,8 +141,11 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         themes=settings.themes.get("themes", []),
         portfolio=settings.portfolio,
     )
+    _record_timing(timings, "Rank context", _step_started)
 
     # --- Step 8: Write grounded brief ---
+    _progress(progress, "Write brief")
+    _step_started = perf_counter()
     from app.llm.provider import LLMResponseError
     from app.synthesis.writer import write_brief
     try:
@@ -118,6 +153,7 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         llm_usages.append(llm_usage)
         warnings.extend(brief_draft.warnings)
     except LLMResponseError as exc:
+        _record_timing(timings, "Write brief", _step_started, status="failed")
         run_metadata = RunMetadata(
             run_id=run_id,
             run_started_at=started_at,
@@ -129,17 +165,22 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
             output_paths={},
+            timings=timings,
         )
         return PipelineResult(
             success=False,
             run_metadata=run_metadata,
             error_message=f"Brief writer failed: {exc}",
         )
+    _record_timing(timings, "Write brief", _step_started)
 
     # --- Step 9: Validate output ---
+    _progress(progress, "Validate brief")
+    _step_started = perf_counter()
     from app.synthesis.validator import validate_brief
     validation = validate_brief(brief_draft)
     if not validation.is_valid:
+        _record_timing(timings, "Validate brief", _step_started, status="failed")
         run_metadata = RunMetadata(
             run_id=run_id,
             run_started_at=started_at,
@@ -152,6 +193,7 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
             output_paths={},
+            timings=timings,
         )
         return PipelineResult(
             success=False,
@@ -160,16 +202,20 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
             error_message="Validation critical failures: " + "; ".join(validation.critical_failures),
         )
     warnings.extend(validation.warnings)
+    _record_timing(timings, "Validate brief", _step_started)
 
     # --- Step 10: Build chart ---
+    _progress(progress, "Build chart")
+    _step_started = perf_counter()
     from app.render.charts import build_chart
     output_paths: dict[str, str] = {}
     chart_image_url: str | None = None
+    chart_status = "success"
     try:
         chart_spec = build_chart(
             draft=brief_draft,
             settings=settings,
-            output_path=f"{settings.app.output_dir}/sample_chart.png",
+            output_path=_chart_output_path(mode, settings, data_cutoff),
             sample_mode=(mode == RunMode.SAMPLE),
             as_of=data_cutoff,
         )
@@ -191,11 +237,15 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     except Exception as _chart_exc:
         _log.warning("Chart generation failed: %s", _chart_exc)
         warnings.append(f"Chart generation failed: {_chart_exc}")
+        chart_status = "failed"
+    _record_timing(timings, "Build chart", _step_started, status=chart_status)
 
     # --- Step 11: Render HTML/text ---
-    from app.data.market import load_vol_params
+    _progress(progress, "Render brief")
+    _step_started = perf_counter()
     from app.render.email import render_brief
     render_paths: dict[str, str] = {}
+    render_status = "success"
 
     # Back-fill run_metadata so the render has full context
     if brief_draft is not None:
@@ -225,14 +275,20 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         except Exception as render_exc:
             _log.warning("Brief rendering failed: %s", render_exc)
             warnings.append(f"Brief rendering failed: {render_exc}")
+            render_status = "failed"
+    _record_timing(timings, "Render brief", _step_started, status=render_status)
 
     # --- Step 12: Deliver email ---
+    _progress(progress, "Deliver email")
+    _step_started = perf_counter()
+    delivery_timing_status = "skipped"
     # Sample/dry-run: deliver test output to the maintainer recipient.
     # Live: deliver to production recipients only when ENABLE_EMAIL_DELIVERY=true.
     from app.delivery import NoopDeliveryProvider, get_provider
     delivery_status = DeliveryStatus.DISABLED
     provider = get_provider(mode, settings)
     if not isinstance(provider, NoopDeliveryProvider):
+        delivery_timing_status = "success"
         from pathlib import Path as _Path
         inline_images = None
         if not chart_image_url and brief_draft and brief_draft.chart and brief_draft.chart.file_path:
@@ -258,8 +314,12 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         delivery_status = DeliveryStatus.SUCCESS if delivery_result.success else DeliveryStatus.FAILED
         if not delivery_result.success:
             warnings.append(f"Email delivery failed: {delivery_result.error_message}")
+            delivery_timing_status = "failed"
+    _record_timing(timings, "Deliver email", _step_started, status=delivery_timing_status)
 
     # --- Step 13: Record run metadata ---
+    _progress(progress, "Record metadata")
+    _step_started = perf_counter()
     run_metadata = RunMetadata(
         run_id=run_id,
         run_started_at=started_at,
@@ -275,7 +335,12 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         failed_sources=failed_sources,
         delivery_status=delivery_status,
         output_paths=output_paths,
+        timings=timings,
     )
+    if brief_draft is not None:
+        brief_draft.run_metadata = run_metadata.model_dump(mode="json")
+    _record_timing(timings, "Record metadata", _step_started)
+    run_metadata.timings = timings
     if brief_draft is not None:
         brief_draft.run_metadata = run_metadata.model_dump(mode="json")
 
@@ -286,10 +351,49 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _data_cutoff(settings: "Settings", tz: ZoneInfo) -> datetime:
+def _data_cutoff(
+    settings: "Settings",
+    tz: ZoneInfo,
+    override: datetime | None = None,
+) -> datetime:
     """Compute the data cutoff datetime for this run in the configured timezone."""
+    if override is not None:
+        if override.tzinfo is None:
+            return override.replace(tzinfo=tz)
+        return override.astimezone(tz)
+
     hour, minute = (int(p) for p in settings.app.data_cutoff_hkt.split(":"))
     return datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def _chart_output_path(mode: RunMode, settings: "Settings", data_cutoff: datetime) -> str:
+    """Return deterministic sample chart path or timestamped live-run chart path."""
+    output_dir = Path(settings.app.output_dir)
+    if mode == RunMode.SAMPLE:
+        return str(output_dir / "sample_chart.png")
+
+    timestamp = data_cutoff.strftime("%Y%m%d_%H%M")
+    return str(output_dir / f"chart_{timestamp}.png")
+
+
+def _progress(progress: Callable[[str], None] | None, message: str) -> None:
+    if progress is not None:
+        progress(message)
+
+
+def _record_timing(
+    timings: list[dict],
+    component: str,
+    started_at: float,
+    status: str = "success",
+) -> None:
+    timings.append(
+        {
+            "component": component,
+            "status": status,
+            "seconds": round(perf_counter() - started_at, 3),
+        }
+    )
 
 
 def _load_fixture_calendar() -> list[CalendarEvent]:

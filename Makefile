@@ -3,6 +3,7 @@
 PYTHON ?= /opt/homebrew/bin/python3.13
 VENV := .venv
 BIN := $(VENV)/bin
+DATA_CUTOFF ?=
 
 venv:
 	$(PYTHON) -m venv $(VENV)
@@ -28,7 +29,7 @@ run-live:
 	$(BIN)/python -m app.main --mode live
 
 dry-run:
-	$(BIN)/python -m app.main --mode dry-run
+	$(BIN)/python -m app.main --mode dry-run $(if $(DATA_CUTOFF),--data-cutoff "$(DATA_CUTOFF)")
 
 render-memo:
 	@echo "memo/memo.md — render to PDF manually or via pandoc when ready"

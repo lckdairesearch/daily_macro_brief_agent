@@ -22,6 +22,7 @@ outputs/*
 !outputs/sample_brief.html
 !outputs/sample_brief.txt
 !outputs/sample_chart.png
+!outputs/chart_*.png
 !outputs/live_eval/
 outputs/live_eval/*
 !outputs/live_eval/*.png

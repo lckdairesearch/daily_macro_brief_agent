@@ -240,6 +240,7 @@ class RunMetadata(BaseModel):
     failed_sources: list[str] = Field(default_factory=list)
     delivery_status: DeliveryStatus
     output_paths: dict[str, str] = Field(default_factory=dict)
+    timings: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PipelineResult(BaseModel):

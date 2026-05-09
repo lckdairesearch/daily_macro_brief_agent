@@ -6,6 +6,7 @@ Failed optional scouts are caught and recorded; they do not kill the run.
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from app.discovery.scouts.base import DiscoveryContext, FixtureDiscoveryScout, Scout
@@ -21,19 +22,52 @@ def run_discovery(
     scouts: list[Scout],
     context: DiscoveryContext,
     failed_sources: list[str],
+    timings: list[dict] | None = None,
 ) -> list[EvidenceCard]:
     """Run each scout; swallow failures for optional scouts and record them."""
     all_cards: list[EvidenceCard] = []
     for scout in scouts:
+        started = perf_counter()
         try:
             cards = scout.run(context)
+            elapsed = perf_counter() - started
             all_cards.extend(cards)
+            if timings is not None:
+                timings.append(
+                    {
+                        "component": f"scout:{scout.name}",
+                        "status": "success",
+                        "seconds": round(elapsed, 3),
+                        "cards": len(cards),
+                    }
+                )
             logger.info("Scout '%s' returned %d card(s)", scout.name, len(cards))
         except Exception as exc:
+            elapsed = perf_counter() - started
             if scout.optional:
                 logger.warning("Optional scout '%s' failed: %s", scout.name, exc)
                 failed_sources.append(scout.name)
+                if timings is not None:
+                    timings.append(
+                        {
+                            "component": f"scout:{scout.name}",
+                            "status": "failed",
+                            "seconds": round(elapsed, 3),
+                            "cards": 0,
+                            "error": str(exc),
+                        }
+                    )
             else:
+                if timings is not None:
+                    timings.append(
+                        {
+                            "component": f"scout:{scout.name}",
+                            "status": "failed",
+                            "seconds": round(elapsed, 3),
+                            "cards": 0,
+                            "error": str(exc),
+                        }
+                    )
                 raise RuntimeError(f"Required scout '{scout.name}' failed: {exc}") from exc
     return all_cards
 

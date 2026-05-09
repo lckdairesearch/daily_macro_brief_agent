@@ -83,9 +83,9 @@ def _dummy_creds():
 def test_build_fetchers_returns_all_instruments():
     fetchers = _build_fetchers(_dummy_creds())
     expected = {
-        "SPY", "QQQ", "UUP", "USDJPY", "EURUSD", "USDCNH",
+        "SPY", "QQQ", "FEZ", "UUP", "USDJPY", "EURUSD", "USDCNH",
         "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC",
-        "US2Y", "US10Y", "FESX", "DE10Y", "HY_OAS", "VIX", "MOVE",
+        "US2Y", "US10Y", "DE10Y", "HY_OAS", "VIX", "MOVE",
     }
     assert set(fetchers.keys()) == expected
 
@@ -93,7 +93,7 @@ def test_build_fetchers_returns_all_instruments():
 def test_build_fetchers_units():
     fetchers = _build_fetchers(_dummy_creds())
     pct_instruments = {"SPY", "QQQ", "UUP", "USDJPY", "EURUSD", "USDCNH",
-                       "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC", "FESX", "VIX", "MOVE"}
+                       "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC", "FEZ", "VIX", "MOVE"}
     bps_instruments = {"US2Y", "US10Y", "DE10Y", "HY_OAS"}
     for inst in pct_instruments:
         assert fetchers[inst][0] == "%", f"{inst} should be % unit"
@@ -139,7 +139,7 @@ def test_main_writes_yaml(tmp_path, monkeypatch):
     params = data["params"]
 
     # all instruments present with valid structure
-    for inst in ("SPY", "QQQ", "FESX", "DE10Y", "VIX", "HY_OAS", "MOVE"):
+    for inst in ("SPY", "QQQ", "FEZ", "DE10Y", "VIX", "HY_OAS", "MOVE"):
         assert inst in params, f"{inst} missing from params"
         assert "sd_1d" in params[inst]
         assert "unit" in params[inst]

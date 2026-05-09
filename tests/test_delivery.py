@@ -186,8 +186,20 @@ class TestGetProvider:
 
 
 # ---------------------------------------------------------------------------
-# Live integration test — skipped unless real credentials are present
+# Live integration test — skipped unless explicitly enabled with real credentials
 # ---------------------------------------------------------------------------
+
+def _live_postmark_enabled() -> bool:
+    """Require an explicit opt-in because this test sends a real email."""
+    if os.getenv("RUN_LIVE_POSTMARK_TEST", "").lower() == "true":
+        return True
+    try:
+        from dotenv import dotenv_values
+        env = dotenv_values()
+        return str(env.get("RUN_LIVE_POSTMARK_TEST", "")).lower() == "true"
+    except ImportError:
+        return False
+
 
 def _postmark_creds_available() -> bool:
     """Check env vars OR the local .env file (pydantic-settings loads it but os.environ doesn't)."""
@@ -202,8 +214,11 @@ def _postmark_creds_available() -> bool:
 
 
 @pytest.mark.skipif(
-    not _postmark_creds_available(),
-    reason="Live Postmark credentials not set (POSTMARK_API_KEY, POSTMARK_TO_EMAIL)",
+    not (_live_postmark_enabled() and _postmark_creds_available()),
+    reason=(
+        "Live Postmark test disabled. Set RUN_LIVE_POSTMARK_TEST=true with "
+        "POSTMARK_API_KEY and POSTMARK_TO_EMAIL to send a real test email."
+    ),
 )
 def test_postmark_live_send():
     """Actually sends an email via Postmark. Run with real credentials to verify end-to-end."""
