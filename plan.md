@@ -1305,7 +1305,7 @@ pytest tests/test_pipeline_sample.py
 **Implementation notes:**
 
 - Live mode uses Alpha Vantage primary, Databento supplemental where configured, and Investing.com calendar endpoint.
-- Dry-run uses live or cached data but skips delivery.
+- Dry-run uses live or cached data and sends the email to `contact@leonard-dai.com` instead of the production recipient list.
 - Cache fallback behavior must be visible in warnings and metadata.
 
 **Human input needed:** Run with real credentials locally and inspect provider responses. Confirm which live sources are stable enough for the submission.
@@ -1317,7 +1317,7 @@ make dry-run
 ```
 
 - Dry-run generates outputs.
-- Dry-run does not send email.
+- Dry-run sends email to `contact@leonard-dai.com` (not production recipients).
 - Warnings are clear when fallback data is used.
 
 ### 14.2 Add run artifacts and metadata
