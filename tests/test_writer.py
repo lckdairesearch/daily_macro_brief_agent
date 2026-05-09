@@ -15,9 +15,11 @@ from app.models import (
     BriefSection,
     BriefWriterOutput,
     CalendarEvent,
+    EvidenceCard,
     FreshnessStatus,
     LLMUsage,
     MarketSnapshot,
+    SourceType,
     WriterItem,
 )
 from app.synthesis.ranker import RankedBriefContext
@@ -61,14 +63,31 @@ def _make_calendar_event() -> CalendarEvent:
     )
 
 
+def _make_evidence_card(card_id: str = "ev_001") -> EvidenceCard:
+    return EvidenceCard(
+        id=card_id,
+        title="Policy Watch",
+        source_name="Research Source",
+        source_type=SourceType.RESEARCH,
+        url="https://example.com/research",
+        retrieved_at=_NOW,
+        thesis="Fiscal dominance matters",
+        evidence="Treasury issuance remains elevated",
+        macro_relevance="Rates pressure persists",
+        portfolio_relevance="Supports short duration",
+        confidence=0.8,
+    )
+
+
 def _make_ranked_context(stale: bool = False) -> RankedBriefContext:
     snap = _make_snapshot(stale=stale)
     event = _make_calendar_event()
+    evidence = _make_evidence_card()
     return RankedBriefContext(
         dashboard_rows=[snap],
         top_market_moves=[snap],
         top_calendar_events=[event],
-        ranked_evidence_cards=[],
+        ranked_evidence_cards=[evidence],
         proposed_three_things=[],
         proposed_theme_radar=[],
         proposed_contrarian_corner_seed=None,
@@ -113,6 +132,7 @@ def _make_writer_output(
         confidence=0.6,
     ) if with_contrarian else None
     return BriefWriterOutput(
+        book_impact="Higher yields support the short-duration sleeve.",
         three_things=[three],
         radar_items=[radar],
         contrarian_corner=contrarian,
@@ -209,6 +229,44 @@ def test_write_brief_chart_present_when_caption_supplied(mock_llm_cls):
 
     assert draft.chart is not None
     assert draft.chart.caption == writer_output.chart_caption
+
+
+@patch("app.synthesis.writer.LLMClient")
+def test_write_brief_carries_book_impact(mock_llm_cls):
+    writer_output = _make_writer_output()
+    mock_llm_cls.return_value.generate_structured.return_value = _make_llm_result(writer_output)
+
+    ctx = _make_ranked_context()
+    settings = _make_settings()
+    draft, _ = write_brief(ctx, settings, _NOW)
+
+    assert draft.book_impact == "Higher yields support the short-duration sleeve."
+
+
+@patch("app.synthesis.writer.LLMClient")
+def test_write_brief_attaches_source_metadata_from_evidence_id(mock_llm_cls):
+    writer_output = _make_writer_output()
+    mock_llm_cls.return_value.generate_structured.return_value = _make_llm_result(writer_output)
+
+    ctx = _make_ranked_context()
+    settings = _make_settings()
+    draft, _ = write_brief(ctx, settings, _NOW)
+
+    assert draft.radar_items[0].source_name == "Research Source"
+    assert draft.radar_items[0].source_url == "https://example.com/research"
+    assert draft.radar_items[0].source_type == SourceType.RESEARCH
+
+
+@patch("app.synthesis.writer.LLMClient")
+def test_write_brief_derives_topic_label_from_evidence(mock_llm_cls):
+    writer_output = _make_writer_output()
+    mock_llm_cls.return_value.generate_structured.return_value = _make_llm_result(writer_output)
+
+    ctx = _make_ranked_context()
+    settings = _make_settings()
+    draft, _ = write_brief(ctx, settings, _NOW)
+
+    assert draft.radar_items[0].topic_label == "Rates"
 
 
 @patch("app.synthesis.writer.LLMClient")

@@ -18,6 +18,7 @@ Return a JSON object matching this schema exactly. Do not add extra top-level ke
 
 ```json
 {
+  "book_impact": "1–2 narrative-only sentences on what the overnight setup means for the configured book. No estimated P&L, bps, percentages, hedge ratios, or made-up exposure numbers.",
   "three_things": [
     {
       "headline": "short headline ≤12 words",
@@ -30,7 +31,7 @@ Return a JSON object matching this schema exactly. Do not add extra top-level ke
   ],
   "radar_items": [
     {
-      "headline": "Title — Source Name",
+      "headline": "short topic headline without the source name",
       "body": "60–100 words. Author thesis and specific evidence, NOT the abstract or headline.",
       "so_what": "What this means for our book: one direct implication",
       "supporting_evidence_ids": ["ev_003"],
@@ -52,6 +53,13 @@ Return a JSON object matching this schema exactly. Do not add extra top-level ke
 
 ## Section rules
 
+### book_impact
+
+- Write 1–2 concise sentences on how the overnight market setup affects the configured book.
+- Use only supplied `market_snapshots`, `portfolio_context`, `theme_config`, and evidence cards.
+- Narrative only. Do not estimate P&L, delta, bps impact, hedge offsets, position sizes, or percentages.
+- If there is not enough support, return `null`.
+
 ### three_things
 
 Selection priority (use `proposed_three_things` cards as seeds):
@@ -70,6 +78,7 @@ Rules:
 
 - Provide 1–3 items, one per distinct theme where strong evidence exists.
 - Use `proposed_theme_radar` as seeds; supplement from `proposed_three_things` or other evidence if seeds are weak.
+- Do not append source names to `headline`; source names and links are attached by code from `supporting_evidence_ids`.
 - Each `body` is **60–100 words** covering the **author's thesis and specific supporting evidence** — not just the headline or abstract. Tell the PM what the author actually argued and what data they used.
 - Prefer non-mainstream sources: central bank speeches, research notes, Substacks, podcasts, X threads, buy-side letters. Mainstream news may verify catalysts but must not be the primary source here.
 - `so_what` must begin: `"What this means for our book:"` followed by a direct portfolio implication.

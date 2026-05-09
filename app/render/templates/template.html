@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Macro Brief</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: #1a1a1a;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        .container { max-width: 650px; margin: 0 auto; }
+        .date-line {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            margin: 0 0 20px 0;
+            color: #000;
+            letter-spacing: -0.8px;
+        }
+        .warning-box {
+            background: #fff8e1;
+            border: 1px solid #ffe082;
+            color: #5f4500;
+            padding: 10px 12px;
+            margin: 35px 0 18px 0;
+            font-size: 12px;
+            border-radius: 4px;
+        }
+        .warning-label {
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
+        }
+        .warning-box ul { margin: 0; padding-left: 18px; }
+        .impact-summary {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 18px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+        .impact-summary h3 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            color: #004dcf;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .impact-text { font-size: 14px; color: #24292e; font-weight: 500; }
+        .section-header {
+            font-size: 17px;
+            font-weight: 800;
+            border-left: 4px solid #000;
+            padding-left: 12px;
+            margin: 40px 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #000;
+        }
+        .market-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+        .market-table th {
+            text-align: left;
+            padding: 8px;
+            color: #666;
+            font-weight: normal;
+            border-bottom: 1px solid #000;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .market-table td { padding: 10px 8px; border-bottom: 1px solid #f1f1f1; }
+        .market-table th:last-child, .market-table td:last-child { text-align: center; }
+        .up { color: #188038; }
+        .down { color: #d93025; }
+        .flat { color: #666; }
+        .sig-move { font-weight: 800; }
+        .trend-arrow { font-size: 15px; font-weight: bold; }
+        .source-note { font-size: 10px; color: #999; margin-top: -10px; }
+        .thing-item { margin-bottom: 25px; }
+        .thing-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 6px; }
+        .thing-body { font-size: 13px; color: #444; margin: 0; }
+        .so-what-tag {
+            color: #004dcf;
+            font-weight: bold;
+            font-size: 11px;
+            margin-top: 10px;
+            display: block;
+            background: rgba(0, 77, 207, 0.05);
+            padding: 6px 12px;
+            width: fit-content;
+            border-radius: 2px;
+            border-left: 2px solid #004dcf;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 20px;
+            font-size: 12px;
+        }
+        .cal-item {
+            border-bottom: 1px dashed #eee;
+            padding: 6px 0;
+        }
+        .cal-meta { color: #666; font-variant-numeric: tabular-nums; font-size: 11px; margin-bottom: 2px; }
+        .cal-event { font-weight: 700; color: #1a1a1a; display: block; }
+        .cal-impact-high::before { content: "● "; color: #d93025; font-size: 10px; vertical-align: middle; }
+        .cal-vals { color: #555; font-size: 11px; margin-top: 2px; }
+        .chart-box { margin: 20px 0; }
+        .chart-img { width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; }
+        .chart-caption {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+            margin-top: 10px;
+            line-height: 1.4;
+            padding: 0 10px;
+            border-left: 2px solid #ddd;
+        }
+        .radar-item {
+            padding: 15px 0 15px 15px;
+            margin-bottom: 10px;
+            border-left: 1px solid #eee;
+            border-bottom: 1px solid #f9f9f9;
+        }
+        .radar-topic { font-size: 10px; color: #666; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; display: block; }
+        .radar-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 8px; display: block; text-decoration: none; }
+        .radar-summary { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 0; }
+        .contrarian-section {
+            background: #fbfbfb;
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+            padding: 25px 20px;
+            margin-top: 20px;
+        }
+        .contrarian-label {
+            font-size: 11px;
+            font-weight: 800;
+            color: #004dcf;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            display: block;
+        }
+        @media (max-width: 580px) {
+            .calendar-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 24px; }
+            .section-header { font-size: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="date-line">{{ header_line }}</div>
+        <h1>Macro Synthesis</h1>
+
+        {% if book_impact %}
+        <div class="impact-summary">
+            <h3>Overnight Book Impact</h3>
+            <div class="impact-text">{{ book_impact }}</div>
+        </div>
+        {% endif %}
+
+        <div class="section-header">Overnight Dashboard</div>
+        <table class="market-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Last</th>
+                    <th>Change</th>
+                    <th>5D Trend</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in dashboard_rows %}
+                <tr>
+                    <td>{{ row.asset }}</td>
+                    <td>{{ row.last }}</td>
+                    <td class="{{ row.change_class }}">{{ row.change }}</td>
+                    <td class="trend-arrow {{ row.trend_class }}">{{ row.trend_arrow }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="source-note">* Bold indicates move &gt; 1 standard deviation. 5D trend arrows are computed from 5D move versus sqrt(5) daily volatility.</p>
+
+        <div class="section-header">The 3 Things</div>
+        {% for item in three_things %}
+        <div class="thing-item">
+            <div class="thing-title">{{ loop.index }}. {{ item.headline }}</div>
+            <p class="thing-body">{{ item.body }}</p>
+            {% if item.so_what %}
+            <span class="so-what-tag">So what: {{ item.so_what }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="section-header">Today's Calendar</div>
+        <div class="calendar-grid">
+            {% for event in calendar_events %}
+            <div class="cal-item">
+                <div class="cal-meta">{{ event.time_hkt }} • {{ event.country_or_region }}</div>
+                <span class="cal-event{% if event.high_importance %} cal-impact-high{% endif %}">{{ event.event_name }}</span>
+                <div class="cal-vals">Exp: {{ event.consensus }} | Prev: {{ event.previous }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <p style="font-size: 10px; color: #999; margin-top: 8px;">* All times indicated are in HKT.</p>
+
+        {% if chart %}
+        <div class="section-header">One Chart Worth Seeing</div>
+        <div class="chart-box">
+            <img src="{{ chart.file_path }}" alt="{{ chart.title }}" class="chart-img">
+            <div class="chart-caption">{{ chart.caption }}</div>
+        </div>
+        {% endif %}
+
+        <div class="section-header">Theme Radar</div>
+        {% for item in radar_items %}
+        <div class="radar-item">
+            {% if item.topic_label %}
+            <span class="radar-topic">{{ item.topic_label }}</span>
+            {% endif %}
+            <a href="{{ item.source_url or "#" }}" class="radar-title">{{ item.headline }}</a>
+            <p class="radar-summary">{{ item.body }}</p>
+            {% if item.so_what %}
+            <span class="so-what-tag">{{ item.so_what | replace("What this means for our book:", "So what:") }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        {% if contrarian_corner %}
+        <div class="section-header">Contrarian Corner</div>
+        <div class="contrarian-section">
+            <span class="contrarian-label">The Missing Narrative</span>
+            <p style="margin: 0; font-size: 14px;">{{ contrarian_corner.body }}</p>
+            {% if contrarian_corner.so_what %}
+            <span class="so-what-tag">Watch item: {{ contrarian_corner.so_what }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if warnings %}
+        <div class="warning-box">
+            <div class="warning-label">Warnings</div>
+            <ul>
+                {% for warning in warnings %}
+                <li>{{ warning }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div style="padding: 40px 0; font-size: 11px; color: #999; text-align: center;">
+            Macro Brief Agent | For Internal Use Only
+        </div>
+    </div>
+</body>
+</html>

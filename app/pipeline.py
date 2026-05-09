@@ -209,6 +209,22 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
     # Back-fill run_metadata into the draft so rendering has full context
     if brief_draft is not None:
         brief_draft.run_metadata = run_metadata.model_dump(mode="json")
+        try:
+            from app.data.market import load_vol_params
+            from app.render.email import render_brief
+
+            render_paths = render_brief(
+                draft=brief_draft,
+                settings=settings,
+                vol_params=load_vol_params(settings.config_dir),
+            )
+            output_paths.update(render_paths)
+            run_metadata.output_paths = output_paths
+            brief_draft.run_metadata = run_metadata.model_dump(mode="json")
+        except Exception as render_exc:
+            _log.warning("Brief rendering failed: %s", render_exc)
+            warnings.append(f"Brief rendering failed: {render_exc}")
+            run_metadata.warnings = warnings
 
     return PipelineResult(success=True, run_metadata=run_metadata, brief_draft=brief_draft)
 

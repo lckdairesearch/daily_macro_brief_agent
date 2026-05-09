@@ -7,6 +7,7 @@ generate matplotlib code, and validates the result by subprocess execution.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,19 @@ _log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _TEMPLATES_PATH = REPO_ROOT / "app" / "config" / "chart_templates.yaml"
+
+
+def configure_matplotlib_cache_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Point Matplotlib/fontconfig cache paths at a writable temp directory."""
+    target = os.environ if env is None else env
+    mpl_cache_dir = Path(tempfile.gettempdir()) / "daily_macro_brief_mpl_cache"
+    mpl_cache_dir.mkdir(parents=True, exist_ok=True)
+    (mpl_cache_dir / "fontconfig").mkdir(exist_ok=True)
+    target["MPLCONFIGDIR"] = str(mpl_cache_dir)
+    target["XDG_CACHE_HOME"] = str(mpl_cache_dir)
+    target["HOME"] = str(mpl_cache_dir)
+    target["MPLBACKEND"] = "Agg"
+    return target
 
 
 def select_instruments(draft: BriefDraft) -> tuple[str, list[str]]:
@@ -169,7 +183,7 @@ def _strip_fences(text: str) -> str:
     return "\n".join(lines)
 
 
-def execute_chart_code(code: str, output_path: str, timeout: int = 30) -> None:
+def execute_chart_code(code: str, output_path: str, timeout: int = 60) -> None:
     """Execute code in a subprocess. Raises RuntimeError on failure or timeout."""
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False, encoding="utf-8"
@@ -178,11 +192,13 @@ def execute_chart_code(code: str, output_path: str, timeout: int = 30) -> None:
         tmp_path = fh.name
 
     try:
+        env = configure_matplotlib_cache_env()
         result = subprocess.run(
             [sys.executable, tmp_path],
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
         if result.returncode != 0:
             stderr = result.stderr[-2000:] if result.stderr else "(no stderr)"

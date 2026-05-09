@@ -66,7 +66,12 @@ Delivery behavior:
 
 ## 4. Core brief sections
 
-The generated brief must contain the following sections in this order unless later revised.
+The generated brief must contain the following six required sections in this order unless later revised.
+
+The email may include an optional `Overnight Book Impact` note before the required
+sections. This note is narrative-only in V1 because the prototype does not have
+real position sizes, hedge ratios, or P&L sensitivities. It must not include
+estimated bps impact, portfolio delta, hedge offsets, or invented exposure numbers.
 
 ### 4.1 Overnight market dashboard
 
@@ -168,11 +173,11 @@ Source preference:
 
 Format for each item:
 
-- Title.
-- Source.
-- Link.
+- Topic/domain label, such as `Metals`, `Rates`, `Monetary Policy`, `Energy`, `Agriculture`, `FX`, or `Credit`.
+- Linked title.
+- Source metadata and URL must be retained in the structured draft, even if the visual template does not show a separate source label.
 - 60–100 word summary of the author’s thesis and evidence, not just the abstract.
-- One line: `What this means for our book:`.
+- One line: `So what:`.
 
 ### 4.6 Contrarian corner
 
@@ -474,4 +479,3 @@ V1 focuses on a runnable, validated daily brief. Future versions would make the 
 - **Smarter chart selection:** Let the system choose and configure the most relevant chart dynamically at runtime with LLM assistance, while still validating all plotted data comes from real or fixture sources.
 
 - **Additional delivery channels:** Add Slack, Telegram, or dashboard delivery after email is stable, while preserving the same rendered brief and validation pipeline.
-

@@ -25,6 +25,10 @@ from app.models import (
 
 # Pre-baked fixture brief for sample mode — avoids LLM call, no credentials needed.
 _SAMPLE_FAKE_RESPONSE: dict = {
+    "book_impact": (
+        "Higher real-rate pressure supports the short-duration sleeve, while metals "
+        "strength reinforces the long metals complex and monetary debasement theme."
+    ),
     "three_things": [
         {
             "headline": "Metals complex gains on central bank accumulation",
@@ -144,16 +148,21 @@ def _assemble_draft(
     writer_out: BriefWriterOutput,
     ctx: RankedBriefContext,
 ) -> BriefDraft:
+    evidence_by_id = {card.id: card for card in ctx.ranked_evidence_cards}
     three_things = [
-        _to_brief_item(item, BriefSection.THREE_THINGS)
+        _to_brief_item(item, BriefSection.THREE_THINGS, evidence_by_id)
         for item in writer_out.three_things
     ]
     radar_items = [
-        _to_brief_item(item, BriefSection.THEME_RADAR)
+        _to_brief_item(item, BriefSection.THEME_RADAR, evidence_by_id)
         for item in writer_out.radar_items
     ]
     contrarian = (
-        _to_brief_item(writer_out.contrarian_corner, BriefSection.CONTRARIAN_CORNER)
+        _to_brief_item(
+            writer_out.contrarian_corner,
+            BriefSection.CONTRARIAN_CORNER,
+            evidence_by_id,
+        )
         if writer_out.contrarian_corner else None
     )
     chart = None
@@ -166,6 +175,7 @@ def _assemble_draft(
         )
     return BriefDraft(
         run_metadata={},  # filled by pipeline after RunMetadata is built
+        book_impact=writer_out.book_impact,
         overnight_dashboard=ctx.dashboard_rows,
         three_things=three_things,
         todays_calendar=ctx.top_calendar_events,
@@ -176,7 +186,17 @@ def _assemble_draft(
     )
 
 
-def _to_brief_item(item: WriterItem, section: BriefSection) -> BriefItem:
+def _to_brief_item(
+    item: WriterItem,
+    section: BriefSection,
+    evidence_by_id: dict[str, Any] | None = None,
+) -> BriefItem:
+    source = None
+    if evidence_by_id:
+        for evidence_id in item.supporting_evidence_ids:
+            source = evidence_by_id.get(evidence_id)
+            if source is not None:
+                break
     return BriefItem(
         section=section,
         headline=item.headline,
@@ -184,8 +204,41 @@ def _to_brief_item(item: WriterItem, section: BriefSection) -> BriefItem:
         so_what=item.so_what,
         supporting_market_ids=item.supporting_market_ids,
         supporting_evidence_ids=item.supporting_evidence_ids,
+        source_name=getattr(source, "source_name", None),
+        source_url=getattr(source, "url", None),
+        source_type=getattr(source, "source_type", None),
+        topic_label=_derive_topic_label(item, source),
         confidence=item.confidence,
     )
+
+
+def _derive_topic_label(item: WriterItem, source: Any | None) -> str | None:
+    text_parts = [
+        item.headline,
+        item.body,
+        " ".join(item.supporting_market_ids),
+    ]
+    if source is not None:
+        text_parts.extend([
+            getattr(source, "title", "") or "",
+            getattr(source, "thesis", "") or "",
+            " ".join(getattr(source, "tags", []) or []),
+        ])
+    text = " ".join(text_parts).lower()
+
+    topic_rules = [
+        ("Metals", ("gold", "silver", "copper", "metals", "metal")),
+        ("Rates", ("treasury", "duration", "yield", "yields", "term premium", "fiscal")),
+        ("Monetary Policy", ("fed", "fomc", "ecb", "central bank", "monetary policy")),
+        ("Energy", ("oil", "crude", "brent", "wti", "hormuz", "energy")),
+        ("Agriculture", ("food", "fertilizer", "agriculture", "grain", "grains", "crop")),
+        ("FX", ("usd", "dollar", "currency", "yen", "euro", "reserve")),
+        ("Credit", ("credit", "oas", "spread", "spreads", "default")),
+    ]
+    for label, tokens in topic_rules:
+        if any(token in text for token in tokens):
+            return label
+    return None
 
 
 # ---------------------------------------------------------------------------

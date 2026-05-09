@@ -231,6 +231,21 @@ def test_number_with_evidence_ids_passes():
     assert not any("market numbers" in f for f in result.critical_failures)
 
 
+def test_book_impact_numeric_language_is_critical():
+    draft = _valid_draft(book_impact="Estimated net impact is +14bps overnight.")
+    result = validate_brief(draft)
+    assert not result.is_valid
+    assert any("book_impact" in f for f in result.critical_failures)
+
+
+def test_book_impact_narrative_language_passes():
+    draft = _valid_draft(
+        book_impact="Higher yields support the short-duration sleeve while metals strength supports the long metals theme."
+    )
+    result = validate_brief(draft)
+    assert not any("book_impact" in f for f in result.critical_failures)
+
+
 # ---------------------------------------------------------------------------
 # Minor: word limits
 # ---------------------------------------------------------------------------

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<!--
+  Non-runtime visual draft for Step 11.2.
+
+  This file intentionally contains mock values copied from the design draft.
+  Do not use it as a data source and do not send it as a live brief.
+  Production rendering should use template.html with fixture/API-backed fields.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Macro Brief</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: #1a1a1a;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        .container { max-width: 650px; margin: 0 auto; }
+        .date-line {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+        h1 {
+            font-size: 28px;
+            font-weight: 800;
+            margin: 0 0 20px 0;
+            color: #000;
+            letter-spacing: -0.8px;
+        }
+        .section-header {
+            font-size: 17px;
+            font-weight: 800;
+            border-left: 4px solid #000;
+            padding-left: 12px;
+            margin: 40px 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #000;
+        }
+        .impact-summary {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            padding: 18px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+        .impact-summary h3 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            color: #004dcf;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .impact-text { font-size: 14px; color: #24292e; font-weight: 500; }
+        .market-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
+        .market-table th {
+            text-align: left;
+            padding: 8px;
+            color: #666;
+            font-weight: normal;
+            border-bottom: 1px solid #000;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .market-table td { padding: 10px 8px; border-bottom: 1px solid #f1f1f1; }
+        .market-table th:last-child, .market-table td:last-child { text-align: center; }
+        .up { color: #188038; }
+        .down { color: #d93025; }
+        .flat { color: #666; }
+        .sig-move { font-weight: 800; }
+        .trend-arrow { font-size: 15px; font-weight: bold; }
+        .thing-item { margin-bottom: 25px; }
+        .thing-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 6px; }
+        .thing-body { font-size: 13px; color: #444; margin: 0; }
+        .so-what-tag {
+            color: #004dcf;
+            font-weight: bold;
+            font-size: 11px;
+            margin-top: 10px;
+            display: block;
+            background: rgba(0, 77, 207, 0.05);
+            padding: 6px 12px;
+            width: fit-content;
+            border-radius: 2px;
+            border-left: 2px solid #004dcf;
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 20px;
+            font-size: 12px;
+        }
+        .cal-item {
+            border-bottom: 1px dashed #eee;
+            padding: 6px 0;
+        }
+        .cal-meta { color: #666; font-variant-numeric: tabular-nums; font-size: 11px; margin-bottom: 2px; }
+        .cal-event { font-weight: 700; color: #1a1a1a; display: block; }
+        .cal-impact-high::before { content: "● "; color: #d93025; font-size: 10px; vertical-align: middle; }
+        .cal-vals { color: #555; font-size: 11px; margin-top: 2px; }
+        .chart-box { margin: 20px 0; }
+        .chart-img { width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; }
+        .chart-caption {
+            font-size: 12px; color: #666; font-style: italic; margin-top: 10px;
+            line-height: 1.4; padding: 0 10px; border-left: 2px solid #ddd;
+        }
+        .radar-item {
+            padding: 15px 0 15px 15px;
+            margin-bottom: 10px;
+            border-left: 1px solid #eee;
+            border-bottom: 1px solid #f9f9f9;
+        }
+        .radar-source { font-size: 10px; color: #666; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; display: block; }
+        .radar-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 8px; display: block; text-decoration: none; }
+        .radar-summary { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 0; }
+        .contrarian-section {
+            background: #fbfbfb;
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+            padding: 25px 20px;
+            margin-top: 20px;
+        }
+        .contrarian-label {
+            font-size: 11px;
+            font-weight: 800;
+            color: #004dcf;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            display: block;
+        }
+        @media (max-width: 580px) {
+            .calendar-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 24px; }
+            .section-header { font-size: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="date-line">Monday, May 11, 2026 | Morning Brief</div>
+        <h1>Macro Synthesis</h1>
+
+        <div class="impact-summary">
+            <h3>Overnight Book Impact</h3>
+            <div class="impact-text">
+                Estimated Net Delta: <span class="up">+14bps</span>.
+                USD/JPY carry remains the primary driver. Current equity hedges offset 80% of overnight drawdown.
+            </div>
+        </div>
+
+        <div class="section-header">Overnight Dashboard</div>
+        <table class="market-table">
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Last</th>
+                    <th>Change</th>
+                    <th>5D Trend</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>S&P 500</td><td>5,124.5</td><td class="down sig-move">-1.82%</td><td class="trend-arrow down">↘</td></tr>
+                <tr><td>US 10Y Yield</td><td>4.482%</td><td class="up">+6.1bps</td><td class="trend-arrow up">↗</td></tr>
+                <tr><td>USD/JPY</td><td>153.42</td><td class="up sig-move">+0.95%</td><td class="trend-arrow up">↗</td></tr>
+                <tr><td>Gold (Spot)</td><td>$2,314.2</td><td class="down">-0.42%</td><td class="trend-arrow down">↘</td></tr>
+                <tr><td>WTI Crude</td><td>$78.10</td><td class="up">+0.15%</td><td class="trend-arrow flat">→</td></tr>
+                <tr><td>BTC/USD</td><td>$61,240</td><td class="down sig-move">-3.10%</td><td class="trend-arrow down">↘</td></tr>
+            </tbody>
+        </table>
+        <p style="font-size: 10px; color: #999; margin-top: -10px;">* Bold indicates move > 1 standard deviation.</p>
+
+        <div class="section-header">The 3 Things</div>
+        <div class="thing-item">
+            <div class="thing-title">1. China Credit Impulse Stalls</div>
+            <p class="thing-body">Aggregate financing fell short of estimates overnight. PBOC maintaining a tight leash despite growth headwinds.</p>
+            <span class="so-what-tag">So what: Exit tactical long China beta; move to defensive USD cash.</span>
+        </div>
+        <div class="thing-item">
+            <div class="thing-title">2. ECB's Schnabel Hawkish Tone</div>
+            <p class="thing-body">Comments suggest a June cut is not a pre-commitment. Yields across the EU curve rose in early trading.</p>
+            <span class="so-what-tag">So what: Trim short EUR/CHF; risk of squeeze is high.</span>
+        </div>
+        <div class="thing-item">
+            <div class="thing-title">3. Semis vs. SaaS Divergence</div>
+            <p class="thing-body">Semiconductor hardware demand remains robust while enterprise SaaS spend is hitting a wall.</p>
+        </div>
+
+        <div class="section-header">Today's Calendar</div>
+        <div class="calendar-grid">
+            <div class="cal-item"><div class="cal-meta">08:30 • US</div><span class="cal-event cal-impact-high">Core CPI (MoM)</span><div class="cal-vals">Exp: 0.3% | Prev: 0.4%</div></div>
+            <div class="cal-item"><div class="cal-meta">10:00 • US</div><span class="cal-event">U. Michigan Sentiment</span><div class="cal-vals">Exp: 71.2 | Prev: 70.4</div></div>
+        </div>
+        <p style="font-size: 10px; color: #999; margin-top: 8px;">* All times indicated are in HKT.</p>
+
+        <div class="section-header">One Chart Worth Seeing</div>
+        <div class="chart-box">
+            <img src="demo_chart.png" alt="Market Analysis Chart" class="chart-img">
+            <div class="chart-caption">
+                <strong>Liquidity Divergence:</strong> Gold is decoupling from real yields as central bank bid persists despite hawkish Fed rhetoric.
+            </div>
+        </div>
+
+        <div class="section-header">Theme Radar</div>
+        <div class="radar-item">
+            <span class="radar-source">Substack | The Macro Compass</span>
+            <a href="#" class="radar-title">The Shadow Stimulus of 2026</a>
+            <p class="radar-summary">Private credit is providing a shadow stimulus that prevents a real recession.</p>
+            <span class="so-what-tag">What this means for our book: Conviction in underweight duration theme; stay short 10Y/30Y.</span>
+        </div>
+
+        <div class="section-header">Contrarian Corner</div>
+        <div class="contrarian-section">
+            <span class="contrarian-label">The Missing Narrative</span>
+            <p style="margin: 0; font-size: 14px;">
+                Everyone is hiding in Large Cap Tech as a safe haven, but concentration risk is elevated.
+                <em>We are watching for a technical breakdown in Mag-7 to trigger a long RTY trade.</em>
+            </p>
+        </div>
+
+        <div style="padding: 40px 0; font-size: 11px; color: #999; text-align: center;">
+            Macro Brief Agent | For Internal Use Only | [v1.7]
+        </div>
+    </div>
+</body>
+</html>

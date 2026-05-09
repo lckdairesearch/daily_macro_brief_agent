@@ -1008,21 +1008,23 @@ else:
 
 **Implementation notes:**
 
-- Add `BriefWriterOutput` to `app/models.py`: contains only the LLM-written fields — `three_things: list[BriefItem]`, `radar_items: list[BriefItem]`, `contrarian_corner: BriefItem | None`, `chart_caption: str | None`, `warnings: list[str]`. The LLM does not reproduce dashboard or calendar data; the pipeline assembles the final `BriefDraft` by merging `BriefWriterOutput` with the market snapshots and calendar events already in the pipeline.
+- Add `BriefWriterOutput` to `app/models.py`: contains only the LLM-written fields — `book_impact: str | None`, `three_things: list[BriefItem]`, `radar_items: list[BriefItem]`, `contrarian_corner: BriefItem | None`, `chart_caption: str | None`, `warnings: list[str]`. The LLM does not reproduce dashboard or calendar data; the pipeline assembles the final `BriefDraft` by merging `BriefWriterOutput` with the market snapshots and calendar events already in the pipeline.
+- Add optional source metadata and topic fields to `BriefItem`: `source_name`, `source_url`, `source_type`, and `topic_label`. The LLM still returns only `supporting_evidence_ids`; code copies trusted source metadata from matching `EvidenceCard` objects and derives the topic label during draft assembly.
 - Load prompt through prompt registry (`brief_writer.md`).
 - Send market snapshots, calendar events, evidence cards, themes, portfolio assumptions, and warnings as a single structured JSON payload.
 - Make one LiteLLM call via `app/llm/provider.py` requesting structured JSON output; parse response into `BriefWriterOutput`, then assemble `BriefDraft`.
 - One shot only — the full brief is produced in a single call, not one call per section.
 - Default to LiteLLM; switch to OpenAI SDK directly only if structured output is not performing.
-- Sample mode uses the same LLM path with fixture data as input — `OPENAI_API_KEY` is required even in sample mode. Document this in settings validation and `.env.example`.
+- Sample mode may use a deterministic fixture-backed writer so reviewers can run without credentials; live/dry-run synthesis uses the configured LLM path.
 - Wire the writer call into `app/pipeline.py` after the ranking step so `make run-sample` produces a real `BriefDraft`.
 
 **`brief_writer.md` must include:**
 
 - Hard constraint: use only supplied data; never invent prices, yields, links, authors, or consensus values; write `no confirmed fresh catalyst` when no catalyst is confirmed.
+- `book_impact` is optional, narrative-only, and limited to 1–2 sentences. It may reference supplied market moves and configured synthetic book positions/themes, but must not estimate P&L, bps impact, portfolio delta, hedge offsets, position size, or percentages.
 - Exact word limits per section: `three_things` body ≤ 80 words each; `radar_items` body 60–100 words each; `contrarian_corner` body 50–100 words; `chart_caption` ≤ 30 words.
 - `so_what` in every `three_things` and `radar_items` item must reference a specific position or theme from supplied `portfolio_context`.
-- `radar_items` must summarise the author's thesis and evidence, not just the abstract; prefer non-mainstream sources (central bank speeches, research notes, Substacks, podcasts, X threads, buy-side letters) over mainstream financial media.
+- `radar_items` must summarise the author's thesis and evidence, not just the abstract; prefer non-mainstream sources (central bank speeches, research notes, Substacks, podcasts, X threads, buy-side letters) over mainstream financial media. Radar headlines should not append source names; code attaches links/source metadata and derives the visible topic label.
 - `contrarian_corner` must be framed as "the market is not pricing X, worth watching because Y"; return null if no genuine mispricing narrative is supported by the evidence — do not force one.
 - Sparse evidence: if fewer than three high-quality evidence cards exist, produce only as many `three_things` items as are genuinely supported and add a warning.
 - Stale data: any section referencing a `freshness_status=STALE_CACHE` instrument must note it inline (e.g. `note: price data is stale`).
@@ -1052,6 +1054,7 @@ Critical failures hard-fail the run and suppress delivery:
 
 - Any required section missing.
 - Market number present without source metadata.
+- Numeric `book_impact` language such as estimated bps/P&L/percentage impact without a future explicit exposure model.
 - Link present without source metadata.
 - Consensus value present without source metadata and not directly from cached Investing.com payload.
 
@@ -1113,7 +1116,7 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 1. Call `fetch_chart_series()` with selected instruments.
 2. Inject data as Python dict literals + calendar events from `BriefDraft.todays_calendar` (dates within range).
 3. Call LLM via `app/llm/client.py` (LiteLLM; model `gpt-4o` or project default) using `chart_codegen.md` prompt.
-4. Execute in subprocess (`timeout=30s`); check exit code and PNG exists.
+4. Execute in subprocess (`timeout=60s`); check exit code and PNG exists. The longer default covers first-run Matplotlib font-cache initialization in clean CI/local environments.
 5. On failure: inject stderr, retry once.
 6. On second failure: hardcoded bar chart of `one_day_change` for dashboard instruments.
 
@@ -1144,7 +1147,9 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 **Files to modify:**
 
 - `app/render/email.py`
-- `app/render/templates/brief_template.html`
+- `app/render/templates/template.html` — production Jinja email template
+- `app/render/templates/example.html` — non-runtime visual reference with mock values only
+- `app/render/templates/brief_template.html` — compatibility include for the production template, if retained
 - `tests/test_render.py`
 
 **Implementation notes:**
@@ -1155,6 +1160,13 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 - Include dashboard and calendar as tables.
 - Include chart path or inline chart reference as appropriate.
 - Create plain-text fallback.
+- Do not ask an LLM to decide dashboard arrows, colors, or bold styling.
+- Add deterministic presentation logic before template rendering. Convert each `MarketSnapshot` into a render row with formatted `last`, formatted `change`, `change_class`, `trend_arrow`, and `trend_class`.
+- For 1D dashboard emphasis, use existing `threshold_flag` or `abs(one_day_zscore) >= 1.0`; bold significant moves via `sig-move`.
+- For 1D direction color, use the sign of `one_day_change`: positive `up`, negative `down`, zero `flat`.
+- For 5D trend arrows, use `five_day_change` and daily volatility from `vol_params.yaml`: `five_day_sigma = sd_1d * sqrt(5)`, `five_day_zscore = five_day_change / five_day_sigma`.
+- Use a low flat threshold for 5D trend display, initially `abs(five_day_zscore) < 0.25` → `→`; otherwise positive → `↗`, negative → `↘`. This is a presentation heuristic, not a trading signal.
+- LLM-generated synthesis may populate textual fields only. It must not mutate market numbers, calendar values, source labels, links, section order, CSS classes, or significance logic.
 
 **Human input needed:** Review visual style and email readability.
 
@@ -1163,6 +1175,7 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 - HTML and text include all required sections.
 - Warnings render when present.
 - Output files are saved to the expected paths.
+- Tests cover dashboard presentation mapping: 1D significant move class, up/down/flat color class, and 5D arrow calculation using the sqrt(5) volatility rule.
 
 ---
 
@@ -1589,3 +1602,46 @@ The human coder should supervise these decisions directly:
 9. Live-mode validation severity and send/no-send rules.
 10. Actual hours spent in `memo/memo.md`.
 11. Final acceptance audit before submission.
+
+---
+
+## Potential Future Changes
+
+### Databento commodity migration review
+
+**Status:** Exploration only — no code changes made.
+
+**Context:** Alpha Vantage commodity data has shown inconsistencies. Databento was evaluated as a possible replacement source for commodity daily closes.
+
+**Current design:** Keep the hybrid provider stack unless a product-definition change is explicitly approved:
+
+- Alpha Vantage remains the source for `GOLD`, `SILVER`, `WTI`, and `BRENT`.
+- Databento remains the source for `COPPER` via `GLBX.MDP3` / `HG.c.0`.
+- Migrating all commodities to Databento would change spot/benchmark-style series into continuous futures proxies.
+
+**Databento documentation findings:**
+
+- Minimal required Databento schema for daily close is `ohlcv-1d`.
+- `timeseries.get_range` uses an exclusive `end` timestamp.
+- `ohlcv-1d` bars are UTC-date based and may differ from exchange-session settlement prices.
+- Continuous futures symbols use `[ROOT].[ROLL_RULE].[RANK]`, for example `CL.c.0`, `GC.c.0`, `SI.c.0`, `HG.c.0`, and `BRN.c.0`.
+- Continuous prices are original, unadjusted prices; they are not back-adjusted across rolls.
+
+**Live probe summary, 2026-05-09 HKT:**
+
+- `GLBX.MDP3` resolved `GC.c.0`, `SI.c.0`, `CL.c.0`, `HG.c.0`, and `BZ.c.0`.
+- `IFEU.IMPACT` resolved `BRN.c.0`; `B.c.0` was not found.
+- Narrow `ohlcv-1d` request for GLBX commodities over 2026-05-07 to 2026-05-08 returned 10 rows in about 5.1 seconds.
+- Narrow `ohlcv-1d` request for ICE Brent over the same range returned rows in about 2.2 seconds.
+- ICE Brent returned multiple rows per date from different publishers; existing highest-volume dedupe logic is relevant.
+- A plain request ending on 2026-05-09 exceeded current historical entitlement cutoffs, so requests must avoid crossing Databento's available range.
+
+**Important implementation risk found:** The current Databento provider computes `end = as_of.date() - 1 day`, then passes that date as Databento's exclusive `end`. For an `as_of` of 2026-05-09, the existing provider returned the 2026-05-07 copper close even though a direct probe showed a 2026-05-08 copper bar was available when using an intraday end timestamp before the entitlement cutoff. Before expanding Databento usage, fix or explicitly test the date-window semantics so "one day before" means the intended latest available daily bar.
+
+**Recommendation:** Do not migrate all commodities to Databento yet. First decide whether the brief should represent spot/benchmark macro prices or tradable futures proxies. If futures proxies are acceptable, consider a staged migration:
+
+1. Fix Databento `end` handling and add tests for exclusive-end behavior.
+2. Compare Alpha Vantage versus Databento for WTI and Brent over 10-20 recent business days.
+3. Keep `GOLD` and `SILVER` on Alpha Vantage unless futures proxy behavior is explicitly desired.
+4. Consider Databento for `WTI` via `GLBX.MDP3` / `CL.c.0` and `BRENT` via `IFEU.IMPACT` / `BRN.c.0`.
+5. Keep caching and timeout fallback because small Databento calls can still take several seconds.

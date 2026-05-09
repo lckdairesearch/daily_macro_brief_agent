@@ -331,13 +331,15 @@ def _fred_fetch_series(
 
     rows: list[dict] = []
     last: float | None = None
+    last_observed_date: str | None = None
     cursor = start_date
     while cursor <= end_date:
         date_str = cursor.isoformat()
         if date_str in value_map:
             last = value_map[date_str]
+            last_observed_date = date_str
         if last is not None:
-            rows.append({"date": date_str, "close": last})
+            rows.append({"date": date_str, "close": last, "observed_date": last_observed_date})
         cursor += timedelta(days=1)
 
     return rows
@@ -584,6 +586,41 @@ def _compute_5d_change(rows: list[dict], change_unit: str) -> float | None:
     return last - prev5
 
 
+def _minimum_observation_date(as_of: datetime) -> date:
+    """Earliest daily observation allowed in the overnight dashboard."""
+    as_of_date = as_of.date()
+    if as_of_date.weekday() == 0:  # Monday: Friday close is current enough.
+        return as_of_date - timedelta(days=3)
+    return as_of_date - timedelta(days=1)
+
+
+def _observation_date(row: dict) -> date:
+    value = row.get("observed_date") or row["date"]
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
+
+
+def _latest_observation_date(rows: list[dict]) -> date:
+    return _observation_date(rows[-1])
+
+
+def _is_observation_current(rows: list[dict], as_of: datetime) -> bool:
+    return _latest_observation_date(rows) >= _minimum_observation_date(as_of)
+
+
+def _warn_stale_observation(source: str, instrument_id: str, rows: list[dict], as_of: datetime) -> None:
+    latest = _latest_observation_date(rows)
+    minimum = _minimum_observation_date(as_of)
+    _log.warning(
+        "%s: stale observation for %s skipped; latest=%s, required>=%s",
+        source,
+        instrument_id,
+        latest.isoformat(),
+        minimum.isoformat(),
+    )
+
+
 class AlphaVantageMarketProvider:
     """Live provider for AV instruments (equities, FX, commodities, yields, BTC)."""
 
@@ -611,10 +648,14 @@ class AlphaVantageMarketProvider:
                 if len(rows) < 2:
                     _log.debug("AlphaVantage: insufficient data for %s (%d rows) — skipped (V2 item if monthly-only)", iid, len(rows))
                     continue
+                if not _is_observation_current(rows, as_of):
+                    _warn_stale_observation("AlphaVantage", iid, rows, as_of)
+                    continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
                 change5 = _compute_5d_change(rows, meta["change_unit"])
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
+                    observation_date=_latest_observation_date(rows).isoformat(),
                     instrument_id=iid,
                     display_name=meta["display_name"],
                     asset_class=meta["asset_class"],
@@ -661,10 +702,14 @@ class DatabentoMarketProvider:
                 if len(rows) < 2:
                     _log.warning("Databento: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
+                if not _is_observation_current(rows, as_of):
+                    _warn_stale_observation("Databento", iid, rows, as_of)
+                    continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
                 change5 = _compute_5d_change(rows, meta["change_unit"])
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
+                    observation_date=_latest_observation_date(rows).isoformat(),
                     instrument_id=iid,
                     display_name=meta["display_name"],
                     asset_class=meta["asset_class"],
@@ -702,11 +747,15 @@ class FredMarketProvider:
                 if len(rows) < 2:
                     _log.warning("FRED: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
+                if not _is_observation_current(rows, as_of):
+                    _warn_stale_observation("FRED", iid, rows, as_of)
+                    continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
                 change5 = _compute_5d_change(rows, meta["change_unit"])
                 level_mult = meta.get("level_multiplier", 1)
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
+                    observation_date=_latest_observation_date(rows).isoformat(),
                     instrument_id=iid,
                     display_name=meta["display_name"],
                     asset_class=meta["asset_class"],
@@ -742,10 +791,14 @@ class YfinanceMarketProvider:
                 if len(rows) < 2:
                     _log.warning("yfinance: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
+                if not _is_observation_current(rows, as_of):
+                    _warn_stale_observation("yfinance", iid, rows, as_of)
+                    continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
                 change5 = _compute_5d_change(rows, meta["change_unit"])
                 snapshots.append(MarketSnapshot(
                     as_of=as_of,
+                    observation_date=_latest_observation_date(rows).isoformat(),
                     instrument_id=iid,
                     display_name=meta["display_name"],
                     asset_class=meta["asset_class"],

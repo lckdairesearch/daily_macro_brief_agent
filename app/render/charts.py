@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING
 from app.data.market import fetch_chart_series
 from app.models import AssetClass, BriefDraft, ChartSpec
 
-from .chart_codegen import execute_chart_code, generate_chart_code, select_instruments
+from .chart_codegen import (
+    configure_matplotlib_cache_env,
+    execute_chart_code,
+    generate_chart_code,
+    select_instruments,
+)
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -121,6 +126,7 @@ def _extract_events(draft: BriefDraft, series_dates: set[str]) -> list[dict]:
 
 def _hardcoded_fallback(draft: BriefDraft, output_path: str) -> ChartSpec:
     """Horizontal bar chart of 1-day changes — always works without LLM."""
+    configure_matplotlib_cache_env()
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

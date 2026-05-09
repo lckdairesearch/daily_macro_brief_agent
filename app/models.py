@@ -82,6 +82,7 @@ class MarketSnapshot(BaseModel):
     """Market data observation for dashboard."""
     
     as_of: datetime
+    observation_date: str | None = None
     instrument_id: str
     display_name: str
     asset_class: AssetClass
@@ -152,6 +153,10 @@ class BriefItem(BaseModel):
     so_what: str | None = None
     supporting_market_ids: list[str] = Field(default_factory=list)
     supporting_evidence_ids: list[str] = Field(default_factory=list)
+    source_name: str | None = None
+    source_url: str | None = None
+    source_type: SourceType | None = None
+    topic_label: str | None = None
     confidence: float | None = None  # 0.0 to 1.0
     validation_flags: list[str] = Field(default_factory=list)
 
@@ -172,6 +177,7 @@ class BriefWriterOutput(BaseModel):
     """LLM output: only the sections the writer generates.
     Dashboard and calendar are pipeline pass-throughs and are NOT reproduced here."""
 
+    book_impact: str | None = None
     three_things: list[WriterItem] = Field(default_factory=list)
     radar_items: list[WriterItem] = Field(default_factory=list)
     contrarian_corner: WriterItem | None = None
@@ -195,6 +201,7 @@ class BriefDraft(BaseModel):
     """Structured brief before rendering."""
     
     run_metadata: dict[str, Any]
+    book_impact: str | None = None
     overnight_dashboard: list[MarketSnapshot]
     three_things: list[BriefItem]
     todays_calendar: list[CalendarEvent]

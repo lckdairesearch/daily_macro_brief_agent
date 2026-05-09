@@ -38,6 +38,7 @@ def validate_brief(draft: BriefDraft) -> ValidationResult:
     _check_supporting_ids(draft, valid_market_ids, result)
     _check_unsupported_urls(draft, result)
     _check_unsupported_numbers(draft, result)
+    _check_book_impact_numbers(draft, result)
     _check_word_limits(draft, result)
     _check_so_what_present(draft, result)
     _check_stale_disclosed(draft, result)
@@ -106,6 +107,16 @@ def _check_unsupported_numbers(draft: BriefDraft, result: ValidationResult) -> N
                 f"item '{item.headline[:50]}' contains market numbers "
                 "but has no supporting_market_ids or supporting_evidence_ids"
             )
+
+
+def _check_book_impact_numbers(draft: BriefDraft, result: ValidationResult) -> None:
+    """Book impact is narrative-only in V1 because no exposure model exists."""
+    if not draft.book_impact:
+        return
+    if _MARKET_NUM_RE.search(draft.book_impact) or "$" in draft.book_impact:
+        result.critical_failures.append(
+            "book_impact contains numeric impact language, but V1 has no exposure model"
+        )
 
 
 # ---------------------------------------------------------------------------

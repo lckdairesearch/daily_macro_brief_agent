@@ -327,6 +327,167 @@ def test_chart_codegen_prompt_exists_and_has_no_invention_constraint():
     assert "Never invent" in prompt.text
 
 
+def test_chart_codegen_prompt_aligns_one_day_bar_chart_dates():
+    from app.llm.prompt_registry import clear_prompt_cache, load_prompt
+    clear_prompt_cache()
+    prompt = load_prompt("chart_codegen")
+    assert "plot one shared session only" in prompt.text
+    assert "series_dates[name][-1] == target_date" in prompt.text
+    assert "If fewer than two aligned series remain" in prompt.text
+    assert "missing dates across series are acceptable" in prompt.text
+
+
+def test_chart_codegen_prompt_uses_transparent_background_with_faint_line_grid():
+    from app.llm.prompt_registry import clear_prompt_cache, load_prompt
+    clear_prompt_cache()
+    prompt = load_prompt("chart_codegen")
+    assert 'facecolor="none"' in prompt.text
+    assert "fig.patch.set_alpha(0)" in prompt.text
+    assert 'ax.set_facecolor("none")' in prompt.text
+    assert "For line charts, keep faint gridlines" in prompt.text
+    assert "transparent=True" in prompt.text
+
+
+# ---------------------------------------------------------------------------
+# Email render context
+# ---------------------------------------------------------------------------
+
+def test_dashboard_render_row_uses_significance_and_five_day_arrow():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True).model_copy(
+                    update={
+                        "last_price_or_level": 4.45,
+                        "one_day_change_unit": "bps",
+                        "five_day_change": 12.0,
+                        "five_day_change_unit": "bps",
+                    }
+                )
+            ]
+        }
+    )
+    ctx = build_render_context(draft, settings, vol_params={"US10Y": {"sd_1d": 4.0, "unit": "bps"}})
+    row = ctx["dashboard_rows"][0]
+    assert row["change_class"] == "up sig-move"
+    assert row["trend_arrow"] == "↗"
+    assert row["trend_class"] == "up"
+
+
+def test_dashboard_render_row_flattens_small_five_day_move():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("SPY", "S&P 500", AssetClass.EQUITY, 0.1).model_copy(
+                    update={"five_day_change": 0.2, "five_day_change_unit": "%"}
+                )
+            ]
+        }
+    )
+    ctx = build_render_context(draft, settings, vol_params={"SPY": {"sd_1d": 1.0, "unit": "%"}})
+    row = ctx["dashboard_rows"][0]
+    assert row["change_class"] == "up"
+    assert row["trend_arrow"] == "→"
+    assert row["trend_class"] == "flat"
+
+
+def test_render_brief_writes_html_and_text(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "book_impact": "Higher yields support the short-duration sleeve.",
+            "chart": ChartSpec(
+                title="Test chart",
+                caption="Chart caption.",
+                chart_type="line",
+                data_source="fixture",
+                file_path="sample_chart.png",
+            ),
+        }
+    )
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+    assert "Overnight Book Impact" in html
+    assert "Higher yields support" in html
+    assert "sample_chart.png" in html
+    assert "OVERNIGHT BOOK IMPACT" in text
+
+
+def test_warnings_render_at_bottom_as_bullets(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(update={"warnings": ["first warning", "second warning"]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert html.index("The 3 Things") < html.index("Warnings")
+    assert '<div class="section-header">Warnings</div>' not in html
+    assert '<div class="warning-label">Warnings</div>' in html
+    assert "<li>first warning</li>" in html
+    assert text.index("THEME RADAR") < text.index("WARNINGS")
+    assert "- first warning" in text
+
+
+def test_theme_radar_topic_renders_before_title(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Research headline",
+        body="Author argues that fiscal dominance is now the primary driver of long yields. "
+             "Evidence includes widening deficits and sustained Treasury issuance. "
+             "Central banks are losing credibility as inflation anchors.",
+        so_what="What this means for our book: reinforces short duration thesis.",
+        supporting_evidence_ids=["ev_001"],
+        source_name="Research Source",
+        source_url="https://example.com/research",
+        topic_label="Rates",
+    )
+    draft = _make_draft().model_copy(update={"radar_items": [radar]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+
+    assert "radar-source" not in html
+    assert "radar-topic" in html
+    assert html.index("Rates") < html.index("Research headline")
+
+
+def test_theme_radar_uses_consistent_so_what_label(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Research headline",
+        body="Author argues that fiscal dominance is now the primary driver of long yields. "
+             "Evidence includes widening deficits and sustained Treasury issuance. "
+             "Central banks are losing credibility as inflation anchors.",
+        so_what="What this means for our book: reinforces short duration thesis.",
+        supporting_evidence_ids=["ev_001"],
+        topic_label="Rates",
+    )
+    draft = _make_draft().model_copy(update={"radar_items": [radar]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "So what: reinforces short duration thesis." in html
+    assert "What this means for our book:" not in html
+    assert "So what: reinforces short duration thesis." in text
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

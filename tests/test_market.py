@@ -680,6 +680,33 @@ def test_av_provider_spy_returns_snapshot():
     assert s.one_day_change_unit == "%"
     assert s.one_day_change == pytest.approx(1.0)
     assert s.last_price_or_level == pytest.approx(505.0)
+    assert s.observation_date == "2026-05-08"
+
+
+def test_av_provider_stale_observation_skipped(caplog):
+    payload = {"data": [
+        {"date": "2026-05-01", "value": "118.26"},
+        {"date": "2026-05-04", "value": "109.76"},
+    ]}
+    as_of = datetime(2026, 5, 9, 7, 0, tzinfo=timezone.utc)
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["WTI"], as_of)
+
+    assert snaps == []
+    assert "stale observation" in caplog.text
+
+
+def test_av_provider_monday_allows_friday_observation():
+    payload = {"data": [
+        {"date": "2026-05-07", "value": "110.00"},
+        {"date": "2026-05-08", "value": "111.00"},
+    ]}
+    monday_as_of = datetime(2026, 5, 11, 7, 0, tzinfo=timezone.utc)
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-08"
 
 
 def test_av_provider_us10y_bps_change():
@@ -788,6 +815,20 @@ def test_fred_provider_hy_oas_returns_snapshot():
     assert s.one_day_change == pytest.approx(5.0)       # (3.35 - 3.30) * 100 = 5 bps
     assert s.last_price_or_level == pytest.approx(335.0)  # 3.35 * 100 = 335 bps display
     assert s.source == "fred"
+    assert s.observation_date == "2026-05-08"
+
+
+def test_fred_provider_stale_forward_fill_skipped(caplog):
+    payload = {"observations": [
+        {"date": "2026-05-06", "value": "3.30"},
+        {"date": "2026-05-07", "value": "."},
+        {"date": "2026-05-08", "value": "."},
+    ]}
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = FredMarketProvider("key").fetch_watchlist(["HY_OAS"], _AS_OF)
+
+    assert snaps == []
+    assert "stale observation" in caplog.text
 
 
 def test_fred_provider_fetch_error_skipped():

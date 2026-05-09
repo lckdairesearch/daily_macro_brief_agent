@@ -234,6 +234,8 @@ daily-macro-brief/
       email.py
       templates/
         brief_template.html
+        template.html
+        example.html
 
     delivery.py
 
@@ -604,6 +606,10 @@ body
 so_what
 supporting_market_ids
 supporting_evidence_ids
+source_name
+source_url
+source_type
+topic_label
 confidence
 validation_flags
 ```
@@ -616,6 +622,7 @@ Suggested fields:
 
 ```text
 run_metadata
+book_impact
 overnight_dashboard
 three_things
 todays_calendar
@@ -983,6 +990,7 @@ Writer should use `app/llm/prompt_registry.py` to load `app/llm/prompts/brief_wr
 Prompt rules:
 
 - Use only supplied market/calendar/source evidence.
+- Optional `book_impact` is narrative-only; do not estimate bps impact, P&L, hedge ratios, or exposure sizes unless a future exposure model supplies them.
 - Include `so what` tied to portfolio/theme config.
 - Do not invent numbers or links.
 - Say `no confirmed fresh catalyst` when relevant.
@@ -1309,8 +1317,11 @@ V1 charting:
 Role:
 
 - Render `BriefDraft` into HTML and plain text.
-- Use `render/templates/brief_template.html` for HTML layout.
+- Use `render/templates/template.html` for HTML layout; `brief_template.html` may remain as a compatibility include.
+- Keep `render/templates/example.html` as a non-runtime visual reference only. It may contain mock values, but it must never be used as a data source or sent as a live brief.
 - Include warnings near the top when stale/cache fallback data is used.
+- Convert `MarketSnapshot` objects into deterministic presentation rows before template rendering, including formatted values, CSS classes, and 5D trend arrows.
+- Do not ask an LLM to decide market-dashboard arrows, colors, bold/significant-move styling, source labels, links, market numbers, or calendar values.
 
 ### 14.3 HTML template
 
@@ -1324,6 +1335,13 @@ The template should prioritize readability:
 - Theme radar.
 - Contrarian corner.
 - Source/failure warnings if applicable.
+
+Dashboard presentation rules:
+
+- 1D direction color is derived from the sign of `one_day_change`.
+- Significant 1D moves are bolded from `threshold_flag` or `abs(one_day_zscore) >= 1.0`.
+- 5D trend arrows are derived in code from `five_day_change` and daily volatility in `vol_params.yaml`: `five_day_sigma = sd_1d * sqrt(5)`.
+- The initial flat threshold is `abs(five_day_zscore) < 0.25`; otherwise positive changes render up and negative changes render down. This is a display heuristic, not a trading signal.
 
 ## 15. Delivery architecture
 
