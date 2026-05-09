@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import json
 import logging
-import uuid
 from datetime import datetime
 from pathlib import Path
 from time import perf_counter
@@ -25,11 +25,13 @@ from app.models import (
     CalendarEvent,
     DeliveryStatus,
     FreshnessStatus,
+    EvidenceCard,
     LLMUsage,
     PipelineResult,
     RunMetadata,
     RunMode,
 )
+from app.synthesis.ranker import RankedBriefContext
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -57,18 +59,20 @@ def run_pipeline(
      12. Save artifacts and metadata
     """
     mode = RunMode(mode)
-    started_at = datetime.now()
+    tz = ZoneInfo(settings.app.timezone)
+    started_at = datetime.now(tz)
     warnings: list[str] = []
     failed_sources: list[str] = []
     llm_usages: list[LLMUsage] = []
     timings: list[dict] = []
-    run_id = str(uuid.uuid4())
+    output_paths: dict[str, str] = {}
 
     # --- Step 1: Determine run window ---
     _progress(progress, "Determine run window")
     _step_started = perf_counter()
-    tz = ZoneInfo(settings.app.timezone)
     data_cutoff = _data_cutoff(settings, tz, data_cutoff)
+    run_id = _run_id(mode, started_at)
+    run_output_dir = _run_output_dir(settings, data_cutoff, run_id)
     llm_cfg = settings.sources.get("llm", {})
     llm_provider = llm_cfg.get("provider", "litellm")
     llm_model = llm_cfg.get("synthesis_model", "")
@@ -87,6 +91,12 @@ def run_pipeline(
             if snap.freshness_status == FreshnessStatus.STALE_CACHE and snap.warning:
                 if snap.warning not in warnings:
                     warnings.append(snap.warning)
+    _save_json_artifact(
+        run_output_dir / "market_snapshots.json",
+        [snap.model_dump(mode="json") for snap in _market_snapshots],
+        output_paths,
+        "market_snapshots",
+    )
     _record_timing(timings, "Fetch market data", _step_started)
 
     # --- Step 3 & 4: Fetch calendar and enrich missing consensus ---
@@ -105,6 +115,12 @@ def run_pipeline(
         except CalendarIngestionError as exc:
             _calendar_events = []
             warnings.append(f"Calendar fetch failed — no events loaded: {exc}")
+    _save_json_artifact(
+        run_output_dir / "calendar_events.json",
+        [event.model_dump(mode="json") for event in _calendar_events],
+        output_paths,
+        "calendar_events",
+    )
     _record_timing(timings, "Fetch calendar", _step_started)
 
     # --- Step 5: Discover source evidence ---
@@ -128,6 +144,7 @@ def run_pipeline(
     _step_started = perf_counter()
     from app.synthesis.deduper import deduplicate
     deduped_evidence = deduplicate(evidence_cards)
+    _save_evidence_cards(settings, data_cutoff, run_id, deduped_evidence, output_paths)
     _record_timing(timings, "Deduplicate evidence", _step_started)
 
     # --- Step 7: Rank evidence and events ---
@@ -141,6 +158,12 @@ def run_pipeline(
         themes=settings.themes.get("themes", []),
         portfolio=settings.portfolio,
     )
+    _save_ranked_context_artifact(
+        run_output_dir,
+        ranked_context,
+        failed_sources,
+        output_paths,
+    )
     _record_timing(timings, "Rank context", _step_started)
 
     # --- Step 8: Write grounded brief ---
@@ -152,6 +175,12 @@ def run_pipeline(
         brief_draft, llm_usage = write_brief(ranked_context, settings, data_cutoff, mode)
         llm_usages.append(llm_usage)
         warnings.extend(brief_draft.warnings)
+        _save_json_artifact(
+            run_output_dir / "brief_draft.json",
+            brief_draft.model_dump(mode="json"),
+            output_paths,
+            "brief_draft",
+        )
     except LLMResponseError as exc:
         _record_timing(timings, "Write brief", _step_started, status="failed")
         run_metadata = RunMetadata(
@@ -164,9 +193,10 @@ def run_pipeline(
             warnings=warnings,
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
-            output_paths={},
+            output_paths=output_paths,
             timings=timings,
         )
+        _save_run_metadata(run_output_dir, run_metadata, output_paths)
         return PipelineResult(
             success=False,
             run_metadata=run_metadata,
@@ -192,9 +222,10 @@ def run_pipeline(
             warnings=warnings,
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
-            output_paths={},
+            output_paths=output_paths,
             timings=timings,
         )
+        _save_run_metadata(run_output_dir, run_metadata, output_paths)
         return PipelineResult(
             success=False,
             run_metadata=run_metadata,
@@ -208,14 +239,13 @@ def run_pipeline(
     _progress(progress, "Build chart")
     _step_started = perf_counter()
     from app.render.charts import build_chart
-    output_paths: dict[str, str] = {}
     chart_image_url: str | None = None
     chart_status = "success"
     try:
         chart_spec = build_chart(
             draft=brief_draft,
             settings=settings,
-            output_path=_chart_output_path(mode, settings, data_cutoff),
+            output_path=_chart_output_path(mode, settings, data_cutoff, run_id=run_id),
             sample_mode=(mode == RunMode.SAMPLE),
             as_of=data_cutoff,
         )
@@ -268,10 +298,14 @@ def run_pipeline(
             render_paths = render_brief(
                 draft=brief_draft,
                 settings=settings,
+                output_dir=run_output_dir,
+                html_filename="brief.html",
+                text_filename="brief.txt",
                 vol_params=load_vol_params(settings.config_dir),
                 chart_image_url=chart_image_url,
             )
             output_paths.update(render_paths)
+            _save_rendered_html_artifact(run_output_dir, output_paths)
         except Exception as render_exc:
             _log.warning("Brief rendering failed: %s", render_exc)
             warnings.append(f"Brief rendering failed: {render_exc}")
@@ -337,6 +371,7 @@ def run_pipeline(
         output_paths=output_paths,
         timings=timings,
     )
+    _save_run_metadata(run_output_dir, run_metadata, output_paths)
     if brief_draft is not None:
         brief_draft.run_metadata = run_metadata.model_dump(mode="json")
     _record_timing(timings, "Record metadata", _step_started)
@@ -366,14 +401,117 @@ def _data_cutoff(
     return datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
-def _chart_output_path(mode: RunMode, settings: "Settings", data_cutoff: datetime) -> str:
-    """Return deterministic sample chart path or timestamped live-run chart path."""
-    output_dir = Path(settings.app.output_dir)
+def _chart_output_path(
+    mode: RunMode,
+    settings: "Settings",
+    data_cutoff: datetime,
+    run_id: str | None = None,
+) -> str:
+    """Return deterministic sample chart path or timestamped run-scoped chart path."""
+    if run_id is not None:
+        output_dir = _run_output_dir(settings, data_cutoff, run_id)
+    else:
+        output_dir = Path(settings.app.output_dir)
     if mode == RunMode.SAMPLE:
         return str(output_dir / "sample_chart.png")
 
     timestamp = data_cutoff.strftime("%Y%m%d_%H%M")
     return str(output_dir / f"chart_{timestamp}.png")
+
+
+def _run_output_dir(settings: "Settings", data_cutoff: datetime, run_id: str) -> Path:
+    """Return the per-run artifact directory."""
+    return Path(settings.app.output_dir) / "runs" / data_cutoff.strftime("%Y-%m-%d") / run_id
+
+
+def _run_id(mode: RunMode, started_at: datetime) -> str:
+    """Return a timestamp-based run id, with sample runs explicitly labeled."""
+    run_id = started_at.strftime("%Y%m%d_%H%M%S")
+    if mode == RunMode.SAMPLE:
+        return f"{run_id}_sample"
+    return run_id
+
+
+def _evidence_output_path(settings: "Settings", data_cutoff: datetime, run_id: str) -> Path:
+    """Return the per-run path for persisted evidence cards."""
+    return _run_output_dir(settings, data_cutoff, run_id) / "evidence_cards.json"
+
+
+def _save_evidence_cards(
+    settings: "Settings",
+    data_cutoff: datetime,
+    run_id: str,
+    evidence_cards: list[EvidenceCard],
+    output_paths: dict[str, str],
+) -> None:
+    """Persist deduplicated evidence cards for later review."""
+    evidence_path = _evidence_output_path(settings, data_cutoff, run_id)
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(
+        json.dumps(
+            [card.model_dump(mode="json") for card in evidence_cards],
+            indent=2,
+            sort_keys=True,
+            default=str,
+        ),
+        encoding="utf-8",
+    )
+    output_paths["evidence_cards"] = str(evidence_path)
+
+
+def _save_json_artifact(path: Path, payload: object, output_paths: dict[str, str], key: str) -> None:
+    """Persist a JSON artifact and record its path."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    output_paths[key] = str(path)
+
+
+def _save_ranked_context_artifact(
+    run_output_dir: Path,
+    ranked_context: RankedBriefContext,
+    failed_sources: list[str],
+    output_paths: dict[str, str],
+) -> None:
+    """Persist the ranked context used by synthesis."""
+    payload = {
+        "top_market_moves": [s.instrument_id for s in ranked_context.top_market_moves[:10]],
+        "top_calendar_events": [e.event_name for e in ranked_context.top_calendar_events[:10]],
+        "ranked_evidence_cards": [c.model_dump(mode="json") for c in ranked_context.ranked_evidence_cards],
+        "proposed_three_things": [c.id for c in ranked_context.proposed_three_things],
+        "proposed_theme_radar": [c.id for c in ranked_context.proposed_theme_radar],
+        "proposed_contrarian_corner_seed": (
+            ranked_context.proposed_contrarian_corner_seed.id
+            if ranked_context.proposed_contrarian_corner_seed
+            else None
+        ),
+        "scores": ranked_context.scores,
+        "failed_sources": failed_sources,
+    }
+    _save_json_artifact(run_output_dir / "ranked_context.json", payload, output_paths, "ranked_context")
+
+
+def _save_rendered_html_artifact(run_output_dir: Path, output_paths: dict[str, str]) -> None:
+    """Persist a second HTML artifact for direct browser inspection."""
+    html_path = Path(output_paths["html"])
+    rendered_html_path = run_output_dir / "brief_rendered.html"
+    rendered_html_path.write_text(html_path.read_text(encoding="utf-8"), encoding="utf-8")
+    output_paths["brief_rendered_html"] = str(rendered_html_path)
+
+
+def _save_run_metadata(
+    run_output_dir: Path,
+    run_metadata: RunMetadata,
+    output_paths: dict[str, str],
+) -> None:
+    """Persist the final run metadata alongside the other run artifacts."""
+    run_output_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = run_output_dir / "run_metadata.json"
+    run_metadata.output_paths["run_metadata"] = str(metadata_path)
+    output_paths["run_metadata"] = str(metadata_path)
+    metadata_path.write_text(
+        json.dumps(run_metadata.model_dump(mode="json"), indent=2, sort_keys=True, default=str),
+        encoding="utf-8",
+    )
 
 
 def _progress(progress: Callable[[str], None] | None, message: str) -> None:

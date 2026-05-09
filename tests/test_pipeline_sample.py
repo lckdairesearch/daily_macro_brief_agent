@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -99,8 +102,9 @@ def test_sample_pipeline_run_metadata_populated(mock_writer):
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     meta = result.run_metadata
-    assert meta.run_id
+    assert re.fullmatch(r"\d{8}_\d{6}_sample", meta.run_id)
     assert meta.run_started_at is not None
+    assert meta.run_started_at.tzinfo is not None
     assert meta.data_cutoff_at is not None
     assert meta.timezone == "Asia/Hong_Kong"
     assert meta.llm_provider == "litellm"
@@ -111,6 +115,55 @@ def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer):
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.run_metadata.delivery_status != DeliveryStatus.SUCCESS
+
+
+def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_path):
+    """Sample pipeline writes artifacts to a date/run-specific artifact path."""
+    settings = Settings.load()
+    settings.app.output_dir = str(tmp_path / "outputs")
+
+    result = run_pipeline(RunMode.SAMPLE, settings)
+
+    html_path = Path(result.run_metadata.output_paths["html"])
+    text_path = Path(result.run_metadata.output_paths["text"])
+    chart_path = Path(result.run_metadata.output_paths["chart"])
+    evidence_path = Path(result.run_metadata.output_paths["evidence_cards"])
+    ranked_path = Path(result.run_metadata.output_paths["ranked_context"])
+    rendered_html_path = Path(result.run_metadata.output_paths["brief_rendered_html"])
+    metadata_path = Path(result.run_metadata.output_paths["run_metadata"])
+    market_path = Path(result.run_metadata.output_paths["market_snapshots"])
+    calendar_path = Path(result.run_metadata.output_paths["calendar_events"])
+    brief_draft_path = Path(result.run_metadata.output_paths["brief_draft"])
+
+    for path in (
+        html_path,
+        text_path,
+        chart_path,
+        evidence_path,
+        ranked_path,
+        rendered_html_path,
+        metadata_path,
+        market_path,
+        calendar_path,
+        brief_draft_path,
+    ):
+        assert path.exists()
+        assert path.parent.parent.parent.name == "runs"
+
+    assert html_path.name == "brief.html"
+    assert text_path.name == "brief.txt"
+    assert chart_path.name == "sample_chart.png"
+    assert rendered_html_path.name == "brief_rendered.html"
+    assert metadata_path.name == "run_metadata.json"
+    assert re.fullmatch(r"\d{8}_\d{6}_sample", result.run_metadata.run_id)
+    assert evidence_path.parent.name == result.run_metadata.run_id
+    assert evidence_path.parent.parent.name == result.run_metadata.data_cutoff_at.strftime("%Y-%m-%d")
+    assert evidence_path.parent.parent.parent.name == "runs"
+
+    cards = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert isinstance(cards, list)
+    assert len(cards) > 0
+    assert all("id" in card for card in cards)
 
 
 def test_pipeline_uses_data_cutoff_override(mock_writer):
