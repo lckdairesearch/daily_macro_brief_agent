@@ -30,24 +30,7 @@
             color: #000;
             letter-spacing: -0.8px;
         }
-        .warning-box {
-            background: #fff8e1;
-            border: 1px solid #ffe082;
-            color: #5f4500;
-            padding: 10px 12px;
-            margin: 35px 0 18px 0;
-            font-size: 12px;
-            border-radius: 4px;
-        }
-        .warning-label {
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 6px;
-        }
-        .warning-box ul { margin: 0; padding-left: 18px; }
-        .impact-summary {
+.impact-summary {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
             padding: 18px;
@@ -88,7 +71,7 @@
         .down { color: #d93025; }
         .flat { color: #666; }
         .sig-move { font-weight: 800; }
-        .trend-arrow { font-size: 15px; font-weight: bold; }
+        .trend-arrow { font-size: 15px; font-weight: bold; text-align: center; }
         .source-note { font-size: 10px; color: #999; margin-top: -10px; }
         .thing-item { margin-bottom: 25px; }
         .thing-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 6px; }
@@ -190,7 +173,7 @@
                     <td>{{ row.asset }}</td>
                     <td>{{ row.last }}</td>
                     <td class="{{ row.change_class }}">{{ row.change }}</td>
-                    <td class="trend-arrow {{ row.trend_class }}">{{ row.trend_arrow }}</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:{{ row.trend_color }};">{{ row.trend_arrow }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -253,18 +236,7 @@
         </div>
         {% endif %}
 
-        {% if warnings %}
-        <div class="warning-box">
-            <div class="warning-label">Warnings</div>
-            <ul>
-                {% for warning in warnings %}
-                <li>{{ warning }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
-
-        <div style="padding: 40px 0; font-size: 11px; color: #999; text-align: center;">
+<div style="padding: 40px 0; font-size: 11px; color: #999; text-align: center;">
             Macro Brief Agent | For Internal Use Only
         </div>
     </div>

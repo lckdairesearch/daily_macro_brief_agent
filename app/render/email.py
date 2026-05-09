@@ -109,10 +109,6 @@ def render_text(context: dict[str, Any]) -> str:
             lines.append(f"Watch item: {contrarian.so_what}")
         lines.append("")
 
-    if context["warnings"]:
-        lines.append("WARNINGS")
-        lines.extend(f"- {w}" for w in context["warnings"])
-
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -129,7 +125,7 @@ def build_render_context(
 
     return {
         "header_line": header_line,
-        "warnings": _dedupe(draft.warnings + list(metadata.get("warnings", []))),
+        "warnings": _dedupe(list(metadata.get("warnings", []))),
         "book_impact": draft.book_impact,
         "dashboard_rows": [
             _format_dashboard_row(snapshot, vol_params or {})
@@ -155,6 +151,7 @@ def _format_dashboard_row(
         change_class = f"{change_class} sig-move"
 
     trend_arrow, trend_class = _five_day_trend(snapshot, vol_params)
+    trend_color = {"up": "#188038", "down": "#d93025", "flat": "#666666"}[trend_class]
     return {
         "asset": snapshot.display_name,
         "last": _format_level(snapshot),
@@ -162,6 +159,7 @@ def _format_dashboard_row(
         "change_class": change_class,
         "trend_arrow": trend_arrow,
         "trend_class": trend_class,
+        "trend_color": trend_color,
     }
 
 

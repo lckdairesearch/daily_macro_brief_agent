@@ -846,7 +846,7 @@ def test_fred_provider_fetch_error_skipped():
 
 # --- YfinanceMarketProvider ---
 
-def test_yf_provider_vix_returns_low_reliability_snapshot():
+def test_yf_provider_vix_returns_snapshot():
     hist = _make_yf_hist([
         {"date": "2026-05-07", "close": 18.0},
         {"date": "2026-05-08", "close": 16.5},
@@ -860,13 +860,12 @@ def test_yf_provider_vix_returns_low_reliability_snapshot():
     assert len(snaps) == 1
     s = snaps[0]
     assert s.instrument_id == "VIX"
-    assert s.freshness_status.value == "low_reliability"
-    assert s.warning is not None
+    assert s.freshness_status.value == "fresh"
     assert s.one_day_change_unit == "%"
     assert s.one_day_change == pytest.approx((16.5 - 18.0) / 18.0 * 100, rel=1e-3)
 
 
-def test_yf_provider_move_returns_low_reliability_snapshot():
+def test_yf_provider_move_returns_snapshot():
     hist = _make_yf_hist([
         {"date": "2026-05-07", "close": 105.0},
         {"date": "2026-05-08", "close": 108.0},
@@ -879,7 +878,7 @@ def test_yf_provider_move_returns_low_reliability_snapshot():
 
     assert len(snaps) == 1
     assert snaps[0].instrument_id == "MOVE"
-    assert snaps[0].freshness_status.value == "low_reliability"
+    assert snaps[0].freshness_status.value == "fresh"
 
 
 def test_yf_provider_insufficient_data_skipped():

@@ -487,7 +487,7 @@ Likely contents:
 market:
   primary: alpha_vantage
   supplemental: databento
-  move_index: yfinance      # ^VIX, ^MOVE — both low_reliability
+  move_index: yfinance      # ^VIX, ^MOVE
   hy_oas: fred              # BAMLH0A0HYM2
 
 calendar:
@@ -693,9 +693,9 @@ Confirmed V1 provider assignments. The `instrument_id` column is the canonical s
 | `BRENT` | Brent Crude | Alpha Vantage | BRENT | Commodities API |
 | `COPPER` | Copper | Databento (GLBX.MDP3) | HG.c.0 | CME front-month; AV copper was not suitable for daily move detection |
 | `BTC` | Bitcoin | Alpha Vantage | BTC | Crypto API |
-| `VIX` | VIX | yfinance | ^VIX | Spot index; `low_reliability`; VX continuous contract unresolved on GLBX.MDP3 |
+| `VIX` | VIX | yfinance | ^VIX | Spot index; VX continuous contract unresolved on GLBX.MDP3 |
 | `HY_OAS` | HY OAS | FRED | BAMLH0A0HYM2 | Free; change unit = bps |
-| `MOVE` | MOVE Index | yfinance | ^MOVE | No official API; always `low_reliability` |
+| `MOVE` | MOVE Index | yfinance | ^MOVE | No official API |
 
 Databento FGBL/FESX/HG wrappers use continuous front-month symbols and must guard against accidental broad downloads. FGBL is converted to an approximate 10Y Bund yield in percent before bps changes are computed.
 
@@ -717,7 +717,7 @@ Provider-specific classes:
 AlphaVantageMarketProvider    primary — equities, FX, commodities, yields, crypto
 DatabentoMarketProvider       FESX, FGBL, HG copper — continuous front-month symbols
 FredMarketProvider            HY OAS (BAMLH0A0HYM2)
-YfinanceMarketProvider        ^VIX (spot VIX), ^MOVE — both low_reliability flag
+YfinanceMarketProvider        ^VIX (spot VIX), ^MOVE
 FixtureMarketProvider         sample/demo mode only
 ```
 

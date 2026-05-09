@@ -180,7 +180,7 @@
     {
       "as_of": "2026-05-08T06:45:00+08:00",
       "instrument_id": "WTI",
-      "display_name": "WTI Crude",
+      "display_name": "WTI (front-month)",
       "asset_class": "commodity",
       "region": "US",
       "last_price_or_level": 78.50,
@@ -196,7 +196,7 @@
     {
       "as_of": "2026-05-08T06:45:00+08:00",
       "instrument_id": "BRENT",
-      "display_name": "Brent Crude",
+      "display_name": "Brent (front-month)",
       "asset_class": "commodity",
       "region": "Global",
       "last_price_or_level": 82.30,
@@ -287,8 +287,7 @@
       "five_day_change": 5.0,
       "five_day_change_unit": "%",
       "source": "fixture",
-      "freshness_status": "low_reliability",
-      "warning": "yfinance data marked low_reliability"
+      "freshness_status": "fresh"
     },
     {
       "as_of": "2026-05-08T06:45:00+08:00",

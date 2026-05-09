@@ -418,9 +418,9 @@ All `MarketSnapshot.instrument_id` values must use these strings exactly. `vol_p
 | `FESX` | Databento | dataset=XEUR.EOBI; front-month futures; change unit = % |
 | `DE10Y` | Databento | dataset=XEUR.EOBI; yield derived from FGBL price; change unit = bps |
 | `COPPER` | Databento | dataset=GLBX.MDP3; HG front-month futures; change unit = % |
-| `VIX` | yfinance | ticker=^VIX (spot index); always `freshness_status=low_reliability`; change unit = % |
+| `VIX` | yfinance | ticker=^VIX (spot index); change unit = % |
 | `HY_OAS` | FRED | series=BAMLH0A0HYM2; change unit = bps |
-| `MOVE` | yfinance | ticker=^MOVE; always `freshness_status=low_reliability`; change unit = % |
+| `MOVE` | yfinance | ticker=^MOVE; change unit = % |
 
 ---
 

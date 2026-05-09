@@ -29,7 +29,6 @@ class FreshnessStatus(str, Enum):
     """Data freshness status."""
     FRESH = "fresh"
     STALE_CACHE = "stale_cache"
-    LOW_RELIABILITY = "low_reliability"
 
 
 class AssetClass(str, Enum):
