@@ -108,12 +108,11 @@ def get_provider(
 ) -> NoopDeliveryProvider | PostmarkDeliveryProvider:
     """Return PostmarkDeliveryProvider when delivery should run; Noop otherwise.
 
-    Sample and dry-run deliver test output to POSTMARK_MAINTAINER_EMAIL when
-    POSTMARK_API_KEY is present.
+    Sample and dry-run never send email.
     Live mode delivers only when ENABLE_EMAIL_DELIVERY=true.
     """
-    if mode in {RunMode.SAMPLE, RunMode.DRY_RUN} and settings.creds.postmark_api_key:
-        return PostmarkDeliveryProvider(settings, settings.creds.postmark_maintainer_email)
+    if mode in {RunMode.SAMPLE, RunMode.DRY_RUN}:
+        return NoopDeliveryProvider()
     if mode == RunMode.LIVE and settings.creds.enable_email_delivery:
         return PostmarkDeliveryProvider(settings)
     return NoopDeliveryProvider()

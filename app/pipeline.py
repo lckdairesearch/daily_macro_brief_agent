@@ -343,8 +343,8 @@ def run_pipeline(
     _progress(progress, "Deliver email")
     _step_started = perf_counter()
     delivery_timing_status = "skipped"
-    # Sample/dry-run: deliver test output to the maintainer recipient.
-    # Live: deliver to production recipients only when ENABLE_EMAIL_DELIVERY=true.
+    # Sample/dry-run never deliver email.
+    # Live delivers only when ENABLE_EMAIL_DELIVERY=true.
     from app.delivery import NoopDeliveryProvider, get_provider
     delivery_status = DeliveryStatus.DISABLED
     provider = get_provider(mode, settings)

@@ -118,10 +118,13 @@ def test_sample_pipeline_run_metadata_populated(mock_writer, isolated_settings):
 
 
 def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer, isolated_settings):
-    """Sample pipeline can be smoke-tested without sending real email."""
+    """Sample pipeline keeps delivery disabled even when Postmark creds exist."""
     settings = isolated_settings
+    settings.creds.postmark_api_key = "test-key"
+    settings.creds.postmark_from_email = "brief@test.com"
+    settings.creds.postmark_maintainer_email = "maintainer@test.com"
     result = run_pipeline(RunMode.SAMPLE, settings)
-    assert result.run_metadata.delivery_status != DeliveryStatus.SUCCESS
+    assert result.run_metadata.delivery_status == DeliveryStatus.DISABLED
 
 
 def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(isolated_settings):
