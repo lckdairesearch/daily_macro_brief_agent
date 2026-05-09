@@ -83,6 +83,21 @@ def _mock_openai_responses_client(output_text: str) -> MagicMock:
     return mock_client
 
 
+@patch("app.discovery.scouts.base.OpenAI")
+def test_web_search_and_structure_uses_long_timeout(mock_openai_cls):
+    mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(1))
+
+    web_search_and_structure(
+        model="openai/gpt-5.4",
+        api_key="sk-test",
+        system_prompt="system",
+        user_payload={"instruction": "test"},
+    )
+
+    mock_openai_cls.assert_called_once()
+    assert mock_openai_cls.call_args.kwargs["timeout"] == 180
+
+
 # ---------------------------------------------------------------------------
 # 8.1 — DiscoveryContext and Scout protocol
 # ---------------------------------------------------------------------------
@@ -331,6 +346,8 @@ def test_x_scout_returns_social_cards(mock_client_cls):
     mock_client_cls.return_value = _mock_xai_chat(cards_json)
     scout = XScout(model="grok-4", api_key="xai-test")
     cards = scout.run(_make_context(RunMode.LIVE))
+    mock_client_cls.assert_called_once()
+    assert mock_client_cls.call_args.kwargs["timeout"] == 180
     assert len(cards) == 1
     assert all(c.source_type == SourceType.SOCIAL for c in cards)
 
@@ -621,7 +638,42 @@ def test_podcast_scout_falls_back_to_web_search_when_no_transcript(
 
     assert len(cards) == 1
     mock_openai_cls.assert_called_once()  # web search path was used
+    assert mock_openai_cls.call_args.kwargs["timeout"] == 180
     mock_get.assert_not_called()          # no transcript fetch attempted
+
+
+@patch("app.discovery.scouts.podcast.OpenAI")
+@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.requests.post")
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_uses_long_timeout_for_transcript_extraction(
+    mock_get, mock_post, mock_completion, mock_openai_cls
+):
+    """Transcript extraction should use the longer scout timeout budget."""
+    transcript_url = {"url": "https://transcripts.example.com/ep0.txt", "type": "text/plain",
+                      "isTaddyExclusive": False, "language": "en"}
+    ep = _make_taddy_episode("ep0", transcript_urls=[transcript_url])
+    mock_post.return_value = _taddy_search_response([ep])
+
+    mock_completion.side_effect = [
+        _mock_litellm_response('{"relevant_indices": [0]}'),
+        _mock_litellm_response(_candidate_json(1)),
+    ]
+    transcript_resp = MagicMock()
+    transcript_resp.raise_for_status = MagicMock()
+    transcript_resp.text = "Fed raised rates. Gold is relevant to our book."
+    mock_get.return_value = transcript_resp
+
+    scout = _make_scout(
+        freeflow_search_terms=["global macro"],
+        max_freeflow_queries=1,
+        use_transcripts=True,
+    )
+    cards = scout.run(_make_context(RunMode.LIVE))
+
+    assert len(cards) == 1
+    assert mock_completion.call_count == 2
+    assert mock_openai_cls.call_count == 0
 
 
 @patch("app.discovery.scouts.podcast.requests.post")

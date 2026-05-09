@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from app.discovery.scouts.base import (
     DiscoveryContext,
+    DEFAULT_SCOUT_TIMEOUT_SECONDS,
     _EvidenceCandidateList,
     _parse_or_structure,
     build_market_context,
@@ -287,7 +288,7 @@ class PodcastScout:
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0.1,
-            "timeout": 30,
+            "timeout": DEFAULT_SCOUT_TIMEOUT_SECONDS,
         }
         if self.api_key:
             kwargs["api_key"] = self.api_key
@@ -393,7 +394,7 @@ class PodcastScout:
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0.2,
-            "timeout": 60,
+            "timeout": DEFAULT_SCOUT_TIMEOUT_SECONDS,
         }
         if self.api_key:
             kwargs["api_key"] = self.api_key
@@ -432,7 +433,7 @@ class PodcastScout:
         }
 
         clean_model = self.scout_model.removeprefix("openai/")
-        client = OpenAI(api_key=self.api_key, timeout=90)
+        client = OpenAI(api_key=self.api_key, timeout=DEFAULT_SCOUT_TIMEOUT_SECONDS)
         oai_response = client.responses.create(
             model=clean_model,
             tools=[{"type": "web_search_preview"}],

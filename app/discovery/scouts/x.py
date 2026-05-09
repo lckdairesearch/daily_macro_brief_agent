@@ -13,6 +13,7 @@ from typing import Any
 
 from app.discovery.scouts.base import (
     DiscoveryContext,
+    DEFAULT_SCOUT_TIMEOUT_SECONDS,
     _parse_or_structure,
     build_market_context,
     to_evidence_cards,
@@ -35,7 +36,7 @@ x_search: Any = None
 _X_URL_RE = re.compile(r"https?://(x|twitter)\.com/[\w]{1,50}/status/\d{10,20}$")
 
 
-_XAI_TIMEOUT_SECONDS = 30
+_XAI_TIMEOUT_SECONDS = DEFAULT_SCOUT_TIMEOUT_SECONDS
 _XAI_MAX_TOKENS = 2000
 
 

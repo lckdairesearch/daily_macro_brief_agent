@@ -22,6 +22,7 @@ from app.models import EvidenceCard, RunMode, SourceType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures"
+DEFAULT_SCOUT_TIMEOUT_SECONDS = 180
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +138,7 @@ def web_search_and_structure(
     system_prompt: str,
     user_payload: dict[str, Any],
     temperature: float = 0.2,
-    timeout: int = 90,
+    timeout: int = DEFAULT_SCOUT_TIMEOUT_SECONDS,
 ) -> _EvidenceCandidateList:
     """Call OpenAI Responses API with web_search_preview; parse into candidate list.
 
@@ -234,7 +235,7 @@ def _parse_or_structure(
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0.0,
-        "timeout": 30,
+        "timeout": DEFAULT_SCOUT_TIMEOUT_SECONDS,
     }
     if api_key:
         kwargs["api_key"] = api_key
