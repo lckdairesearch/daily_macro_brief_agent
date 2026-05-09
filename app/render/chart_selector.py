@@ -202,7 +202,7 @@ def _select_with_llm(
     shortlist: list[ChartCandidate],
     brief_draft: "BriefDraft",
     settings: "Settings",
-) -> tuple[ChartPlan, LLMUsage]:
+) -> tuple[ChartPlan, LLMUsage | None]:
     prompt = load_prompt("chart_selector")
     llm_cfg = settings.sources.get("llm", {})
     model = llm_cfg.get("chart_model") or llm_cfg.get("synthesis_model", "openai/gpt-4o")
@@ -219,11 +219,14 @@ def _select_with_llm(
         ],
         "chart_candidates": [candidate.model_dump(mode="json") for candidate in shortlist],
     }
-    result = client.generate_structured(
-        system_prompt=prompt.text,
-        user_payload=payload,
-        schema=ChartSelectorOutput,
-    )
+    try:
+        result = client.generate_structured(
+            system_prompt=prompt.text,
+            user_payload=payload,
+            schema=ChartSelectorOutput,
+        )
+    except Exception:
+        return _plan_from_candidate(shortlist[0], ChartSelectionMethod.DETERMINISTIC_FALLBACK), None
     by_id = {candidate.candidate_id: candidate for candidate in shortlist}
     selected = by_id.get(result.output.candidate_id)
     if selected is None:
