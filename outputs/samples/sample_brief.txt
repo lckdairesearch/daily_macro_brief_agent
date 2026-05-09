@@ -2,38 +2,62 @@
 Macro Synthesis
 
 OVERNIGHT BOOK IMPACT
-Higher real-rate pressure supports the short-duration sleeve, while metals strength reinforces the long metals complex and monetary debasement theme.
+Overnight price action leans toward a benign liquidity backdrop for risk assets while keeping the structural bear case for long-end Treasuries intact. That mix supports the short long-term US duration position and keeps the metals complex thesis alive rather than invalidated.
 
 OVERNIGHT DASHBOARD
-S&P 500 (proxy): 520.00 | -1.20% | 5D ↘
-US 10Y Yield: 4.450% | +5.0bps | 5D →
-USD/JPY: 153.40 | +0.33% | 5D ↗
-Gold (spot): 4,698.0 | +0.35% | 5D ↗
-WTI (front-month): 78.5 | -1.01% | 5D ↘
-VIX: 16.8 | -2.89% | 5D →
-ICE BofA US High Yield OAS: 330.000% | +5.0bps | 5D ↗
-Nasdaq 100 (proxy): 430.00 | -2.10% | 5D ↘
-MOVE Index: 108.00 | +1.89% | 5D ↗
-US 2Y Yield: 4.720% | +3.0bps | 5D →
+S&P 500 (proxy): 737.62 | +0.83% | 5D ↗
+US 10Y Yield: 4.410% | +5.0bps | 5D →
+USD/JPY: 156.65 | -0.17% | 5D →
+Gold (spot): 4,704.1 | +0.12% | 5D ↗
+WTI (front-month): 96.98 | +1.14% | 5D ↘
+VIX: 17.19 | +0.64% | 5D →
+Nasdaq 100 (proxy): 711.23 | +2.34% | 5D ↗
+MOVE Index: 67.25 | -6.91% | 5D ↘
+EUR/USD: 1.178 | +0.50% | 5D ↗
+USD/CNH: 6.795 | -0.19% | 5D ↘
 
 THE 3 THINGS
-1. Metals complex gains on central bank accumulation
-Gold and silver moved higher amid continued central bank buying. Reserve managers are diversifying away from dollar-denominated assets, keeping the bid elevated. Real yields softened, removing a key headwind for non-yielding metals and reinforcing the structural debasement narrative.
-Supports long metals complex position in the book.
+1. Liquidity eased, but duration pressure remains
+QQQ rose 2.3441%, SPY gained 0.8256%, MOVE fell 6.9075%, and US 10Y and US 2Y yields both rose 5 bps. Fed H.4.1 helps reconcile that mix: reserve balances rose by 113,989 million dollars as the TGA fell 104,168 million, easing near-term liquidity even as MBS runoff continued. That is supportive for risk without removing supply and term-premium pressure on rates.
+This validates the short long-term US duration position while reducing immediate stress on the broader risk backdrop.
+
+2. Market is trading a higher long-end regime
+Nasdaq strength alongside higher Treasury yields and lower rate vol fits Keyrock's argument that markets are shifting from a Fed-centric regime to one driven by supply, sticky inflation, and rebuilding term premium. The note explicitly frames higher long-end yields as a supply-and-inflation repricing rather than a simple policy-rate story.
+This reinforces the short long-term US duration position and supports the long metals complex thesis.
+
+3. Payrolls set today's real macro test
+The key event is 20:30 HKT US payrolls: Nonfarm Payrolls consensus is 65K versus 178K prior, unemployment is seen at 4.3%, and Average Hourly Earnings at 0.3% month on month versus 0.2% prior. After yields rose and rate vol fell overnight, this release is the clearest near-term test of whether growth is slowing fast enough to challenge the book's structural duration view.
+This is the main event risk for the short long-term US duration position and the currency diversification overlay.
 
 TODAY'S CALENDAR
-08:30 Japan - S&P Global Services PMI (Apr) (Exp: 51.2; Prev: 53.4)
+00:10 US - Atlanta Fed GDPNow (Q2) (Exp: 3.7%; Prev: 3.7%)
+03:00 US - Consumer Credit (Mar) (Exp: 12.5B; Prev: 8.85B)
+04:30 US - Fed's Balance Sheet (Exp: n/a; Prev: 6700B)
 15:00 EU - ECB President Lagarde Speaks (Exp: n/a; Prev: n/a)
-20:30 US - Nonfarm Payrolls (Apr) (Exp: 65K; Prev: 178K)
 20:30 US - Average Hourly Earnings (MoM) (Apr) (Exp: 0.3%; Prev: 0.2%)
+20:30 US - Nonfarm Payrolls (Apr) (Exp: 65K; Prev: 178K)
 20:30 US - Unemployment Rate (Apr) (Exp: 4.3%; Prev: 4.3%)
+20:30 US - Private Nonfarm Payrolls (Apr) (Exp: 75K; Prev: 186K)
 
 ONE CHART WORTH SEEING
 One-day moves across the key assets shaping today’s macro tape.
-outputs/samples/2026-05-10/20260510_022459_sample/sample_chart.png
+outputs/samples/2026-05-10/20260510_031055_sample/sample_chart.png
 
 THEME RADAR
-Fiscal Dominance Thesis — Research Note - Sample Economic Source
-https://example.com/placeholder
-Author argues fiscal dominance is now the primary driver of long-end yields. Evidence includes persistently widening deficits and sustained Treasury issuance at elevated supply levels. Central banks are losing credibility as effective inflation anchors. Historical parallels drawn to the 1940s yield curve control era when fiscal needs overrode monetary independence. Non-mainstream source challenges the consensus soft-landing narrative.
-Reinforces short duration positioning in our book.
+Balance-sheet plumbing is easing conditions at the margin - Federal Reserve
+https://www.federalreserve.gov/Releases/H41/Current/
+The Fed's H.4.1 is more useful than the headline balance-sheet shrink suggests. Securities held outright fell only 1,624 million dollars on the week, but the important move was in liabilities: reserve balances rose 113,989 million while the Treasury General Account fell 104,168 million. At the same time, MBS holdings declined 6,981 million, so QT is still running through mortgage runoff. The author's point is that this mix can support near-term risk appetite and lower rate vol without changing the medium-term supply burden facing duration.
+It supports the short long-term US duration position while explaining why risk assets can stay firm in the near term.
+
+The regime shift is from policy path to term premium - Keyrock
+https://keyrock.com/the-last-dance/
+Keyrock's thesis is that the market is no longer primarily trading the next Fed move; it is repricing the long end around supply, sticky inflation, and capital-intensive AI buildout. The note backs that with March PCE at 0.7% month on month and 3.5% year on year headline, core at 0.3% month on month and 3.2% year on year, and a Fed hold described as unusually split. The author argues gold weakness is tactical and that higher long yields now reflect rebuilding term premium more than changing cut expectations.
+It strengthens the fiscal-dominance case behind the short long-term US duration position and argues to stay with the long metals complex theme.
+
+Grains are not delivering a fresh inflation impulse - Agriculture.com
+https://www.agriculture.com/grains-in-the-red-this-morning-or-thursday-may-7-2026-11969207
+The agriculture note is useful mainly as a rejection signal. Soybeans were reported down 10 cents to $11.84 3/4, corn export sales at 1.362 million metric tons were within trade guesses and slightly below the four-week average, and wheat export sales of 78,800 metric tons were down 45% from the four-week average. That is not evidence of a new food-inflation shock. The author's underlying message is that current grain data look mixed to soft rather than supply-constrained.
+It tempers any near-term inflation tailwind for the Long Agriculture Futures (Grains Complex) position without breaking the longer-term food security theme.
+
+CONTRARIAN CORNER
+The market is enjoying easier liquidity signals now, but that may be obscuring the more important balance-sheet composition story. The Fed data show bills up 242.439 billion dollars year over year, Treasury holdings up 218.058 billion, and MBS down 191.885 billion, while reverse repos are also down sharply. Worth watching because falling MOVE and firmer equities can coexist with a still-unfriendly backdrop for long-end Treasuries if supply absorption and term premium keep doing the heavy lifting.

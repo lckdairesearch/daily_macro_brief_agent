@@ -79,6 +79,22 @@ def _make_evidence_card(card_id: str = "ev_001") -> EvidenceCard:
     )
 
 
+def _make_social_evidence_card(card_id: str = "ev_x_001") -> EvidenceCard:
+    return EvidenceCard(
+        id=card_id,
+        title="Macro X thread",
+        source_name="macro_user",
+        source_type=SourceType.SOCIAL,
+        url="https://x.com/macro_user/status/12345678901234567",
+        retrieved_at=_NOW,
+        thesis="Term premium is rebuilding",
+        evidence="The thread points to supply pressure and sticky inflation.",
+        macro_relevance="Rates regime is shifting.",
+        portfolio_relevance="Supports short duration",
+        confidence=0.7,
+    )
+
+
 def _make_ranked_context(stale: bool = False) -> RankedBriefContext:
     snap = _make_snapshot(stale=stale)
     event = _make_calendar_event()
@@ -314,6 +330,45 @@ def test_build_payload_excludes_stale_instruments_when_fresh():
     from app.synthesis.writer import _build_payload
     payload = _build_payload(ctx, settings, _NOW)
     assert payload["stale_instruments"] == []
+
+
+def test_build_payload_includes_available_x_evidence():
+    ctx = _make_ranked_context()
+    social = _make_social_evidence_card()
+    ctx = ctx.__class__(
+        dashboard_rows=ctx.dashboard_rows,
+        top_market_moves=ctx.top_market_moves,
+        top_calendar_events=ctx.top_calendar_events,
+        ranked_evidence_cards=ctx.ranked_evidence_cards + [social],
+        proposed_three_things=ctx.proposed_three_things,
+        proposed_theme_radar=ctx.proposed_theme_radar,
+        proposed_contrarian_corner_seed=ctx.proposed_contrarian_corner_seed,
+        scores=ctx.scores,
+    )
+    settings = _make_settings()
+    payload = _build_payload(ctx, settings, _NOW)
+
+    assert len(payload["available_x_evidence"]) == 1
+    assert payload["available_x_evidence"][0]["id"] == social.id
+    assert payload["available_x_evidence"][0]["source_type"] == SourceType.SOCIAL.value
+
+
+def test_build_payload_available_x_evidence_empty_when_no_social_cards():
+    ctx = _make_ranked_context()
+    settings = _make_settings()
+    payload = _build_payload(ctx, settings, _NOW)
+
+    assert payload["available_x_evidence"] == []
+
+
+def test_brief_writer_prompt_mentions_so_what_diversity_and_x_radar():
+    from app.llm.prompt_registry import clear_prompt_cache, load_prompt
+
+    clear_prompt_cache()
+    prompt = load_prompt("brief_writer")
+
+    assert "Treat all `three_things.so_what` and `radar_items.so_what` as one diversity pool." in prompt.text
+    assert "If `available_x_evidence` is non-empty, try to include at least one radar item" in prompt.text
 
 
 # ---------------------------------------------------------------------------

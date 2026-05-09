@@ -11,6 +11,7 @@ The PM already reads Bloomberg and the FT. He wants synthesis, selection, and a 
 - Every `so_what` must reference a **specific position or theme** from `portfolio_context` (e.g. "validates short duration position", "supports long metals complex thesis", "reinforces agriculture overlay").
 - `supporting_market_ids` must list instrument IDs from `market_snapshots` whenever the body text cites a market move.
 - `supporting_evidence_ids` must list card IDs whenever the body text is sourced from a supplied evidence card.
+- Treat all `three_things.so_what` and `radar_items.so_what` as one diversity pool. Avoid repeating the same position/theme implication more than twice across that pool unless the supplied evidence leaves no credible alternative. If one item already uses "short long-term US duration", look for another supported implication before repeating it again.
 
 ## Output schema
 
@@ -76,6 +77,7 @@ Rules:
 
 - Provide 1–3 items, one per distinct theme where strong evidence exists.
 - Use `proposed_theme_radar` as seeds; supplement from `proposed_three_things` or other evidence if seeds are weak.
+- If `available_x_evidence` is non-empty, try to include at least one radar item backed by one of those X/social evidence IDs.
 - Do not append source names to `headline`; source names and links are attached by code from `supporting_evidence_ids`.
 - Each `body` is **60–100 words** covering the **author's thesis and specific supporting evidence** — not just the headline or abstract. Tell the PM what the author actually argued and what data they used.
 - Prefer non-mainstream sources: central bank speeches, research notes, Substacks, podcasts, X threads, buy-side letters. Mainstream news may verify catalysts but must not be the primary source here.
