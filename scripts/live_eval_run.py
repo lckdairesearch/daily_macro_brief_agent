@@ -146,6 +146,10 @@ def main() -> None:
     markdown = brief.markdown.strip() + "\n"
     (output_dir / "brief.md").write_text(markdown, encoding="utf-8")
     (output_dir / "brief.html").write_text(_markdown_to_html(brief.title, markdown), encoding="utf-8")
+    (output_dir / "brief_rendered.html").write_text(
+        _markdown_to_rendered_html(brief.title, markdown, data_cutoff),
+        encoding="utf-8",
+    )
     _save_json(output_dir / "llm_brief.json", brief.model_dump(mode="json"))
 
     manifest = {
@@ -162,6 +166,7 @@ def main() -> None:
         "outputs": {
             "brief_md": str(output_dir / "brief.md"),
             "brief_html": str(output_dir / "brief.html"),
+            "brief_rendered_html": str(output_dir / "brief_rendered.html"),
             "raw_market": str(output_dir / "market_snapshots.json"),
             "raw_calendar": str(output_dir / "calendar_events.json"),
             "raw_evidence": str(output_dir / "evidence_cards.json"),
@@ -246,29 +251,81 @@ def _save_json(path: Path, payload: Any) -> None:
 
 
 def _markdown_to_html(title: str, markdown: str) -> str:
-    body = []
-    for line in markdown.splitlines():
-        escaped = html.escape(line)
-        if escaped.startswith("### "):
-            body.append(f"<h3>{escaped[4:]}</h3>")
-        elif escaped.startswith("## "):
-            body.append(f"<h2>{escaped[3:]}</h2>")
-        elif escaped.startswith("# "):
-            body.append(f"<h1>{escaped[2:]}</h1>")
-        elif escaped.startswith("- "):
-            body.append(f"<p>{escaped}</p>")
-        elif escaped:
-            body.append(f"<p>{escaped}</p>")
+    return _render_markdown_document(title, markdown, dense=False, subtitle=None)
+
+
+def _markdown_to_rendered_html(title: str, markdown: str, data_cutoff: datetime) -> str:
+    subtitle = f"Data cutoff: {data_cutoff.strftime('%Y-%m-%d %H:%M %Z')}"
+    return _render_markdown_document(title, markdown, dense=True, subtitle=subtitle)
+
+
+def _render_markdown_document(
+    title: str,
+    markdown: str,
+    *,
+    dense: bool,
+    subtitle: str | None,
+) -> str:
+    blocks: list[str] = []
+    lines = markdown.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        escaped = html.escape(stripped)
+        if not stripped:
+            i += 1
+            continue
+        if stripped.startswith("### "):
+            blocks.append(f"<h3>{escaped[4:]}</h3>")
+        elif stripped.startswith("## "):
+            blocks.append(f"<h2>{escaped[3:]}</h2>")
+        elif stripped.startswith("# "):
+            blocks.append(f"<h1>{escaped[2:]}</h1>")
+        elif stripped.startswith("- "):
+            items: list[str] = []
+            while i < len(lines) and lines[i].strip().startswith("- "):
+                items.append(f"<li>{html.escape(lines[i].strip()[2:])}</li>")
+                i += 1
+            blocks.append(f"<ul>{''.join(items)}</ul>")
+            continue
         else:
-            body.append("")
+            para: list[str] = [stripped]
+            i += 1
+            while i < len(lines) and lines[i].strip() and not lines[i].strip().startswith(("# ", "## ", "### ", "- ")):
+                para.append(lines[i].strip())
+                i += 1
+            blocks.append(f"<p>{html.escape(' '.join(para))}</p>")
+            continue
+        i += 1
+
+    spacing = "compact" if dense else "loose"
+    subtitle_html = f"<p class=\"subtitle\">{html.escape(subtitle)}</p>" if subtitle else ""
     return (
         "<!doctype html><html><head><meta charset=\"utf-8\">"
         f"<title>{html.escape(title)}</title>"
-        "<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
-        "max-width:920px;margin:32px auto;padding:0 20px;line-height:1.45;color:#17202a}"
-        "h1,h2,h3{line-height:1.2}p{margin:0.55rem 0}</style></head><body>"
-        + "\n".join(body)
-        + "</body></html>"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<style>"
+        "body{margin:0;background:#f5f2ea;color:#161616;font-family:Georgia,'Times New Roman',serif}"
+        ".page{max-width:920px;margin:0 auto;padding:36px 24px 48px}"
+        ".sheet{background:#fff;border:1px solid #e4dfd5;box-shadow:0 14px 40px rgba(0,0,0,.06);padding:34px 32px}"
+        f".sheet.{spacing}{{padding:28px 28px}}"
+        "h1{font-size:34px;line-height:1.1;margin:0 0 8px;font-weight:700;letter-spacing:-.02em}"
+        "h2{font-size:18px;line-height:1.25;margin:28px 0 10px;text-transform:uppercase;letter-spacing:.08em}"
+        "h3{font-size:15px;line-height:1.3;margin:18px 0 8px;font-weight:700}"
+        "p,li{font-size:15px;line-height:1.6}"
+        "p{margin:0 0 12px}"
+        "ul{margin:0 0 14px 22px;padding:0}"
+        ".subtitle{margin:0 0 22px;color:#666;font-size:12px;text-transform:uppercase;letter-spacing:.12em}"
+        ".note{margin-top:28px;padding-top:14px;border-top:1px solid #eee;color:#666;font-size:12px}"
+        "</style></head><body><div class=\"page\"><main class=\"sheet "
+        + spacing
+        + "\">"
+        + f"<h1>{html.escape(title)}</h1>"
+        + subtitle_html
+        + "".join(blocks)
+        + "<div class=\"note\">Rendered live-eval artifact for review and later print/PDF use.</div>"
+        + "</main></div></body></html>"
     )
 
 
