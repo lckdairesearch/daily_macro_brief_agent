@@ -16,7 +16,10 @@ from app.models import (
     BriefItem,
     BriefSection,
     CalendarEvent,
+    ChartPlan,
+    ChartSelectionMethod,
     ChartSpec,
+    ChartWindow,
     FreshnessStatus,
     MarketSnapshot,
 )
@@ -25,6 +28,7 @@ from app.render.chart_codegen import (
     execute_chart_code,
     select_instruments,
 )
+from app.render.chart_selector import build_chart_candidates, shortlist_chart_candidates
 from app.render.charts import _hardcoded_fallback
 
 _AS_OF = datetime(2026, 5, 9, 6, 45, tzinfo=timezone.utc)
@@ -94,6 +98,27 @@ def _make_draft(supporting_market_ids: list[str] | None = None, with_calendar: b
             chart_type="line",
             data_source="fixture",
         ),
+    )
+
+
+def _make_chart_plan(
+    *,
+    window: ChartWindow = ChartWindow.ONE_WEEK,
+    chart_type: str = "line",
+    instrument_ids: list[str] | None = None,
+    title: str = "VIX / MOVE stress comparison",
+    caption: str = "Volatility spike signals stress",
+) -> ChartPlan:
+    return ChartPlan(
+        window=window,
+        chart_type=chart_type,
+        instrument_ids=instrument_ids or ["VIX", "MOVE"],
+        title=title,
+        caption=caption,
+        selection_reason="Linked to the lead risk-off theme.",
+        candidate_family="divergence",
+        linked_three_things_index=0,
+        selection_method=ChartSelectionMethod.DETERMINISTIC_FALLBACK,
     )
 
 
@@ -234,7 +259,7 @@ def test_execute_chart_code_timeout_raises(tmp_path):
 def test_hardcoded_fallback_creates_png(tmp_path):
     draft = _make_draft()
     output = str(tmp_path / "fallback.png")
-    spec = _hardcoded_fallback(draft, output)
+    spec = _hardcoded_fallback(draft, output, _make_chart_plan(window=ChartWindow.ONE_DAY, chart_type="bar"))
     assert Path(output).exists()
     assert Path(output).stat().st_size > 0
     assert spec.file_path == output
@@ -245,7 +270,8 @@ def test_hardcoded_fallback_creates_png(tmp_path):
 def test_hardcoded_fallback_uses_draft_caption(tmp_path):
     draft = _make_draft()
     output = str(tmp_path / "cap.png")
-    spec = _hardcoded_fallback(draft, output)
+    plan = _make_chart_plan(window=ChartWindow.ONE_DAY, chart_type="bar", caption="Volatility spike signals stress")
+    spec = _hardcoded_fallback(draft, output, plan)
     assert spec.caption == "Volatility spike signals stress"
 
 
@@ -290,9 +316,17 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    chart_plan = _make_chart_plan()
     output = str(tmp_path / "chart.png")
 
-    spec = build_chart(draft, settings=settings, output_path=output, sample_mode=True, as_of=_AS_OF)
+    spec = build_chart(
+        draft,
+        chart_plan=chart_plan,
+        settings=settings,
+        output_path=output,
+        sample_mode=True,
+        as_of=_AS_OF,
+    )
     assert Path(output).exists()
     assert spec.file_path == output
     assert spec.code_generated is True
@@ -309,9 +343,17 @@ def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    chart_plan = _make_chart_plan()
     output = str(tmp_path / "fallback.png")
 
-    spec = build_chart(draft, settings=settings, output_path=output, sample_mode=True, as_of=_AS_OF)
+    spec = build_chart(
+        draft,
+        chart_plan=chart_plan,
+        settings=settings,
+        output_path=output,
+        sample_mode=True,
+        as_of=_AS_OF,
+    )
     assert Path(output).exists()
     assert spec.code_generated is False
 
@@ -331,10 +373,30 @@ def test_chart_codegen_prompt_aligns_one_day_bar_chart_dates():
     from app.llm.prompt_registry import clear_prompt_cache, load_prompt
     clear_prompt_cache()
     prompt = load_prompt("chart_codegen")
-    assert "plot one shared session only" in prompt.text
-    assert "series_dates[name][-1] == target_date" in prompt.text
-    assert "If fewer than two aligned series remain" in prompt.text
+    assert "chart_window == \"1w\"" in prompt.text
+    assert "chart_window == \"1m\"" in prompt.text
+    assert "Do not choose a different window or a different series" in prompt.text
     assert "missing dates across series are acceptable" in prompt.text
+
+
+def test_chart_selector_candidates_include_daily_and_reinforcing_pair():
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    series_data = fetch_chart_series(["SPY", "VIX", "MOVE", "US10Y", "GOLD"], lookback_days=30, as_of=_AS_OF, sample_mode=True)
+    candidates = build_chart_candidates(
+        snapshots=draft.overnight_dashboard,
+        series_data=series_data,
+        brief_draft=draft,
+        portfolio={
+            "core_positions": [
+                {"label": "Long Metals", "instruments": ["Gold"], "sensitivity_tags": ["real_rates"]},
+            ],
+            "tactical_overlays": [],
+            "macro_sensitivities": ["real_rates"],
+        },
+    )
+    shortlist = shortlist_chart_candidates(candidates)
+    assert any(candidate.window == ChartWindow.ONE_DAY for candidate in shortlist)
+    assert any(candidate.linked_three_things_index == 0 for candidate in shortlist if candidate.window != ChartWindow.ONE_DAY)
 
 
 def test_chart_codegen_prompt_uses_transparent_background_with_faint_line_grid():
@@ -346,6 +408,14 @@ def test_chart_codegen_prompt_uses_transparent_background_with_faint_line_grid()
     assert 'ax.set_facecolor("none")' in prompt.text
     assert "For line charts, keep faint gridlines" in prompt.text
     assert "transparent=True" in prompt.text
+
+
+def test_chart_selector_prompt_exists_and_restricts_choice_to_shortlist():
+    from app.llm.prompt_registry import clear_prompt_cache, load_prompt
+    clear_prompt_cache()
+    prompt = load_prompt("chart_selector")
+    assert "Pick exactly one candidate from the supplied shortlist" in prompt.text
+    assert "`candidate_id` must match one of the supplied `chart_candidates`" in prompt.text
 
 
 # ---------------------------------------------------------------------------

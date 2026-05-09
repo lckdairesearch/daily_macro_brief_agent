@@ -1,8 +1,8 @@
 """Brief writer. Calls LiteLLM once with grounded ranked context to produce BriefDraft.
 
 The LLM writes only the synthesis sections (three_things, radar_items,
-contrarian_corner, chart_caption). Dashboard rows and calendar events are
-pipeline pass-throughs merged in _assemble_draft().
+contrarian_corner). Dashboard rows and calendar events are pipeline pass-throughs
+merged in _assemble_draft().
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from app.models import (
     BriefItem,
     BriefSection,
     BriefWriterOutput,
-    ChartSpec,
     FreshnessStatus,
     RunMode,
     WriterItem,
@@ -60,7 +59,6 @@ _SAMPLE_FAKE_RESPONSE: dict = {
         }
     ],
     "contrarian_corner": None,
-    "chart_caption": None,
     "warnings": [],
 }
 from app.synthesis.ranker import RankedBriefContext
@@ -165,21 +163,13 @@ def _assemble_draft(
         )
         if writer_out.contrarian_corner else None
     )
-    chart = None
-    if writer_out.chart_caption:
-        chart = ChartSpec(
-            title="Chart — see caption",
-            caption=writer_out.chart_caption,
-            chart_type="line",
-            data_source="pipeline",
-        )
     return BriefDraft(
         run_metadata={},  # filled by pipeline after RunMetadata is built
         book_impact=writer_out.book_impact,
         overnight_dashboard=ctx.dashboard_rows,
         three_things=three_things,
         todays_calendar=ctx.top_calendar_events,
-        chart=chart,
+        chart=None,
         radar_items=radar_items,
         contrarian_corner=contrarian,
         warnings=list(writer_out.warnings),

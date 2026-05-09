@@ -55,8 +55,8 @@ def test_sample_mode_prints_progress_steps():
     """CLI prints pipeline progress before final status."""
     result = _run("sample")
 
-    assert "[1/12] Determine run window" in result.stdout
-    assert "[12/12] Record metadata" in result.stdout
+    assert "[1/13] Determine run window" in result.stdout
+    assert "[13/13] Record metadata" in result.stdout
     assert "[OK]" in result.stdout
 
 

@@ -13,7 +13,7 @@ from app.models import RunMode
 from app.pipeline import run_pipeline
 from app.settings import Settings
 
-_PROGRESS_STEPS = 12
+_PROGRESS_STEPS = 13
 
 
 def main() -> None:

@@ -29,6 +29,8 @@ output_path   # str — file path to save the PNG
 
 **Critical:** `series[name]` is aligned to `series_dates[name]`, NOT to `dates`. Different series may have different lengths (e.g. one has 30 calendar-day rows, another has 21 trading-day rows). Always use `series_dates[name]` as x-values when plotting a line — never use the shared `dates` for plotting.
 
+The caller also tells you the fixed `chart_window`, `chart_type`, `selected_instruments`, and `selection_reason` in plain text. Treat those as binding instructions. Do not choose a different window or a different series.
+
 ## Figure and layout
 
 ```python
@@ -46,21 +48,14 @@ The chart is displayed in an HTML email at approximately 500px wide and 175px ta
 
 ## Time window and chart type
 
-The injected data covers up to 30 calendar days. Choose the window and chart type that best communicates the `title` context:
+The selector has already chosen the window and the series. Your job is to render that fixed plan cleanly.
 
-| Window | When to use | Chart type | X-axis ticks |
-|--------|-------------|------------|--------------|
-| **30 days** | Month-long trend, cross-asset divergence | Line | Monday of each week |
-| **1 week** | Recent momentum, short-term breakout | Line | Every trading day |
-| **1 day** | Snapshot comparison, single-session moves | Horizontal bar | Series names (categorical) |
-
-For **1-day bar chart**: plot one shared session only. Build `final_dates = [series_dates[name][-1] for name in series if series_dates[name]]`, then set `target_date = max(d for d in set(final_dates) if final_dates.count(d) >= 2)`. Include only series where `series_dates[name][-1] == target_date`; if a series' latest date is older or newer than `target_date`, skip it. For each included series with at least two observations, plot the overnight move from the previous close to `target_date`: use percent change for `units[name]` of `"price"` or `"index"`, and absolute change for `"%"` or `"bps"`. If fewer than two aligned series remain, or no `target_date` exists, do not force a 1-day chart — use a 1-week or 30-day line chart instead. Use a single axis with value labels. Skip the dual-axis and "Plotting lines" sections below. Skip event annotations (no date axis).
+- If `chart_window == "1w"`, use the last 5 observations from each selected series.
+- If `chart_window == "1m"`, use the last 21 observations from each selected series.
+- Assume `chart_type == "line"` for the code you generate here.
+- Plot the selected series only. Do not add extra series and do not drop one of the selected series.
 
 For **line charts**: missing dates across series are acceptable. Slice each series to the chosen window by taking the last N entries of `series_dates[name]` and `series[name]` before plotting. Keep the sliced dates in a local variable (e.g. `plot_dates`) — use it for axis bounds, ticks, and event lookups in place of the full `dates` list.
-
-## Series selection
-
-**Default: plot exactly 2 series.** If `series` contains more than 2 keys, pick the 2 with the largest combined value range (max − min) over the chosen window. Only plot a 3rd series if dropping it would remove the single most important relationship for the `title` context — and only if all 3 series have scales within 8× of each other.
 
 ## Axis assignment — scale-based, NOT unit-based
 

@@ -105,7 +105,6 @@ def _make_settings(has_key: bool = True) -> MagicMock:
 
 def _make_writer_output(
     with_contrarian: bool = True,
-    with_chart: bool = True,
 ) -> BriefWriterOutput:
     three = WriterItem(
         headline="Fed holds, dollar firms",
@@ -136,7 +135,6 @@ def _make_writer_output(
         three_things=[three],
         radar_items=[radar],
         contrarian_corner=contrarian,
-        chart_caption="Gold vs real yields — correlation breakdown suggests structural shift." if with_chart else None,
         warnings=[],
     )
 
@@ -207,8 +205,8 @@ def test_write_brief_section_types_are_forced(mock_llm_cls):
 
 
 @patch("app.synthesis.writer.LLMClient")
-def test_write_brief_chart_none_when_caption_absent(mock_llm_cls):
-    writer_output = _make_writer_output(with_chart=False)
+def test_write_brief_leaves_chart_unset(mock_llm_cls):
+    writer_output = _make_writer_output()
     mock_llm_cls.return_value.generate_structured.return_value = _make_llm_result(writer_output)
 
     ctx = _make_ranked_context()
@@ -216,19 +214,6 @@ def test_write_brief_chart_none_when_caption_absent(mock_llm_cls):
     draft, _ = write_brief(ctx, settings, _NOW)
 
     assert draft.chart is None
-
-
-@patch("app.synthesis.writer.LLMClient")
-def test_write_brief_chart_present_when_caption_supplied(mock_llm_cls):
-    writer_output = _make_writer_output(with_chart=True)
-    mock_llm_cls.return_value.generate_structured.return_value = _make_llm_result(writer_output)
-
-    ctx = _make_ranked_context()
-    settings = _make_settings()
-    draft, _ = write_brief(ctx, settings, _NOW)
-
-    assert draft.chart is not None
-    assert draft.chart.caption == writer_output.chart_caption
 
 
 @patch("app.synthesis.writer.LLMClient")

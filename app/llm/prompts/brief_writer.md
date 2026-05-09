@@ -43,12 +43,11 @@ Return a JSON object matching this schema exactly. Do not add extra top-level ke
     "body": "50–100 words. The market is not pricing X, worth watching because Y.",
     "supporting_evidence_ids": ["ev_005"],
     "confidence": 0.6
-  },
-  "chart_caption": "≤30 words tied to the day's top theme. null if no chart fits."
+  }
 }
 ```
 
-`contrarian_corner` and `chart_caption` may be `null`.
+`contrarian_corner` may be `null`.
 
 ## Section rules
 
@@ -89,10 +88,6 @@ Rules:
 - Must be supported by at least one evidence card or a cross-asset observation from `market_snapshots`.
 - If no genuine mispricing narrative is supported by the supplied evidence, return `null`.
 
-### chart_caption
-
-- **≤30 words**, tied to the day's dominant theme.
-- Return `null` if no chart candidate fits.
 
 ## Stale data
 

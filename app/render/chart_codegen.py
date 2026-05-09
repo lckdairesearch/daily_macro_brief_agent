@@ -20,7 +20,7 @@ import yaml
 
 from app.llm.prompt_registry import load_prompt
 from app.llm.provider import LLMClient, LLMConfig
-from app.models import BriefDraft
+from app.models import BriefDraft, ChartPlan
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -129,7 +129,7 @@ def build_data_preamble(
 
 
 def generate_chart_code(
-    label: str,
+    chart_plan: ChartPlan,
     series_data: dict[str, list[dict]],
     display_names: dict[str, str],
     asset_classes: dict[str, str],
@@ -141,7 +141,7 @@ def generate_chart_code(
 ) -> str:
     """Call LLM to generate matplotlib visualization code. Returns full executable Python."""
     preamble = build_data_preamble(
-        label, series_data, display_names, asset_classes, units, events, output_path,
+        chart_plan.title, series_data, display_names, asset_classes, units, events, output_path,
     )
     prompt = load_prompt("chart_codegen")
     llm_cfg = settings.sources.get("llm", {})
@@ -156,6 +156,12 @@ def generate_chart_code(
         "- Always use series_dates[name] (NOT the shared `dates`) as x-values in ax.plot().\n"
         "- The shared `dates` is the union of all series dates — use it ONLY for x-axis tick "
         "setup and event-annotation lookups.\n\n"
+        f"Render this fixed chart plan:\n"
+        f"- chart_window = {chart_plan.window.value!r}\n"
+        f"- chart_type = {chart_plan.chart_type!r}\n"
+        f"- selected_instruments = {chart_plan.instrument_ids!r}\n"
+        f"- selection_reason = {chart_plan.selection_reason!r}\n"
+        "Do not choose a different window or a different series.\n\n"
         "Write only the visualization block that follows. "
         "Return ONLY Python code — no fences, no explanations."
     )

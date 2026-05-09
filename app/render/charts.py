@@ -1,7 +1,4 @@
-"""Chart generation. Produces a PNG from live or fixture data via LLM-driven code gen.
-
-Entry point: build_chart(draft, settings, output_path, sample_mode, as_of) -> ChartSpec
-"""
+"""Chart generation. Produces a PNG from a selected ChartPlan."""
 
 from __future__ import annotations
 
@@ -11,13 +8,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.data.market import fetch_chart_series
-from app.models import AssetClass, BriefDraft, ChartSpec
+from app.models import AssetClass, BriefDraft, ChartPlan, ChartSpec, ChartWindow
 
 from .chart_codegen import (
-    configure_matplotlib_cache_env,
     execute_chart_code,
     generate_chart_code,
-    select_instruments,
 )
 
 if TYPE_CHECKING:
@@ -38,6 +33,7 @@ _UNIT_MAP: dict[AssetClass, str] = {
 
 def build_chart(
     draft: BriefDraft,
+    chart_plan: ChartPlan,
     settings: "Settings",
     output_path: str = "outputs/sample_chart.png",
     sample_mode: bool = True,
@@ -48,13 +44,14 @@ def build_chart(
     Tries LLM-generated code up to 2 times; falls back to a hardcoded bar chart.
     """
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-
-    label, instrument_ids = select_instruments(draft)
     dash_by_id = {s.instrument_id: s for s in draft.overnight_dashboard}
-
-    instrument_ids = [iid for iid in instrument_ids if iid in dash_by_id]
-    if not instrument_ids:
-        instrument_ids = [s.instrument_id for s in draft.overnight_dashboard[:6]]
+    instrument_ids = [iid for iid in chart_plan.instrument_ids if iid in dash_by_id]
+    if chart_plan.window == ChartWindow.ONE_DAY:
+        if not instrument_ids:
+            instrument_ids = [s.instrument_id for s in draft.overnight_dashboard[:6]]
+        return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+    if len(instrument_ids) < 2:
+        instrument_ids = [s.instrument_id for s in draft.overnight_dashboard[:2]]
 
     effective_as_of = as_of or datetime.now()
     series_data = fetch_chart_series(
@@ -67,7 +64,7 @@ def build_chart(
 
     if not series_data:
         _log.warning("build_chart: no series data available — using hardcoded fallback")
-        return _hardcoded_fallback(draft, output_path)
+        return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
 
     display_names = {iid: dash_by_id[iid].display_name for iid in series_data if iid in dash_by_id}
     asset_classes = {iid: dash_by_id[iid].asset_class.value for iid in series_data if iid in dash_by_id}
@@ -84,7 +81,7 @@ def build_chart(
     for attempt in range(2):
         try:
             code = generate_chart_code(
-                label=label,
+                chart_plan=chart_plan,
                 series_data=series_data,
                 display_names=display_names,
                 asset_classes=asset_classes,
@@ -96,19 +93,24 @@ def build_chart(
             )
             execute_chart_code(code, output_path)
             return ChartSpec(
-                title=label,
+                title=chart_plan.title,
                 caption=caption,
-                chart_type="line",
+                chart_type=chart_plan.chart_type,
                 data_source="fixture" if sample_mode else "live",
                 file_path=output_path,
                 code_generated=True,
+                window=chart_plan.window,
+                instrument_ids=instrument_ids,
+                selection_reason=chart_plan.selection_reason,
+                selection_method=chart_plan.selection_method,
+                linked_three_things_index=chart_plan.linked_three_things_index,
             )
         except Exception as exc:
             error_context = str(exc)
             _log.warning("build_chart: attempt %d failed: %s", attempt + 1, exc)
 
     _log.warning("build_chart: both attempts failed — using hardcoded fallback")
-    return _hardcoded_fallback(draft, output_path)
+    return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
 
 
 def _extract_events(draft: BriefDraft, series_dates: set[str]) -> list[dict]:
@@ -124,7 +126,12 @@ def _extract_events(draft: BriefDraft, series_dates: set[str]) -> list[dict]:
     return events
 
 
-def _hardcoded_fallback(draft: BriefDraft, output_path: str) -> ChartSpec:
+def _hardcoded_fallback(
+    draft: BriefDraft,
+    output_path: str,
+    chart_plan: ChartPlan | None = None,
+    instrument_ids: list[str] | None = None,
+) -> ChartSpec:
     """Horizontal bar chart of 1-day changes — always works without LLM."""
     import os
     os.environ.setdefault("MPLBACKEND", "Agg")
@@ -132,7 +139,11 @@ def _hardcoded_fallback(draft: BriefDraft, output_path: str) -> ChartSpec:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    dashboard = draft.overnight_dashboard[:10]
+    if instrument_ids:
+        by_id = {snap.instrument_id: snap for snap in draft.overnight_dashboard}
+        dashboard = [by_id[iid] for iid in instrument_ids if iid in by_id]
+    else:
+        dashboard = draft.overnight_dashboard[:10]
     labels = [s.display_name for s in dashboard]
     values = [s.one_day_change for s in dashboard]
     colors = ["#2563EB" if v >= 0 else "#DC2626" for v in values]
@@ -150,12 +161,17 @@ def _hardcoded_fallback(draft: BriefDraft, output_path: str) -> ChartSpec:
     plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close()
 
-    caption = draft.chart.caption if draft.chart else "Overnight market moves"
+    caption = chart_plan.caption if chart_plan else (draft.chart.caption if draft.chart else "Overnight market moves")
     return ChartSpec(
-        title="Overnight moves",
+        title=chart_plan.title if chart_plan else "Overnight moves",
         caption=caption,
         chart_type="bar",
         data_source="dashboard",
         file_path=output_path,
         code_generated=False,
+        window=chart_plan.window if chart_plan else ChartWindow.ONE_DAY,
+        instrument_ids=[snap.instrument_id for snap in dashboard],
+        selection_reason=chart_plan.selection_reason if chart_plan else None,
+        selection_method=chart_plan.selection_method if chart_plan else None,
+        linked_three_things_index=chart_plan.linked_three_things_index if chart_plan else None,
     )

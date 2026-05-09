@@ -69,6 +69,21 @@ class BriefSection(str, Enum):
     CONTRARIAN_CORNER = "contrarian_corner"
 
 
+class ChartWindow(str, Enum):
+    """Supported chart windows."""
+
+    ONE_DAY = "1d"
+    ONE_WEEK = "1w"
+    ONE_MONTH = "1m"
+
+
+class ChartSelectionMethod(str, Enum):
+    """How the final chart plan was chosen."""
+
+    HYBRID_LLM_SHORTLIST = "hybrid_llm_shortlist"
+    DETERMINISTIC_FALLBACK = "deterministic_fallback"
+
+
 class DeliveryStatus(str, Enum):
     """Delivery status."""
     SUCCESS = "success"
@@ -180,8 +195,21 @@ class BriefWriterOutput(BaseModel):
     three_things: list[WriterItem] = Field(default_factory=list)
     radar_items: list[WriterItem] = Field(default_factory=list)
     contrarian_corner: WriterItem | None = None
-    chart_caption: str | None = None
     warnings: list[str] = Field(default_factory=list)
+
+
+class ChartPlan(BaseModel):
+    """Selected chart plan before rendering."""
+
+    window: ChartWindow
+    chart_type: str
+    instrument_ids: list[str] = Field(default_factory=list)
+    title: str
+    caption: str
+    selection_reason: str
+    candidate_family: str
+    linked_three_things_index: int | None = None
+    selection_method: ChartSelectionMethod
 
 
 class ChartSpec(BaseModel):
@@ -194,6 +222,11 @@ class ChartSpec(BaseModel):
     file_path: str | None = None
     themes: list[str] = Field(default_factory=list)
     code_generated: bool = False
+    window: ChartWindow | None = None
+    instrument_ids: list[str] = Field(default_factory=list)
+    selection_reason: str | None = None
+    selection_method: ChartSelectionMethod | None = None
+    linked_three_things_index: int | None = None
 
 
 class BriefDraft(BaseModel):

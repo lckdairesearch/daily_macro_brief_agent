@@ -237,7 +237,34 @@ def run_pipeline(
     warnings.extend(validation.warnings)
     _record_timing(timings, "Validate brief", _step_started)
 
-    # --- Step 10: Build chart ---
+    # --- Step 10: Select chart ---
+    _progress(progress, "Select chart")
+    _step_started = perf_counter()
+    from app.render.chart_selector import select_chart_plan
+    chart_plan, chart_candidates, chart_selector_usage = select_chart_plan(
+        ranked_context=ranked_context,
+        brief_draft=brief_draft,
+        settings=settings,
+        as_of=data_cutoff,
+        sample_mode=(mode == RunMode.SAMPLE),
+    )
+    if chart_selector_usage is not None:
+        llm_usages.append(chart_selector_usage)
+    _save_json_artifact(
+        run_output_dir / "chart_candidates.json",
+        [candidate.model_dump(mode="json") for candidate in chart_candidates],
+        output_paths,
+        "chart_candidates",
+    )
+    _save_json_artifact(
+        run_output_dir / "chart_plan.json",
+        chart_plan.model_dump(mode="json"),
+        output_paths,
+        "chart_plan",
+    )
+    _record_timing(timings, "Select chart", _step_started)
+
+    # --- Step 11: Build chart ---
     _progress(progress, "Build chart")
     _step_started = perf_counter()
     from app.render.charts import build_chart
@@ -246,6 +273,7 @@ def run_pipeline(
     try:
         chart_spec = build_chart(
             draft=brief_draft,
+            chart_plan=chart_plan,
             settings=settings,
             output_path=_chart_output_path(mode, settings, data_cutoff, run_id=run_id),
             sample_mode=(mode == RunMode.SAMPLE),
@@ -267,7 +295,7 @@ def run_pipeline(
         chart_status = "failed"
     _record_timing(timings, "Build chart", _step_started, status=chart_status)
 
-    # --- Step 11: Render HTML/text ---
+    # --- Step 12: Render HTML/text ---
     _progress(progress, "Render brief")
     _step_started = perf_counter()
     from app.render.email import render_brief
@@ -309,7 +337,7 @@ def run_pipeline(
             render_status = "failed"
     _record_timing(timings, "Render brief", _step_started, status=render_status)
 
-    # --- Step 12: Deliver email ---
+    # --- Step 13: Deliver email ---
     _progress(progress, "Deliver email")
     _step_started = perf_counter()
     delivery_timing_status = "skipped"
@@ -348,7 +376,7 @@ def run_pipeline(
             delivery_timing_status = "failed"
     _record_timing(timings, "Deliver email", _step_started, status=delivery_timing_status)
 
-    # --- Step 13: Record run metadata ---
+    # --- Step 14: Record run metadata ---
     _progress(progress, "Record metadata")
     _step_started = perf_counter()
     run_metadata = RunMetadata(
