@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from app.settings import Settings
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
-HTML_TEMPLATE = "template.html"
+HTML_TEMPLATE = "brief_template.html"
 
 _FALLBACK_VOL: dict[str, dict[str, float | str]] = {
     "%": {"sd_1d": 1.0, "unit": "%"},

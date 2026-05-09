@@ -22,7 +22,7 @@ Core architectural answer:
    Each stage passes structured models such as `MarketSnapshot`, `CalendarEvent`, `EvidenceCard`, `BriefItem`, and `RunMetadata`.
 
 4. **Provider-specific code is isolated**\
-   Alpha Vantage, Databento, Investing.com, Grok/xAI, and SendGrid integrations should sit behind small wrappers. For LLM model providers specifically, use one thin project wrapper around LiteLLM instead of writing separate wrappers for Azure OpenAI, OpenAI, Anthropic, Gemini, Bedrock, etc.
+   Alpha Vantage, Databento, Investing.com, Grok/xAI, and Postmark integrations should sit behind small wrappers. For LLM model providers specifically, use one thin project wrapper around LiteLLM instead of writing separate wrappers for Azure OpenAI, OpenAI, Anthropic, Gemini, Bedrock, etc.
 
 5. **Cache first, scrape/call politely**\
    Calendar/source fetching should cache daily results and avoid repeated unnecessary endpoint calls.
@@ -82,7 +82,7 @@ app/pipeline.py
         |
         +--> render HTML, text, chart
         |
-        +--> deliver through SendGrid if enabled
+        +--> deliver through Postmark if enabled
         |
         +--> save artifacts + run metadata
 ```
@@ -131,7 +131,7 @@ Behavior:
 - Uses cached calendar/market data if live calls fail according to reliability rules.
 - Runs discovery scouts.
 - After Step 10+ is implemented, calls the configured model through the LiteLLM-backed `app/llm/provider.py` wrapper for synthesis.
-- After delivery is wired, sends email via SendGrid when delivery is enabled.
+- After delivery is wired, sends email via Postmark when delivery is enabled.
 
 Suggested command:
 
@@ -234,7 +234,6 @@ daily-macro-brief/
       email.py
       templates/
         brief_template.html
-        template.html
         example.html
 
     delivery.py
@@ -378,9 +377,9 @@ FRED_API_KEY                    free at fred.stlouisfed.org
 LISTEN_NOTES_API_KEY            podcast scout
 
 # Delivery — required for live email send
-SENDGRID_API_KEY
-SENDGRID_FROM_EMAIL
-SENDGRID_TO_EMAIL               comma-separated list accepted
+POSTMARK_API_KEY
+POSTMARK_FROM_EMAIL             defaults to brief@leonard-dai.com if blank
+POSTMARK_TO_EMAIL               comma-separated list accepted
 ENABLE_EMAIL_DELIVERY           optional override, default false
 
 # Optional
@@ -502,7 +501,7 @@ scouts:
     listen_notes_lookback_hours: 24
 
 delivery:
-  provider: sendgrid
+  provider: postmark
   default_enabled: false
 ```
 
@@ -1317,7 +1316,7 @@ V1 charting:
 Role:
 
 - Render `BriefDraft` into HTML and plain text.
-- Use `render/templates/template.html` for HTML layout; `brief_template.html` may remain as a compatibility include.
+- Use `render/templates/brief_template.html` for HTML layout.
 - Keep `render/templates/example.html` as a non-runtime visual reference only. It may contain mock values, but it must never be used as a data source or sent as a live brief.
 - Include warnings near the top when stale/cache fallback data is used.
 - Convert `MarketSnapshot` objects into deterministic presentation rows before template rendering, including formatted values, CSS classes, and 5D trend arrows.
@@ -1349,7 +1348,7 @@ File: `app/delivery.py`
 
 ### 15.1 Provider
 
-Use SendGrid as the V1 default delivery provider because the developer has more experience with it.
+Use Postmark as the V1 delivery provider, sending from `brief@leonard-dai.com` on the developer's own domain.
 
 Keep the delivery layer replaceable so Azure Communication Services can be added later if desired.
 
@@ -1366,7 +1365,7 @@ class DeliveryProvider(Protocol):
 Provider classes:
 
 ```text
-SendGridDeliveryProvider
+PostmarkDeliveryProvider
 NoopDeliveryProvider
 ```
 
@@ -1375,7 +1374,7 @@ NoopDeliveryProvider
 - `sample` mode: never send real email.
 - `dry-run` mode: never send real email.
 - `live` mode: send only if `ENABLE_EMAIL_DELIVERY=true` and recipients are configured.
-- `SENDGRID_TO_EMAIL` accepts a comma-separated list for multiple recipients.
+- `POSTMARK_TO_EMAIL` accepts a comma-separated list for multiple recipients.
 - Always save output artifacts even if email fails.
 - Record delivery status in `RunMetadata`.
 
@@ -1462,9 +1461,9 @@ DATABENTO_API_KEY optional
 AZURE_OPENAI_API_KEY or OPENAI_API_KEY
 AZURE_OPENAI_ENDPOINT optional
 AZURE_OPENAI_DEPLOYMENT optional
-SENDGRID_API_KEY
-SENDGRID_FROM_EMAIL
-SENDGRID_TO_EMAIL
+POSTMARK_API_KEY
+POSTMARK_FROM_EMAIL
+POSTMARK_TO_EMAIL
 ```
 
 ## 18. Testing architecture
@@ -1566,7 +1565,7 @@ LiteLLM package/version assumption
 Alpha Vantage plan/free-tier assumptions
 Databento assumptions
 GitHub Actions cost assumption
-SendGrid cost assumption
+Postmark cost assumption
 Any future paid calendar API assumption
 ```
 
@@ -1587,7 +1586,7 @@ For the case study, cost numbers can be approximate, but assumptions should be e
 | Grok/xAI returns unverifiable claim                                                  | Keep as weak candidate or discard unless corroborated.                                                                                      |
 | LiteLLM/model provider call fails                                                    | Retry according to wrapper policy; in sample mode fall back to deterministic sample writer if configured; in live mode fail or send warning depending on severity. |
 | LLM output fails validation                                                          | Attempt one repair pass; fail if critical validation still fails.                                                                           |
-| SendGrid delivery fails                                                              | Save artifacts and record failed delivery status.                                                                                           |
+| Postmark delivery fails                                                              | Save artifacts and record failed delivery status.                                                                                           |
 
 ## 21. Local development environment
 

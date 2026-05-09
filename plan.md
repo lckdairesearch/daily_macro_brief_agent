@@ -54,7 +54,7 @@ Use one task branch or one small pull request per main step when possible.
 | M4 | Add LLM boundary | LiteLLM wrapper, prompt registry, prompts | Confirm model/provider defaults |
 | M5 | Add discovery/ranking | Evidence scouts, dedupe, ranker | Review relevance scoring |
 | M6 | Add synthesis/validation/rendering | Brief writer, validator, HTML/text/chart | Review brief quality |
-| M7 | Add delivery/scheduling | SendGrid/noop delivery, GitHub Actions | Add secrets or keep dry-run |
+| M7 | Add delivery/scheduling | Postmark/noop delivery, GitHub Actions | Add secrets or keep dry-run |
 | M8 | Finalize submission | README, costs, memo, acceptance pass | Final human review |
 
 ## 7. Current implementation status
@@ -1147,9 +1147,8 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 **Files to modify:**
 
 - `app/render/email.py`
-- `app/render/templates/template.html` — production Jinja email template
+- `app/render/templates/brief_template.html` — production Jinja email template
 - `app/render/templates/example.html` — non-runtime visual reference with mock values only
-- `app/render/templates/brief_template.html` — compatibility include for the production template, if retained
 - `tests/test_render.py`
 
 **Implementation notes:**
@@ -1194,17 +1193,17 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 
 - Define `DeliveryProvider` protocol.
 - Implement `NoopDeliveryProvider`.
-- Implement `SendGridDeliveryProvider`.
+- Implement `PostmarkDeliveryProvider`.
 - Sample and dry-run modes must never send real email.
 - Live mode sends only if delivery is enabled and required recipients are configured.
 - Always save artifacts even if email delivery fails.
 
-**Human input needed:** Provide SendGrid sender/recipient decisions and local secrets outside git.
+**Human input needed:** Provide Postmark sender/recipient decisions and local secrets outside git.
 
 **Acceptance checks:**
 
 - Noop delivery records success without sending.
-- SendGrid path can be unit-tested with mocked client/request.
+- Postmark path can be unit-tested with mocked HTTP request.
 - Missing email secrets fail clearly only when live sending is enabled.
 
 ### 12.2 Wire delivery into pipeline
@@ -1220,14 +1219,14 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 **Implementation notes:**
 
 - In sample and dry-run, use noop delivery.
-- In live mode, use SendGrid only when enabled.
+- In live mode, use Postmark only when enabled.
 - Record delivery status in `RunMetadata`.
 
 **Human input needed:** Confirm whether live mode default should be dry-run until final manual toggle.
 
 **Acceptance checks:**
 
-- Sample mode does not attempt SendGrid.
+- Sample mode does not attempt Postmark.
 - Delivery status appears in run metadata.
 
 ---
@@ -1272,8 +1271,6 @@ pytest tests/test_pipeline_sample.py
 - `tests/fixtures/*.json`
 - `app/config/*.yaml`
 - `app/llm/prompts/brief_writer.md`
-- `app/render/templates/brief_template.html`
-
 **Implementation notes:**
 
 - Keep language direct and concise.
@@ -1423,7 +1420,7 @@ make test
 - Optional discovery scout fail: continue and record failed source.
 - Missing consensus: enrich only when high-importance and source-backed; otherwise blank.
 - LLM output validation fail: one repair pass if implemented, then fail critical issues.
-- SendGrid fail: save artifacts and record failed delivery.
+- Postmark fail: save artifacts and record failed delivery.
 
 **Human input needed:** Confirm severity levels for validation failures and live-mode send/no-send behavior.
 
@@ -1477,7 +1474,7 @@ make test
 - Databento assumptions.
 - Investing.com prototype calendar assumption.
 - GitHub Actions cost assumption.
-- SendGrid cost assumption.
+- Postmark cost assumption.
 - Future paid calendar API assumption.
 
 **Human input needed:** Provide actual plan tiers or approximate cost assumptions to use.
@@ -1598,7 +1595,7 @@ The human coder should supervise these decisions directly:
 5. Investing.com endpoint behavior and acceptable request frequency.
 6. LLM model string, provider credentials, and whether sample mode may call the LLM.
 7. Prompt tone and final PM-readability of the sample brief.
-8. SendGrid sender/recipient configuration.
+8. Postmark sender/recipient configuration.
 9. Live-mode validation severity and send/no-send rules.
 10. Actual hours spent in `memo/memo.md`.
 11. Final acceptance audit before submission.
