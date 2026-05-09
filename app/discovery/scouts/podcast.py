@@ -22,7 +22,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import litellm
 import requests
 from openai import OpenAI
 from pydantic import BaseModel, Field
@@ -35,6 +34,7 @@ from app.discovery.scouts.base import (
     build_market_context,
     to_evidence_cards,
 )
+from app.llm import litellm_compat
 from app.llm.prompt_registry import load_prompt
 from app.models import EvidenceCard, SourceType
 
@@ -293,7 +293,7 @@ class PodcastScout:
         if self.api_key:
             kwargs["api_key"] = self.api_key
         try:
-            response = litellm.completion(**kwargs)
+            response = litellm_compat.completion(**kwargs)
             text = response.choices[0].message.content or '{"relevant_indices": []}'
             result = _EpisodeFilterResult.model_validate_json(text)
             return [episodes[i] for i in result.relevant_indices if i < len(episodes)]
@@ -399,7 +399,7 @@ class PodcastScout:
         if self.api_key:
             kwargs["api_key"] = self.api_key
         try:
-            response = litellm.completion(**kwargs)
+            response = litellm_compat.completion(**kwargs)
             text = response.choices[0].message.content or '{"cards": []}'
             return _EvidenceCandidateList.model_validate_json(text)
         except Exception as exc:

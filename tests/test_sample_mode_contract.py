@@ -106,7 +106,7 @@ def test_sample_writer_uses_fake_response_without_openai_key(monkeypatch):
         calls += 1
         raise AssertionError("sample writer must not call live LiteLLM completion")
 
-    monkeypatch.setattr(provider.litellm, "completion", fail_litellm_completion)
+    monkeypatch.setattr(provider.litellm_compat, "completion", fail_litellm_completion)
     settings = _settings_without_credentials()
     ranked_context, data_cutoff = _sample_ranked_context(settings)
 
@@ -121,7 +121,7 @@ def test_sample_pipeline_returns_validator_passing_draft_without_openai_key(monk
     def fail_litellm_completion(**kwargs):
         raise AssertionError("sample mode must not call live LiteLLM completion")
 
-    monkeypatch.setattr(provider.litellm, "completion", fail_litellm_completion)
+    monkeypatch.setattr(provider.litellm_compat, "completion", fail_litellm_completion)
     settings = _settings_without_credentials()
 
     result = run_pipeline(RunMode.SAMPLE, settings)

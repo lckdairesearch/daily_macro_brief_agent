@@ -7,9 +7,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-import litellm
 from pydantic import BaseModel, ValidationError
 
+from app.llm import litellm_compat
 from app.models import LLMUsage
 
 T = TypeVar("T", bound=BaseModel)
@@ -55,7 +55,7 @@ class LLMClient:
         if self.config.fake_response is not None:
             return _fake_response_text(self.config.fake_response)
 
-        response = litellm.completion(
+        response = litellm_compat.completion(
             model=self.config.model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -86,7 +86,7 @@ class LLMClient:
                 raw_text=raw_text,
             )
 
-        response = litellm.completion(
+        response = litellm_compat.completion(
             model=self.config.model,
             messages=[
                 {"role": "system", "content": system_prompt},

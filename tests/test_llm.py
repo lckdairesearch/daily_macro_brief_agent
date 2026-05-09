@@ -1,11 +1,12 @@
 """Tests for the LLM provider wrapper and prompt registry."""
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 from pydantic import BaseModel
 
-from app.llm import provider
+from app.llm import litellm_compat, provider
 from app.llm.prompt_registry import clear_prompt_cache, load_prompt
 from app.llm.provider import LLMClient, LLMConfig, LLMResponseError
 from app.models import LLMUsage
@@ -62,7 +63,7 @@ def test_provider_returns_structured_output_from_mocked_litellm(monkeypatch):
             _hidden_params={"response_cost": 0.001},
         )
 
-    monkeypatch.setattr(provider.litellm, "completion", fake_completion)
+    monkeypatch.setattr(provider.litellm_compat, "completion", fake_completion)
     client = LLMClient(LLMConfig(model="openai/test-model"))
 
     result = client.generate_structured(
@@ -81,7 +82,7 @@ def test_provider_fake_response_avoids_litellm(monkeypatch):
     def fail_completion(**kwargs):
         raise AssertionError("LiteLLM should not be called for fake_response")
 
-    monkeypatch.setattr(provider.litellm, "completion", fail_completion)
+    monkeypatch.setattr(provider.litellm_compat, "completion", fail_completion)
     client = LLMClient(
         LLMConfig(
             model="fake/test",
@@ -115,3 +116,36 @@ def test_provider_rejects_invalid_json_or_schema(raw_text):
             user_payload={},
             schema=TinyAnswer,
         )
+
+
+def test_litellm_compat_sets_event_loop_before_sync_completion(monkeypatch):
+    events: list[str] = []
+
+    class FakeLoop:
+        pass
+
+    def fake_get_running_loop():
+        raise RuntimeError("no running loop")
+
+    def fake_new_event_loop():
+        events.append("new")
+        return FakeLoop()
+
+    def fake_set_event_loop(loop):
+        assert isinstance(loop, FakeLoop)
+        events.append("set")
+
+    def fake_completion(**kwargs):
+        assert kwargs["model"] == "openai/test-model"
+        events.append("completion")
+        return "ok"
+
+    monkeypatch.setattr(asyncio, "get_running_loop", fake_get_running_loop)
+    monkeypatch.setattr(asyncio, "new_event_loop", fake_new_event_loop)
+    monkeypatch.setattr(asyncio, "set_event_loop", fake_set_event_loop)
+    monkeypatch.setattr(litellm_compat.litellm, "completion", fake_completion)
+
+    result = litellm_compat.completion(model="openai/test-model")
+
+    assert result == "ok"
+    assert events == ["new", "set", "completion"]

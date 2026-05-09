@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-import litellm
 from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError
 
+from app.llm import litellm_compat
 from app.models import EvidenceCard, RunMode, SourceType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -191,7 +191,7 @@ def plain_completion_and_structure(
     if api_key:
         kwargs["api_key"] = api_key
 
-    response = litellm.completion(**kwargs)
+    response = litellm_compat.completion(**kwargs)
     text: str = response.choices[0].message.content or ""
     try:
         return _EvidenceCandidateList.model_validate_json(text)
@@ -239,7 +239,7 @@ def _parse_or_structure(
     }
     if api_key:
         kwargs["api_key"] = api_key
-    cleanup = litellm.completion(**kwargs)
+    cleanup = litellm_compat.completion(**kwargs)
     return _EvidenceCandidateList.model_validate_json(
         cleanup.choices[0].message.content or "{\"cards\": []}"
     )

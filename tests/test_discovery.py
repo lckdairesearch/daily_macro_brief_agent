@@ -459,7 +459,7 @@ def _make_scout(**kwargs) -> PodcastScout:
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 def test_podcast_scout_full_flow(mock_post, mock_completion, mock_openai_cls):
     eps = [_make_taddy_episode(f"ep{i}", f"Macro Episode {i}") for i in range(2)]
@@ -475,7 +475,7 @@ def test_podcast_scout_full_flow(mock_post, mock_completion, mock_openai_cls):
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 def test_podcast_scout_respects_relevant_episode_limit(mock_post, mock_completion, mock_openai_cls):
     eps = [_make_taddy_episode(f"ep{i}") for i in range(5)]
@@ -543,7 +543,7 @@ def test_podcast_scout_filters_stale_episodes(mock_post):
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 def test_podcast_scout_handles_empty_search(mock_post, mock_completion, mock_openai_cls):
     mock_post.return_value = _taddy_search_response([])
@@ -556,7 +556,7 @@ def test_podcast_scout_handles_empty_search(mock_post, mock_completion, mock_ope
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 def test_podcast_scout_handles_no_relevant_episodes(mock_post, mock_completion, mock_openai_cls):
     eps = [_make_taddy_episode("ep0")]
@@ -571,7 +571,7 @@ def test_podcast_scout_handles_no_relevant_episodes(mock_post, mock_completion, 
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 def test_podcast_scout_skips_failed_episode_extraction(mock_post, mock_completion, mock_openai_cls):
     eps = [_make_taddy_episode("ep0")]
@@ -585,7 +585,7 @@ def test_podcast_scout_skips_failed_episode_extraction(mock_post, mock_completio
     assert cards == []  # failed extraction skipped; run does not crash
 
 
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 @patch("app.discovery.scouts.podcast.requests.get")
 def test_podcast_scout_uses_transcript_when_available(mock_get, mock_post, mock_completion):
@@ -617,7 +617,7 @@ def test_podcast_scout_uses_transcript_when_available(mock_get, mock_post, mock_
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 @patch("app.discovery.scouts.podcast.requests.get")
 def test_podcast_scout_falls_back_to_web_search_when_no_transcript(
@@ -643,7 +643,7 @@ def test_podcast_scout_falls_back_to_web_search_when_no_transcript(
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
-@patch("app.discovery.scouts.podcast.litellm.completion")
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
 @patch("app.discovery.scouts.podcast.requests.post")
 @patch("app.discovery.scouts.podcast.requests.get")
 def test_podcast_scout_uses_long_timeout_for_transcript_extraction(
