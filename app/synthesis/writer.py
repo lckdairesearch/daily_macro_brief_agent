@@ -222,6 +222,11 @@ def _build_payload(
         "calendar_events": [_calendar_dict(e) for e in ctx.top_calendar_events],
         "proposed_three_things": [_evidence_dict(c) for c in ctx.proposed_three_things],
         "proposed_theme_radar": [_evidence_dict(c) for c in ctx.proposed_theme_radar],
+        "available_alternative_evidence": [
+            _evidence_dict(c)
+            for c in ctx.ranked_evidence_cards
+            if c.source_type in {SourceType.SOCIAL, SourceType.PODCAST}
+        ],
         "available_x_evidence": [
             _evidence_dict(c)
             for c in ctx.ranked_evidence_cards

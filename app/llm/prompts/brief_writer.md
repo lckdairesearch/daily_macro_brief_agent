@@ -81,7 +81,7 @@ Rules:
 
 - Provide 1–3 items, one per distinct theme where strong evidence exists.
 - Use `proposed_theme_radar` as seeds; supplement from `proposed_three_things` or other evidence if seeds are weak.
-- If `available_x_evidence` is non-empty, try to include at least one radar item backed by one of those X/social evidence IDs.
+- If `available_alternative_evidence` is non-empty, generally include at least one radar item backed by social or podcast evidence unless other evidence is clearly more important.
 - Do not append source names to `headline`; source names and links are attached by code from `supporting_evidence_ids`.
 - Each `body` is **60–100 words** covering the **author's thesis and specific supporting evidence** — not just the headline or abstract. Tell the PM what the author actually argued and what data they used.
 - If the underlying source does not contain enough usable detail, a radar `body` may be shorter than 60 words rather than padded with filler. This exception is especially relevant for social posts and other thin primary materials.

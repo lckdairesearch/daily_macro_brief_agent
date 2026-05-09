@@ -95,6 +95,22 @@ def _make_social_evidence_card(card_id: str = "ev_x_001") -> EvidenceCard:
     )
 
 
+def _make_podcast_evidence_card(card_id: str = "ev_p_001") -> EvidenceCard:
+    return EvidenceCard(
+        id=card_id,
+        title="Macro podcast episode",
+        source_name="Macro Voices",
+        source_type=SourceType.PODCAST,
+        url="https://example.com/podcast/episode-1",
+        retrieved_at=_NOW,
+        thesis="Liquidity is cushioning growth",
+        evidence="The speaker cites bank credit resilience and fiscal carryover.",
+        macro_relevance="Growth is holding up better than feared.",
+        portfolio_relevance="Supports reflation positioning",
+        confidence=0.72,
+    )
+
+
 def _make_ranked_context(stale: bool = False) -> RankedBriefContext:
     snap = _make_snapshot(stale=stale)
     event = _make_calendar_event()
@@ -353,6 +369,34 @@ def test_build_payload_includes_available_x_evidence():
     assert payload["available_x_evidence"][0]["source_type"] == SourceType.SOCIAL.value
 
 
+def test_build_payload_includes_available_alternative_evidence():
+    ctx = _make_ranked_context()
+    social = _make_social_evidence_card()
+    podcast = _make_podcast_evidence_card()
+    ctx = ctx.__class__(
+        dashboard_rows=ctx.dashboard_rows,
+        top_market_moves=ctx.top_market_moves,
+        top_calendar_events=ctx.top_calendar_events,
+        ranked_evidence_cards=ctx.ranked_evidence_cards + [social, podcast],
+        proposed_three_things=ctx.proposed_three_things,
+        proposed_theme_radar=ctx.proposed_theme_radar,
+        proposed_contrarian_corner_seed=ctx.proposed_contrarian_corner_seed,
+        scores=ctx.scores,
+    )
+    settings = _make_settings()
+    payload = _build_payload(ctx, settings, _NOW)
+
+    assert len(payload["available_alternative_evidence"]) == 2
+    assert {item["id"] for item in payload["available_alternative_evidence"]} == {
+        social.id,
+        podcast.id,
+    }
+    assert {item["source_type"] for item in payload["available_alternative_evidence"]} == {
+        SourceType.SOCIAL.value,
+        SourceType.PODCAST.value,
+    }
+
+
 def test_build_payload_available_x_evidence_empty_when_no_social_cards():
     ctx = _make_ranked_context()
     settings = _make_settings()
@@ -361,13 +405,21 @@ def test_build_payload_available_x_evidence_empty_when_no_social_cards():
     assert payload["available_x_evidence"] == []
 
 
+def test_build_payload_available_alternative_evidence_empty_when_no_social_or_podcast_cards():
+    ctx = _make_ranked_context()
+    settings = _make_settings()
+    payload = _build_payload(ctx, settings, _NOW)
+
+    assert payload["available_alternative_evidence"] == []
+
+
 def test_brief_writer_prompt_mentions_support_first_so_what_rules():
     from app.llm.prompt_registry import clear_prompt_cache, load_prompt
 
     clear_prompt_cache()
     prompt = load_prompt("brief_writer")
 
-    assert "If `available_x_evidence` is non-empty, try to include at least one radar item" in prompt.text
+    assert "If `available_alternative_evidence` is non-empty, generally include at least one radar item backed by social or podcast evidence" in prompt.text
     assert "Do not force a different implication just for variety" in prompt.text
     assert "Keep a professional house style, but vary sentence openings, cadence, and implication phrasing" in prompt.text
     assert "It does not need to begin with a fixed phrase." in prompt.text
