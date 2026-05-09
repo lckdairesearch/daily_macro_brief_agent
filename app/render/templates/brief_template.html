@@ -123,6 +123,7 @@
         }
         .radar-topic { font-size: 10px; color: #666; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; display: block; }
         .radar-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 8px; display: block; text-decoration: none; }
+        .radar-title-icon { color: #666; font-weight: 600; padding-left: 4px; }
         .radar-summary { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 0; }
         .contrarian-section {
             background: #fbfbfb;
@@ -240,7 +241,11 @@
             {% if item.topic_label %}
             <span class="radar-topic">{{ item.topic_label }}</span>
             {% endif %}
-            <a href="{{ item.source_url or "#" }}" class="radar-title">{{ item.headline }}</a>
+            {% if item.has_source_url %}
+            <a href="{{ item.source_url }}" class="radar-title">{{ item.headline }}<span class="radar-title-icon">↗</span></a>
+            {% else %}
+            <span class="radar-title">{{ item.headline }}</span>
+            {% endif %}
             <p class="radar-summary">{{ item.body }}</p>
             {% if item.so_what %}
             <span class="so-what-tag">{{ item.so_what | replace("What this means for our book:", "So what:") }}</span>

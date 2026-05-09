@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from math import sqrt
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -21,6 +22,7 @@ _FALLBACK_VOL: dict[str, dict[str, float | str]] = {
     "bps": {"sd_1d": 5.0, "unit": "bps"},
 }
 _FIVE_DAY_FLAT_Z = 0.25
+_POSITION_ID_RE = re.compile(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b")
 
 
 def render_brief(
@@ -73,10 +75,10 @@ def render_text(context: dict[str, Any]) -> str:
 
     lines.append("THE 3 THINGS")
     for i, item in enumerate(context["three_things"], start=1):
-        lines.append(f"{i}. {item.headline}")
-        lines.append(item.body)
-        if item.so_what:
-            lines.append(f"So what: {item.so_what}")
+        lines.append(f"{i}. {item['headline']}")
+        lines.append(item["body"])
+        if item["so_what"]:
+            lines.append(f"So what: {item['so_what']}")
         lines.append("")
 
     lines.append("TODAY'S CALENDAR")
@@ -93,21 +95,21 @@ def render_text(context: dict[str, Any]) -> str:
 
     lines.append("THEME RADAR")
     for item in context["radar_items"]:
-        source = item.source_name or "Source unavailable"
-        url = item.source_url or ""
-        lines.append(f"{item.headline} - {source}")
+        source = item["source_name"] or "Source unavailable"
+        url = item["source_url"] or ""
+        lines.append(f"{item['headline']} - {source}")
         if url:
             lines.append(url)
-        lines.append(item.body)
-        if item.so_what:
-            lines.append(_so_what_label(item.so_what))
+        lines.append(item["body"])
+        if item["so_what"]:
+            lines.append(_so_what_label(item["so_what"]))
         lines.append("")
 
     contrarian = context.get("contrarian_corner")
     if contrarian:
-        lines.extend(["CONTRARIAN CORNER", contrarian.body])
-        if contrarian.so_what:
-            lines.append(f"Watch item: {contrarian.so_what}")
+        lines.extend(["CONTRARIAN CORNER", contrarian["body"]])
+        if contrarian["so_what"]:
+            lines.append(f"Watch item: {contrarian['so_what']}")
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -124,21 +126,22 @@ def build_render_context(
     cutoff = metadata.get("data_cutoff_at")
     header_line = f"{_format_header_date(cutoff)} | Morning Brief"
     dashboard_snapshots = _select_dashboard_snapshots(draft.overnight_dashboard, settings)
+    label_map = _build_display_label_map(settings)
 
     return {
         "header_line": header_line,
         "warnings": _dedupe(list(metadata.get("warnings", []))),
-        "book_impact": draft.book_impact,
+        "book_impact": _normalize_display_text(draft.book_impact, label_map),
         "dashboard_rows": [
             _format_dashboard_row(snapshot, vol_params or {})
             for snapshot in dashboard_snapshots
         ],
-        "three_things": draft.three_things,
+        "three_things": [_format_brief_item(item, label_map) for item in draft.three_things],
         "calendar_events": [_format_calendar_event(event) for event in draft.todays_calendar],
         "calendar_event_rows": _pair_calendar_events(draft.todays_calendar),
         "chart": _format_chart(draft.chart, image_url=chart_image_url),
-        "radar_items": draft.radar_items,
-        "contrarian_corner": draft.contrarian_corner,
+        "radar_items": [_format_brief_item(item, label_map) for item in draft.radar_items],
+        "contrarian_corner": _format_brief_item(draft.contrarian_corner, label_map),
     }
 
 
@@ -243,6 +246,22 @@ def _pair_calendar_events(events: list[CalendarEvent]) -> list[tuple[dict[str, s
     return rows
 
 
+def _format_brief_item(item: Any | None, label_map: dict[str, str]) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    source_url = getattr(item, "source_url", None)
+    return {
+        "headline": item.headline,
+        "body": _normalize_display_text(item.body, label_map),
+        "so_what": _normalize_display_text(item.so_what, label_map),
+        "source_name": getattr(item, "source_name", None),
+        "source_url": source_url,
+        "source_type": getattr(item, "source_type", None),
+        "topic_label": getattr(item, "topic_label", None),
+        "has_source_url": bool(source_url),
+    }
+
+
 def _format_chart(chart: ChartSpec | None, image_url: str | None = None) -> dict[str, str] | None:
     if chart is None or not chart.file_path:
         return None
@@ -324,3 +343,32 @@ def _format_header_date(value: Any) -> str:
         return f"{value:%A, %B} {value.day}, {value:%Y}"
     text = str(value)
     return text[:10] if len(text) >= 10 else text
+
+
+def _build_display_label_map(settings: "Settings") -> dict[str, str]:
+    label_map: dict[str, str] = {}
+    portfolio = getattr(settings, "portfolio", {}) or {}
+    for position in portfolio.get("core_positions", []) + portfolio.get("tactical_overlays", []):
+        position_id = str(position.get("id", "")).strip()
+        position_label = str(position.get("label", "")).strip()
+        if position_id and position_label:
+            label_map[position_id] = position_label
+
+    themes = getattr(settings, "themes", {}) or {}
+    for theme in themes.get("themes", []):
+        theme_id = str(theme.get("id", "")).strip()
+        theme_label = str(theme.get("label", "")).strip()
+        if theme_id and theme_label:
+            label_map[theme_id] = theme_label
+    return label_map
+
+
+def _normalize_display_text(text: str | None, label_map: dict[str, str]) -> str | None:
+    if not text:
+        return text
+
+    def _replace(match: re.Match[str]) -> str:
+        token = match.group(0)
+        return label_map.get(token, token.replace("_", " "))
+
+    return _POSITION_ID_RE.sub(_replace, text)

@@ -778,6 +778,8 @@ def test_theme_radar_topic_renders_before_title(tmp_path):
     assert "radar-source" not in html
     assert "radar-topic" in html
     assert html.index("Rates") < html.index("Research headline")
+    assert 'href="https://example.com/research"' in html
+    assert "Research headline<span class=\"radar-title-icon\">↗</span>" in html
 
 
 def test_theme_radar_uses_consistent_so_what_label(tmp_path):
@@ -804,6 +806,86 @@ def test_theme_radar_uses_consistent_so_what_label(tmp_path):
     assert "So what: reinforces short duration thesis." in text
 
 
+def test_theme_radar_without_source_url_renders_plain_title(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Research headline",
+        body="Author argues that fiscal dominance is now the primary driver of long yields. "
+             "Evidence includes widening deficits and sustained Treasury issuance. "
+             "Central banks are losing credibility as inflation anchors.",
+        so_what="What this means for our book: reinforces duration_short thesis.",
+        supporting_evidence_ids=["ev_001"],
+        topic_label="Rates",
+    )
+    draft = _make_draft().model_copy(update={"radar_items": [radar]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+
+    assert 'href="#"' not in html
+    assert "<span class=\"radar-title-icon\">" not in html
+    assert "<span class=\"radar-title\">Research headline</span>" in html
+
+
+def test_render_normalizes_known_position_ids_to_labels(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "book_impact": "duration_short still anchors the hedge.",
+            "three_things": [
+                BriefItem(
+                    section=BriefSection.THREE_THINGS,
+                    headline="Policy pressure",
+                    body="duration_short remains the cleanest expression.",
+                    so_what="Supports metals_complex_long and duration_short.",
+                )
+            ],
+        }
+    )
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "Short Long-term US Duration still anchors the hedge." in html
+    assert "Short Long-term US Duration remains the cleanest expression." in html
+    assert "Supports Long Metals Complex (Gold/Silver/Copper) and Short Long-term US Duration." in html
+    assert "duration_short" not in html
+    assert "metals_complex_long" not in html
+    assert "Short Long-term US Duration still anchors the hedge." in text
+    assert "Supports Long Metals Complex (Gold/Silver/Copper) and Short Long-term US Duration." in text
+
+
+def test_render_normalizes_unknown_snake_case_tokens(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "three_things": [
+                BriefItem(
+                    section=BriefSection.THREE_THINGS,
+                    headline="Flow watch",
+                    body="long_dollar remains crowded.",
+                    so_what="Supports long_dollar cleanup.",
+                )
+            ],
+        }
+    )
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "long dollar remains crowded." in html
+    assert "Supports long dollar cleanup." in html
+    assert "long_dollar" not in html
+    assert "long dollar remains crowded." in text
+    assert "Supports long dollar cleanup." in text
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -818,6 +900,20 @@ def _make_settings():
             databento_api_key=None,
             fred_api_key=None,
         ),
+        portfolio={
+            "core_positions": [
+                {
+                    "id": "metals_complex_long",
+                    "label": "Long Metals Complex (Gold/Silver/Copper)",
+                },
+                {
+                    "id": "duration_short",
+                    "label": "Short Long-term US Duration",
+                },
+            ],
+            "tactical_overlays": [],
+        },
+        themes={"themes": []},
         app=SimpleNamespace(
             output_dir="outputs",
             dashboard_core_instruments=["SPY", "US10Y", "USDJPY", "GOLD", "WTI", "VIX"],

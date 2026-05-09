@@ -13,6 +13,10 @@
             padding: 20px;
             line-height: 1.5;
         }
+        .micro-note { font-size: 10px; color: #999; }
+        .meta-text { font-size: 11px; color: #666; }
+        .body-compact { font-size: 13px; color: #444; }
+        .body-emphasis { font-size: 14px; color: #24292e; font-weight: 500; }
         .container { max-width: 650px; margin: 0 auto; }
         .date-line {
             font-size: 11px;
@@ -30,24 +34,7 @@
             color: #000;
             letter-spacing: -0.8px;
         }
-        .warning-box {
-            background: #fff8e1;
-            border: 1px solid #ffe082;
-            color: #5f4500;
-            padding: 10px 12px;
-            margin: 35px 0 18px 0;
-            font-size: 12px;
-            border-radius: 4px;
-        }
-        .warning-label {
-            font-size: 10px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 6px;
-        }
-        .warning-box ul { margin: 0; padding-left: 18px; }
-        .impact-summary {
+.impact-summary {
             background: #f8f9fa;
             border: 1px solid #e9ecef;
             padding: 18px;
@@ -96,7 +83,7 @@
         .so-what-tag {
             color: #004dcf;
             font-weight: bold;
-            font-size: 11px;
+            font-size: 13px;
             margin-top: 10px;
             display: block;
             background: rgba(0, 77, 207, 0.05);
@@ -105,19 +92,17 @@
             border-radius: 2px;
             border-left: 2px solid #004dcf;
         }
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px 20px;
-            font-size: 12px;
-        }
+        .calendar-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .calendar-col { width: 50%; vertical-align: top; padding-right: 10px; }
+        .calendar-col-right { padding-left: 10px; padding-right: 0; }
+        .calendar-spacer { width: 12px; }
         .cal-item {
             border-bottom: 1px dashed #eee;
             padding: 6px 0;
         }
         .cal-meta { color: #666; font-variant-numeric: tabular-nums; font-size: 11px; margin-bottom: 2px; }
-        .cal-event { font-weight: 700; color: #1a1a1a; display: block; }
-        .cal-impact-high::before { content: "● "; color: #d93025; font-size: 10px; vertical-align: middle; }
+        .cal-event { font-weight: 700; color: #1a1a1a; display: block; font-size: 13px; line-height: 1.35; }
+        .cal-marker { color: #d93025; font-size: 10px; vertical-align: middle; padding-right: 4px; }
         .cal-vals { color: #555; font-size: 11px; margin-top: 2px; }
         .chart-box { margin: 20px 0; }
         .chart-img { width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; }
@@ -138,6 +123,7 @@
         }
         .radar-topic { font-size: 10px; color: #666; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; display: block; }
         .radar-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 8px; display: block; text-decoration: none; }
+        .radar-title-icon { color: #666; font-weight: 600; padding-left: 4px; }
         .radar-summary { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 0; }
         .contrarian-section {
             background: #fbfbfb;
@@ -156,7 +142,12 @@
             display: block;
         }
         @media (max-width: 580px) {
-            .calendar-grid { grid-template-columns: 1fr; }
+            .calendar-table, .calendar-table tbody, .calendar-table tr, .calendar-col, .calendar-spacer {
+                display: block !important;
+                width: 100% !important;
+            }
+            .calendar-col, .calendar-col-right { padding-left: 0 !important; padding-right: 0 !important; }
+            .calendar-spacer { height: 0 !important; }
             h1 { font-size: 24px; }
             .section-header { font-size: 15px; }
         }
@@ -164,13 +155,13 @@
 </head>
 <body>
     <div class="container">
-        <div class="date-line">2026-05-09 | Morning Brief</div>
+        <div class="date-line">2026-05-10 | Morning Brief</div>
         <h1>Macro Synthesis</h1>
 
         
         <div class="impact-summary">
             <h3>Overnight Book Impact</h3>
-            <div class="impact-text">Overnight price action leans toward a relief/risk-on tape, but the supplied research still argues the book should treat it as a cyclical pause inside a structurally inflationary, supply-constrained regime. That keeps the case intact for the Long Metals Complex, Long Agriculture Futures, Short Long-term US Duration, and the Currency Diversification overlay rather than chasing the equity bounce.</div>
+            <div class="impact-text">Higher real-rate pressure supports the short-duration sleeve, while metals strength reinforces the long metals complex and monetary debasement theme.</div>
         </div>
         
 
@@ -188,114 +179,72 @@
                 
                 <tr>
                     <td>S&amp;P 500 (proxy)</td>
-                    <td>737.62</td>
-                    <td class="up sig-move">+0.83%</td>
-                    <td class="trend-arrow up">↗</td>
+                    <td>520.00</td>
+                    <td class="down">-1.20%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#d93025;">↘</td>
                 </tr>
                 
                 <tr>
-                    <td>Nasdaq 100 (proxy)</td>
-                    <td>711.23</td>
-                    <td class="up sig-move">+2.34%</td>
-                    <td class="trend-arrow up">↗</td>
-                </tr>
-                
-                <tr>
-                    <td>Euro Stoxx 50 (FEZ, proxy, USD-based)</td>
-                    <td>67.08</td>
-                    <td class="up">+0.83%</td>
-                    <td class="trend-arrow up">↗</td>
-                </tr>
-                
-                <tr>
-                    <td>DXY (proxy)</td>
-                    <td>27.34</td>
-                    <td class="down">-0.26%</td>
-                    <td class="trend-arrow flat">→</td>
+                    <td>US 10Y Yield</td>
+                    <td>4.450%</td>
+                    <td class="up sig-move">+5.0bps</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#666666;">→</td>
                 </tr>
                 
                 <tr>
                     <td>USD/JPY</td>
-                    <td>156.65</td>
-                    <td class="down sig-move">-0.17%</td>
-                    <td class="trend-arrow flat">→</td>
-                </tr>
-                
-                <tr>
-                    <td>EUR/USD</td>
-                    <td>1.178</td>
-                    <td class="up sig-move">+0.50%</td>
-                    <td class="trend-arrow up">↗</td>
-                </tr>
-                
-                <tr>
-                    <td>USD/CNH</td>
-                    <td>6.795</td>
-                    <td class="down sig-move">-0.19%</td>
-                    <td class="trend-arrow down">↘</td>
+                    <td>153.40</td>
+                    <td class="up sig-move">+0.33%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#188038;">↗</td>
                 </tr>
                 
                 <tr>
                     <td>Gold (spot)</td>
-                    <td>4,704.1</td>
-                    <td class="up sig-move">+0.12%</td>
-                    <td class="trend-arrow up">↗</td>
-                </tr>
-                
-                <tr>
-                    <td>Silver (spot)</td>
-                    <td>79.28</td>
-                    <td class="up sig-move">+2.37%</td>
-                    <td class="trend-arrow up">↗</td>
-                </tr>
-                
-                <tr>
-                    <td>Bitcoin</td>
-                    <td>80,197.7</td>
-                    <td class="up">+0.01%</td>
-                    <td class="trend-arrow flat">→</td>
-                </tr>
-                
-                <tr>
-                    <td>German 10Y Bund</td>
-                    <td>2.987%</td>
-                    <td class="down">-2.2bps</td>
-                    <td class="trend-arrow flat"></td>
-                </tr>
-                
-                <tr>
-                    <td>Copper (front-month)</td>
-                    <td>6.227</td>
-                    <td class="up sig-move">+2.34%</td>
-                    <td class="trend-arrow up">↗</td>
+                    <td>4,698.0</td>
+                    <td class="up">+0.35%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#188038;">↗</td>
                 </tr>
                 
                 <tr>
                     <td>WTI (front-month)</td>
-                    <td>94.68</td>
-                    <td class="down">-2.37%</td>
-                    <td class="trend-arrow down">↘</td>
-                </tr>
-                
-                <tr>
-                    <td>Brent (front-month)</td>
-                    <td>100.25</td>
-                    <td class="down">-3.02%</td>
-                    <td class="trend-arrow down">↘</td>
+                    <td>78.5</td>
+                    <td class="down sig-move">-1.01%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#d93025;">↘</td>
                 </tr>
                 
                 <tr>
                     <td>VIX</td>
-                    <td>17.19</td>
-                    <td class="up">+0.64%</td>
-                    <td class="trend-arrow flat">→</td>
+                    <td>16.8</td>
+                    <td class="down">-2.89%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#666666;">→</td>
+                </tr>
+                
+                <tr>
+                    <td>ICE BofA US High Yield OAS</td>
+                    <td>330.000%</td>
+                    <td class="up sig-move">+5.0bps</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#188038;">↗</td>
+                </tr>
+                
+                <tr>
+                    <td>Nasdaq 100 (proxy)</td>
+                    <td>430.00</td>
+                    <td class="down sig-move">-2.10%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#d93025;">↘</td>
                 </tr>
                 
                 <tr>
                     <td>MOVE Index</td>
-                    <td>67.25</td>
-                    <td class="down sig-move">-6.91%</td>
-                    <td class="trend-arrow down">↘</td>
+                    <td>108.00</td>
+                    <td class="up sig-move">+1.89%</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#188038;">↗</td>
+                </tr>
+                
+                <tr>
+                    <td>US 2Y Yield</td>
+                    <td>4.720%</td>
+                    <td class="up sig-move">+3.0bps</td>
+                    <td style="text-align:center;font-size:15px;font-weight:bold;color:#666666;">→</td>
                 </tr>
                 
             </tbody>
@@ -305,149 +254,81 @@
         <div class="section-header">The 3 Things</div>
         
         <div class="thing-item">
-            <div class="thing-title">1. Relief tape, but duration risk remains</div>
-            <p class="thing-body">Nasdaq and S&amp;P proxies rallied while MOVE fell, pointing to easier cross-asset stress. The best-supported read is not a regime change but a temporary easing after refunding passed without a near-term shock; Treasury materials still flagged medium-term supply pressure. That matters because calmer rates volatility can coexist with persistent term-premium risk.</p>
+            <div class="thing-title">1. Metals complex gains on central bank accumulation</div>
+            <p class="thing-body">Gold and silver moved higher amid continued central bank buying. Reserve managers are diversifying away from dollar-denominated assets, keeping the bid elevated. Real yields softened, removing a key headwind for non-yielding metals and reinforcing the structural debasement narrative.</p>
             
-            <span class="so-what-tag">So what: Validates the Short Long-term US Duration position as a structural theme rather than a one-day stress trade.</span>
-            
-        </div>
-        
-        <div class="thing-item">
-            <div class="thing-title">2. Commodity shock thesis is broadening</div>
-            <p class="thing-body">Copper and silver both rose, consistent with research arguing the market is back in a geopolitical commodity-shock regime. The World Bank says energy prices are projected to surge in 2026, overall commodity prices rise, and fertilizer costs have already jumped sharply, creating second-round inflation risk across industrial metals and food chains.</p>
-            
-            <span class="so-what-tag">So what: Supports the Long Metals Complex and reinforces the Long Agriculture Futures position through fertilizer and input-cost channels.</span>
-            
-        </div>
-        
-        <div class="thing-item">
-            <div class="thing-title">3. Euro strength fits hawkish ECB risk</div>
-            <p class="thing-body">EUR/USD advanced as Europe rates pricing stays sensitive to hawkish ECB communication. Schnabel has warned that rising debt and energy-shock inflation raise fiscal-dominance risk and can pressure central-bank independence, a mix that can keep European real-rate pressure elevated and support the euro versus the dollar.</p>
-            
-            <span class="so-what-tag">So what: Supports the Currency Diversification overlay and indirectly reinforces the Long Metals Complex via a softer dollar backdrop.</span>
+            <span class="so-what-tag">So what: Supports long metals complex position in the book.</span>
             
         </div>
         
 
         <div class="section-header">Today's Calendar</div>
-        <div class="calendar-grid">
-            
-            <div class="cal-item">
-                <div class="cal-meta">00:00 • US</div>
-                <span class="cal-event cal-impact-high">U.S. President Trump Speaks</span>
-                <div class="cal-vals">Exp: n/a | Prev: n/a</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">00:00 • EU</div>
-                <span class="cal-event">ECB&#39;s Schnabel Speaks</span>
-                <div class="cal-vals">Exp: n/a | Prev: n/a</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">00:15 • DE</div>
-                <span class="cal-event">German Buba President Nagel Speaks</span>
-                <div class="cal-vals">Exp: n/a | Prev: n/a</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">01:00 • US</div>
-                <span class="cal-event">U.S. Baker Hughes Oil Rig Count</span>
-                <div class="cal-vals">Exp: n/a | Prev: 408</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">01:00 • US</div>
-                <span class="cal-event">U.S. Baker Hughes Total Rig Count</span>
-                <div class="cal-vals">Exp: n/a | Prev: 547</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • JP</div>
-                <span class="cal-event">CFTC JPY speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: -102.1K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • US</div>
-                <span class="cal-event">CFTC S&amp;P 500 speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: -101.4K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • US</div>
-                <span class="cal-event">CFTC Nasdaq 100 speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: -2.3K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • GB</div>
-                <span class="cal-event">CFTC GBP speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: -60.6K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • EU</div>
-                <span class="cal-event">CFTC EUR speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: 35.7K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • US</div>
-                <span class="cal-event">CFTC Gold speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: 159.6K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">03:30 • US</div>
-                <span class="cal-event">CFTC Crude Oil speculative net positions</span>
-                <div class="cal-vals">Exp: n/a | Prev: 191.9K</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">07:30 • US</div>
-                <span class="cal-event">FOMC Member Daly Speaks</span>
-                <div class="cal-vals">Exp: n/a | Prev: n/a</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">07:30 • US</div>
-                <span class="cal-event">Fed Waller Speaks</span>
-                <div class="cal-vals">Exp: n/a | Prev: n/a</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">07:30 • US</div>
-                <span class="cal-event">FOMC Member Bowman Speaks</span>
-                <div class="cal-vals">Exp: n/a | Prev: n/a</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">10:45 • CN</div>
-                <span class="cal-event">Trade Balance (USD) (Apr)</span>
-                <div class="cal-vals">Exp: 82.4B | Prev: 51.13B</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">11:04 • CN</div>
-                <span class="cal-event">Exports (YoY) (Apr)</span>
-                <div class="cal-vals">Exp: n/a | Prev: 2.5%</div>
-            </div>
-            
-            <div class="cal-item">
-                <div class="cal-meta">11:04 • CN</div>
-                <span class="cal-event">Imports (YoY) (Apr)</span>
-                <div class="cal-vals">Exp: n/a | Prev: 27.8%</div>
-            </div>
-            
-        </div>
-        <p style="font-size: 10px; color: #999; margin-top: 8px;">* All times indicated are in HKT.</p>
+        <table class="calendar-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tbody>
+                
+                <tr>
+                    <td class="calendar-col">
+                        <div class="cal-item">
+                            <div class="cal-meta">08:30 • Japan</div>
+                            <span class="cal-event">S&amp;P Global Services PMI (Apr)</span>
+                            <div class="cal-vals">Exp: 51.2 | Prev: 53.4</div>
+                        </div>
+                    </td>
+                    <td class="calendar-spacer"></td>
+                    <td class="calendar-col calendar-col-right">
+                        
+                        <div class="cal-item">
+                            <div class="cal-meta">20:30 • US</div>
+                            <span class="cal-event"><span class="cal-marker">●</span>Average Hourly Earnings (MoM) (Apr)</span>
+                            <div class="cal-vals">Exp: 0.3% | Prev: 0.2%</div>
+                        </div>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="calendar-col">
+                        <div class="cal-item">
+                            <div class="cal-meta">15:00 • EU</div>
+                            <span class="cal-event"><span class="cal-marker">●</span>ECB President Lagarde Speaks</span>
+                            <div class="cal-vals">Exp: n/a | Prev: n/a</div>
+                        </div>
+                    </td>
+                    <td class="calendar-spacer"></td>
+                    <td class="calendar-col calendar-col-right">
+                        
+                        <div class="cal-item">
+                            <div class="cal-meta">20:30 • US</div>
+                            <span class="cal-event"><span class="cal-marker">●</span>Unemployment Rate (Apr)</span>
+                            <div class="cal-vals">Exp: 4.3% | Prev: 4.3%</div>
+                        </div>
+                        
+                    </td>
+                </tr>
+                
+                <tr>
+                    <td class="calendar-col">
+                        <div class="cal-item">
+                            <div class="cal-meta">20:30 • US</div>
+                            <span class="cal-event"><span class="cal-marker">●</span>Nonfarm Payrolls (Apr)</span>
+                            <div class="cal-vals">Exp: 65K | Prev: 178K</div>
+                        </div>
+                    </td>
+                    <td class="calendar-spacer"></td>
+                    <td class="calendar-col calendar-col-right">
+                        
+                    </td>
+                </tr>
+                
+            </tbody>
+        </table>
+        <p class="micro-note" style="margin-top: 8px;">* All times indicated are in HKT.</p>
 
         
         <div class="section-header">One Chart Worth Seeing</div>
         <div class="chart-box">
-            <img src="https://raw.githubusercontent.com/lckdairesearch/daily_macro_brief_agent/master/outputs/chart_20260509_0645.png?ts=1778333665" alt="Commodity basket" class="chart-img">
-            <div class="chart-caption">Relief rally on the surface; commodity-shock and fiscal-dominance themes still argue for real assets over duration.</div>
+            <img src="cid:chart@brief" alt="Cross-asset daily moves" class="chart-img">
+            <div class="chart-caption">One-day moves across the key assets shaping today’s macro tape.</div>
         </div>
         
 
@@ -457,61 +338,19 @@
             
             <span class="radar-topic">Rates</span>
             
-            <a href="https://libertystreeteconomics.newyorkfed.org/2026/04/treasury-market-liquidity-since-april-2025/" class="radar-title">Treasury liquidity looks better than the narrative</a>
-            <p class="radar-summary">New York Fed researchers argue Treasury market liquidity deteriorated sharply after the April 2, 2025 tariff shock but then recovered as tariffs were partially rolled back, reaching its best level since 2021 in early 2026. The important nuance is their warning that this improvement ends before the latest rise in uncertainty and rate volatility tied to the Iran conflict. In other words, better market functioning does not eliminate the risk of renewed long-end instability if geopolitical shocks reprice inflation and rates together.</p>
             
-            <span class="so-what-tag">So what: keep the Short Long-term US Duration position anchored to structural supply and volatility risk, not just day-to-day market-function noise.</span>
+            <a href="https://example.com/placeholder" class="radar-title">Fiscal Dominance Thesis — Research Note<span class="radar-title-icon">↗</span></a>
             
-        </div>
-        
-        <div class="radar-item">
+            <p class="radar-summary">Author argues fiscal dominance is now the primary driver of long-end yields. Evidence includes persistently widening deficits and sustained Treasury issuance at elevated supply levels. Central banks are losing credibility as effective inflation anchors. Historical parallels drawn to the 1940s yield curve control era when fiscal needs overrode monetary independence. Non-mainstream source challenges the consensus soft-landing narrative. What this means for our book: reinforces short duration positioning.</p>
             
-            <span class="radar-topic">Metals</span>
-            
-            <a href="https://thedocs.worldbank.org/en/doc/f3138644a1e8e2bb631399ae11d6c408-0050012026/commodity-markets-outlook-april-2026" class="radar-title">Commodity inflation is spreading beyond oil</a>
-            <p class="radar-summary">The World Bank’s latest commodity work makes a broader point than just higher energy: it says energy prices are projected to surge 24% in 2026 and overall commodity prices 16%, while the non-energy index rose 3.2% in the latest monthly release, food rose 1.5%, fertilizer prices rose 14%, and urea surged nearly 46% month on month between February and March. That is a classic second-round inflation setup, where energy stress bleeds into farm inputs, food prices, and industrial commodities simultaneously.</p>
-            
-            <span class="so-what-tag">So what: stay with the Long Agriculture Futures and Long Metals Complex positions because the inflation impulse is broadening through both food and industrial channels.</span>
-            
-        </div>
-        
-        <div class="radar-item">
-            
-            <span class="radar-topic">Rates</span>
-            
-            <a href="https://www.ecb.europa.eu/press/key/date/2026/html/ecb.sp260507_1~d5ae988ece.de.html" class="radar-title">ECB is explicitly talking fiscal dominance</a>
-            <p class="radar-summary">Schnabel’s May 7 speech is notable because she did not just discuss inflation; she argued that sustained increases in government debt can create tension between price stability and fiscal sustainability, giving rise to fiscal dominance. She also warned that attacks on central-bank independence can weaken the anchor for long-term inflation expectations. The implication is that Europe may face a more constrained policy mix under energy-shock inflation, which can keep real-rate and FX volatility elevated rather than allowing a clean disinflationary glide path.</p>
-            
-            <span class="so-what-tag">So what: it strengthens the Currency Diversification overlay and supports the Short Long-term US Duration thesis by showing fiscal-dominance risk is not uniquely American.</span>
+            <span class="so-what-tag">Reinforces short duration positioning in our book.</span>
             
         </div>
         
 
         
-        <div class="section-header">Contrarian Corner</div>
-        <div class="contrarian-section">
-            <span class="contrarian-label">The Missing Narrative</span>
-            <p style="margin: 0; font-size: 14px;">The relief move in equities and lower rates volatility suggest markets are not fully pricing a 1970s-style supply-shock scenario. That is worth watching because the Saudi central-bank governor explicitly warned the Middle East war could create a stagflationary shock potentially worse than the post-pandemic energy episode, given subdued growth, elevated debt, and limited policy space. If that framing gains traction, today’s calm could reverse quickly into pressure on duration and renewed demand for real-asset hedges.</p>
-            
-        </div>
-        
 
-        
-        <div class="warning-box">
-            <div class="warning-label">Warnings</div>
-            <ul>
-                
-                <li>No confirmed fresh catalyst was supplied for the one-day moves in QQQ, SPY, EUR/USD, copper, silver, or USD/CNH, so market interpretation relies on the provided research context rather than a verified overnight trigger.</li>
-                
-                <li>MOVE and VIX are marked low_reliability in market_snapshots; volatility conclusions should be treated cautiously.</li>
-                
-                <li>Only three proposed three-things seeds and three radar seeds were supplied; coverage is intentionally selective rather than comprehensive.</li>
-                
-            </ul>
-        </div>
-        
-
-        <div style="padding: 40px 0; font-size: 11px; color: #999; text-align: center;">
+<div class="meta-text" style="padding: 40px 0; text-align: center;">
             Macro Brief Agent | For Internal Use Only
         </div>
     </div>
