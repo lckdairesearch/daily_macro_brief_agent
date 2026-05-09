@@ -57,6 +57,8 @@ def test_calendar_event_validation():
     assert event.event_name == "Initial Jobless Claims"
     assert event.importance == 2
     assert event.consensus_method == ConsensusMethod.INVESTING_FORECAST
+    assert event.is_speech is False
+    assert event.brief_importance == 0
 
 
 def test_evidence_card_validation():

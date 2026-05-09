@@ -135,6 +135,9 @@ class CalendarEvent(BaseModel):
     source: str
     source_url: str | None = None
     why_it_matters: str | None = None
+    is_speech: bool = False
+    brief_importance: int = 0  # 0=hidden, 1=low, 2=important, 3=key
+    brief_importance_reason: str | None = None
 
 
 class EvidenceCard(BaseModel):

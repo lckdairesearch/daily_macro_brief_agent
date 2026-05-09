@@ -241,6 +241,7 @@ def normalize_investing_payload(
                 source="Investing.com",
                 source_url=source_url,
                 why_it_matters=_why_it_matters(name, importance, is_speech),
+                is_speech=is_speech,
             )
         )
 

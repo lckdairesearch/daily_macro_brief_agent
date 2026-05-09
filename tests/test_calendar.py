@@ -146,6 +146,7 @@ def test_speech_event_without_forecast_is_not_flagged_missing_consensus():
     speech = next(event for event in events if event.event_name == "ECB President Lagarde Speaks")
     assert speech.consensus is None
     assert speech.missing_consensus is False
+    assert speech.is_speech is True
 
 
 def test_country_and_importance_filters_apply_after_ingestion():

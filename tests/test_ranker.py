@@ -199,35 +199,110 @@ def test_scores_populated_for_all_cards():
 
 
 # ---------------------------------------------------------------------------
-# Calendar ordering
+# Calendar ordering / selection
 # ---------------------------------------------------------------------------
 
 
-def test_high_importance_calendar_event_ranks_first():
-    low = _event("PMI Survey", importance=1)
-    high = _event("Fed Rate Decision", importance=3)
-    medium = _event("Jobless Claims", importance=2)
+def test_calendar_events_are_sorted_chronologically_after_selection():
+    later_key = _event("Fed Rate Decision", importance=3, hours=5.0)
+    earlier_important = _event("Jobless Claims", importance=2, hours=1.0)
     result = rank(
         market_snapshots=[],
-        calendar_events=[low, high, medium],
+        calendar_events=[later_key, earlier_important],
         evidence_cards=[],
         themes=THEMES,
         portfolio=PORTFOLIO,
     )
-    assert result.top_calendar_events[0].event_name == "Fed Rate Decision"
+    assert [event.event_name for event in result.top_calendar_events] == [
+        "Jobless Claims",
+        "Fed Rate Decision",
+    ]
 
 
-def test_same_importance_ordered_chronologically():
-    later = _event("Event B", importance=2, hours=4.0)
-    earlier = _event("Event A", importance=2, hours=1.0)
+def test_calendar_brief_importance_uses_full_scale():
+    hidden = _event("Minor Housing Sentiment", importance=1, hours=1.0).model_copy(
+        update={"country_or_region": "AU", "session": "Asia"}
+    )
+    low = _event("UK Services Confidence", importance=2, hours=2.0).model_copy(
+        update={"country_or_region": "GB", "session": "Europe"}
+    )
+    important = _event("Japan Services PMI", importance=2, hours=3.0).model_copy(
+        update={"country_or_region": "Japan", "session": "Asia"}
+    )
+    key = _event("Fed Rate Decision", importance=3, hours=4.0)
     result = rank(
         market_snapshots=[],
-        calendar_events=[later, earlier],
+        calendar_events=[hidden, low, important, key],
         evidence_cards=[],
         themes=THEMES,
         portfolio=PORTFOLIO,
     )
-    assert result.top_calendar_events[0].event_name == "Event A"
+    by_name = {event.event_name: event for event in result.top_calendar_events}
+    assert key.event_name in by_name
+    assert by_name[key.event_name].brief_importance == 3
+    assert by_name[important.event_name].brief_importance == 2
+    assert hidden.model_copy().event_name not in by_name
+
+
+def test_non_top_tier_speech_is_filtered_out():
+    speech = _event("FOMC Member Bowman Speaks", importance=2).model_copy(
+        update={"is_speech": True}
+    )
+    data = _event("US CPI", importance=3, hours=1.0)
+    result = rank(
+        market_snapshots=[],
+        calendar_events=[speech, data],
+        evidence_cards=[],
+        themes=THEMES,
+        portfolio=PORTFOLIO,
+    )
+    assert [event.event_name for event in result.top_calendar_events] == ["US CPI"]
+
+
+def test_non_top_tier_speech_is_filtered_out_from_name_fallback():
+    speech = _event("FOMC Member Bowman Speaks", importance=2)
+    data = _event("US CPI", importance=3, hours=1.0)
+    result = rank(
+        market_snapshots=[],
+        calendar_events=[speech, data],
+        evidence_cards=[],
+        themes=THEMES,
+        portfolio=PORTFOLIO,
+    )
+    assert [event.event_name for event in result.top_calendar_events] == ["US CPI"]
+
+
+def test_top_tier_speech_can_survive_filter():
+    speech = _event("Fed Chair Powell Speaks", importance=2).model_copy(
+        update={"is_speech": True}
+    )
+    result = rank(
+        market_snapshots=[],
+        calendar_events=[speech],
+        evidence_cards=[],
+        themes=THEMES,
+        portfolio=PORTFOLIO,
+    )
+    assert result.top_calendar_events[0].event_name == "Fed Chair Powell Speaks"
+    assert result.top_calendar_events[0].brief_importance >= 2
+
+
+def test_dense_calendar_is_capped():
+    events = [
+        _event(f"US CPI {idx}", importance=3, hours=float(idx))
+        for idx in range(10)
+    ]
+    result = rank(
+        market_snapshots=[],
+        calendar_events=events,
+        evidence_cards=[],
+        themes=THEMES,
+        portfolio=PORTFOLIO,
+    )
+    assert len(result.top_calendar_events) == 8
+    assert [event.event_time_hkt for event in result.top_calendar_events] == sorted(
+        event.event_time_hkt for event in result.top_calendar_events
+    )
 
 
 # ---------------------------------------------------------------------------
