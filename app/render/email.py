@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from app.models import BriefDraft, CalendarEvent, ChartSpec, MarketSnapshot
+from app.models import BriefDraft, CalendarEvent, ChartSpec, MarketSnapshot, SourceType
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -26,6 +26,14 @@ _DASHBOARD_BUCKET_ORDER = ("equities", "fx", "rates", "metals", "commodities", "
 _METALS_IDS = frozenset({"GOLD", "SILVER", "COPPER"})
 _POSITION_ID_RE = re.compile(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b")
 _BOOK_IMPACT_PREFIX_RE = re.compile(r"^what this means for our book:\s*", re.IGNORECASE)
+_SOURCE_TYPE_LABELS: dict[SourceType, str] = {
+    SourceType.SOCIAL: "X Post",
+    SourceType.PODCAST: "Podcast",
+    SourceType.RESEARCH: "Research",
+    SourceType.CENTRAL_BANK: "Central Bank",
+    SourceType.NEWS: "News",
+    SourceType.CALENDAR: "Calendar",
+}
 
 
 def render_brief(
@@ -98,7 +106,7 @@ def render_text(context: dict[str, Any]) -> str:
 
     lines.append("THEME RADAR")
     for item in context["radar_items"]:
-        source = item["source_name"] or "Source unavailable"
+        source = item["source_credit"] or "Source unavailable"
         url = item["source_url"] or ""
         lines.append(f"{item['headline']} - {source}")
         if url:
@@ -280,16 +288,34 @@ def _format_brief_item(item: Any | None, label_map: dict[str, str]) -> dict[str,
     if item is None:
         return None
     source_url = getattr(item, "source_url", None)
+    source_type = getattr(item, "source_type", None)
     return {
         "headline": item.headline,
         "body": _normalize_display_text(item.body, label_map),
         "so_what": _normalize_so_what_text(item.so_what, label_map),
         "source_name": getattr(item, "source_name", None),
         "source_url": source_url,
-        "source_type": getattr(item, "source_type", None),
+        "source_type": source_type,
+        "source_credit": _format_source_credit(source_type, getattr(item, "source_name", None)),
         "topic_label": getattr(item, "topic_label", None),
         "has_source_url": bool(source_url),
     }
+
+
+def _format_source_credit(source_type: SourceType | str | None, source_name: str | None) -> str | None:
+    label: str | None = None
+    if isinstance(source_type, SourceType):
+        label = _SOURCE_TYPE_LABELS.get(source_type)
+    elif isinstance(source_type, str):
+        try:
+            label = _SOURCE_TYPE_LABELS.get(SourceType(source_type))
+        except ValueError:
+            label = source_type.replace("_", " ").title()
+
+    name = source_name.strip() if source_name else None
+    if label and name:
+        return f"{label} - {name}"
+    return label or name
 
 
 def _format_chart(chart: ChartSpec | None, image_url: str | None = None) -> dict[str, str] | None:

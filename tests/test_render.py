@@ -22,6 +22,7 @@ from app.models import (
     ChartWindow,
     FreshnessStatus,
     MarketSnapshot,
+    SourceType,
 )
 from app.render.chart_codegen import (
     build_data_preamble,
@@ -829,15 +830,17 @@ def test_theme_radar_topic_renders_before_title(tmp_path):
         supporting_evidence_ids=["ev_001"],
         source_name="Research Source",
         source_url="https://example.com/research",
+        source_type=SourceType.RESEARCH,
         topic_label="Rates",
     )
     draft = _make_draft().model_copy(update={"radar_items": [radar]})
     paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
     html = Path(paths["html"]).read_text(encoding="utf-8")
 
-    assert "radar-source" not in html
+    assert "radar-source" in html
     assert "radar-topic" in html
     assert html.index("Rates") < html.index("Research headline")
+    assert html.index("Research - Research Source") < html.index("Research headline")
     assert 'href="https://example.com/research"' in html
     assert "Research headline<span class=\"radar-title-icon\">↗</span>" in html
 
@@ -909,6 +912,60 @@ def test_theme_radar_without_source_url_renders_plain_title(tmp_path):
     assert 'href="#"' not in html
     assert "<span class=\"radar-title-icon\">" not in html
     assert "<span class=\"radar-title\">Research headline</span>" in html
+
+
+@pytest.mark.parametrize(
+    ("source_type", "source_name", "expected"),
+    [
+        (SourceType.SOCIAL, "Elon Musk", "X Post - Elon Musk"),
+        (SourceType.PODCAST, "Bloomberg Asia", "Podcast - Bloomberg Asia"),
+        (SourceType.PODCAST, None, "Podcast"),
+    ],
+)
+def test_theme_radar_renders_source_credit_in_html_and_text(tmp_path, source_type, source_name, expected):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Alternative source headline",
+        body="Source-specific evidence drives a medium-term portfolio implication.",
+        so_what="Supports a differentiated theme expression.",
+        supporting_evidence_ids=["ev_001"],
+        source_name=source_name,
+        source_url="https://example.com/source",
+        source_type=source_type,
+        topic_label="Rates",
+    )
+    draft = _make_draft().model_copy(update={"radar_items": [radar]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert expected in html
+    assert f"Alternative source headline - {expected}" in text
+
+
+def test_theme_radar_source_credit_falls_back_to_name_only(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    radar = BriefItem(
+        section=BriefSection.THEME_RADAR,
+        headline="Alternative source headline",
+        body="Source-specific evidence drives a medium-term portfolio implication.",
+        so_what="Supports a differentiated theme expression.",
+        supporting_evidence_ids=["ev_001"],
+        source_name="Asia Bloomberg",
+        topic_label="Rates",
+    )
+    draft = _make_draft().model_copy(update={"radar_items": [radar]})
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "Asia Bloomberg" in html
+    assert "Alternative source headline - Asia Bloomberg" in text
 
 
 def test_render_normalizes_known_position_ids_to_labels(tmp_path):

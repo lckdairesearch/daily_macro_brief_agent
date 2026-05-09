@@ -122,6 +122,7 @@
             border-bottom: 1px solid #f9f9f9;
         }
         .radar-topic { font-size: 10px; color: #666; font-weight: 800; text-transform: uppercase; margin-bottom: 8px; display: block; }
+        .radar-source { font-size: 10px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; display: block; }
         .radar-title { font-weight: 700; font-size: 15px; color: #000; margin-bottom: 8px; display: block; text-decoration: none; }
         .radar-title-icon { color: #666; font-weight: 600; padding-left: 4px; }
         .radar-summary { font-size: 13px; color: #444; line-height: 1.6; margin-bottom: 0; }
@@ -240,6 +241,9 @@
         <div class="radar-item">
             {% if item.topic_label %}
             <span class="radar-topic">{{ item.topic_label }}</span>
+            {% endif %}
+            {% if item.source_credit %}
+            <span class="radar-source">{{ item.source_credit }}</span>
             {% endif %}
             {% if item.has_source_url %}
             <a href="{{ item.source_url }}" class="radar-title">{{ item.headline }}<span class="radar-title-icon">↗</span></a>
