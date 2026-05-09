@@ -446,6 +446,20 @@ def test_chart_codegen_prompt_uses_transparent_background_with_faint_line_grid()
     assert "transparent=True" in prompt.text
 
 
+def test_chart_codegen_prompt_includes_dual_axis_overlap_guidance():
+    from app.llm.prompt_registry import clear_prompt_cache, load_prompt
+    clear_prompt_cache()
+    prompt = load_prompt("chart_codegen")
+    assert "For exactly 2 selected series on dual axes" in prompt.text
+    assert "shared dates" in prompt.text
+    assert "abs(yl - yr) < 0.04" in prompt.text
+    assert "never change the data values" in prompt.text
+    assert "Adjust only `ax2` limits asymmetrically" in prompt.text
+    assert "at least `0.08` apart" in prompt.text
+    assert "padding reaches `15%`" in prompt.text
+    assert "np.median" in prompt.text
+
+
 def test_chart_selector_prompt_exists_and_restricts_choice_to_shortlist():
     from app.llm.prompt_registry import clear_prompt_cache, load_prompt
     clear_prompt_cache()

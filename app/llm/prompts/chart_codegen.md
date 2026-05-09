@@ -94,6 +94,37 @@ Plot all lines with `linewidth=2.0`. Avoid full-series markers.
 To reduce visual artefacts:
 - Add a small horizontal margin with `ax.margins(x=0.03)` so the first and last observations are not glued to the frame.
 - If two series on the same axis have nearly identical first or last values, add small hollow endpoint markers only at those overlapping endpoints so both series remain readable.
+- For exactly 2 selected series on dual axes (`ax` and `ax2`), check for visual overlap across shared dates after plotting and after the normal top-padding step. Compare normalized vertical positions, not raw values.
+- Build shared-date pairs only from dates present in both plotted series. For each shared date, compute the line positions in axis space:
+  - `yl = (y_left - left_min) / (left_max - left_min)`
+  - `yr = (y_right - right_min) / (right_max - right_min)`
+- Treat the lines as visually overlapping when at least 2 shared dates satisfy `abs(yl - yr) < 0.04`.
+- If overlap is detected, never change the data values and never move the left axis. Adjust only `ax2` limits asymmetrically so the right-axis line moves away on-screen while the axis labels stay truthful.
+- Use the median sign of `(yr - yl)` across the close shared dates to choose direction. If the right-axis line should move up, lower `ax2`'s bottom limit. If it should move down, raise `ax2`'s top limit.
+- Recompute the normalized gaps after each adjustment and stop once the close shared dates are at least `0.08` apart, or once the extra right-axis padding reaches `15%`.
+- The endpoint-marker rule is secondary; use it only for endpoint collisions and not as a substitute for the dual-axis overlap check.
+
+Dual-axis overlap adjustment pattern:
+
+```python
+shared = sorted(set(left_dates) & set(right_dates))
+if shared and ax2 is not None:
+    close = []
+    lmin, lmax = ax.get_ylim()
+    rmin, rmax = ax2.get_ylim()
+    for d in shared:
+        yl = (left_by_date[d] - lmin) / (lmax - lmin)
+        yr = (right_by_date[d] - rmin) / (rmax - rmin)
+        if abs(yl - yr) < 0.04:
+            close.append((d, yl, yr))
+    if len(close) >= 2:
+        direction = 1 if np.median([yr - yl for _, yl, yr in close]) >= 0 else -1
+        pad = (rmax - rmin) * 0.06
+        if direction > 0:
+            ax2.set_ylim(rmin - pad, rmax)
+        else:
+            ax2.set_ylim(rmin, rmax + pad)
+```
 
 ## Plotting lines
 
