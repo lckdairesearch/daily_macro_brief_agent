@@ -252,17 +252,12 @@ def run_pipeline(
             output_paths["chart"] = chart_spec.file_path
             brief_draft = brief_draft.model_copy(update={"chart": chart_spec})
 
-            # Push chart to GitHub for inline email rendering
+            # Upload chart to public hosting for inline email rendering.
             from pathlib import Path as _Path
-            from app.render.github_push import push_chart_to_github
-            chart_image_url = push_chart_to_github(
-                chart_path=_Path(chart_spec.file_path),
-                repo=settings.creds.github_repo or "lckdairesearch/daily_macro_brief_agent",
-                branch=settings.creds.github_branch or "master",
-                token=settings.creds.github_token,
-            )
+            from app.render.chart_uploader import publish_chart
+            chart_image_url = publish_chart(_Path(chart_spec.file_path), settings)
             if not chart_image_url:
-                warnings.append("Chart GitHub push failed — chart will appear as email attachment")
+                warnings.append("Chart upload failed — chart will appear as email attachment")
     except Exception as _chart_exc:
         _log.warning("Chart generation failed: %s", _chart_exc)
         warnings.append(f"Chart generation failed: {_chart_exc}")

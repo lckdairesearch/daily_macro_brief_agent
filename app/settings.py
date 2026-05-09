@@ -74,10 +74,13 @@ class Credentials(BaseSettings):
     postmark_to_email: str | None = None
     enable_email_delivery: bool = False
 
-    # GitHub chart hosting (auto-commit after each run)
-    github_token: str | None = None
-    github_repo: str | None = None
-    github_branch: str | None = None
+    # Cloudflare R2 chart hosting
+    cloudflare_r2_account_id: str | None = None
+    cloudflare_r2_access_key_id: str | None = None
+    cloudflare_r2_secret_access_key: str | None = None
+    cloudflare_r2_bucket: str | None = None
+    cloudflare_r2_public_base_url: str | None = None
+    cloudflare_r2_prefix: str | None = None
 
     # Deployment-specific overrides
     app_mode: str | None = None

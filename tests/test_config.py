@@ -88,6 +88,8 @@ def test_secrets_not_in_yaml():
         "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
         "ALPHA_VANTAGE_API_KEY", "DATABENTO_API_KEY", "FRED_API_KEY",
         "LISTEN_NOTES_API_KEY", "POSTMARK_API_KEY",
+        "CLOUDFLARE_R2_ACCOUNT_ID", "CLOUDFLARE_R2_ACCESS_KEY_ID",
+        "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
     ]
     yaml_files = [
         CONFIG_DIR / "app.yaml",
@@ -176,3 +178,18 @@ def test_settings_applies_llm_env_overrides_to_sources():
     assert settings.sources["llm"]["x_scout_model"] == "xai/grok-4"
     assert settings.sources["llm"]["synthesis_model"] == "openai/gpt-5.5"
     assert settings.sources["llm"]["temperature"] == 0.1
+
+
+def test_settings_accepts_cloudflare_r2_credentials():
+    """Cloudflare R2 hosting fields load through the Credentials model."""
+    creds = Credentials.model_construct(
+        cloudflare_r2_account_id="acct123",
+        cloudflare_r2_access_key_id="ak",
+        cloudflare_r2_secret_access_key="sk",
+        cloudflare_r2_bucket="brief-charts",
+        cloudflare_r2_public_base_url="https://pub.example.com",
+        cloudflare_r2_prefix="charts",
+    )
+    assert creds.cloudflare_r2_account_id == "acct123"
+    assert creds.cloudflare_r2_bucket == "brief-charts"
+    assert creds.cloudflare_r2_public_base_url == "https://pub.example.com"
