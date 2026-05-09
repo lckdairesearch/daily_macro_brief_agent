@@ -1,6 +1,7 @@
 """Push chart PNG to GitHub; return raw.githubusercontent.com URL on success."""
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -66,6 +67,8 @@ def push_chart_to_github(
             subprocess.run(
                 ["git", "push", "origin", branch],
                 check=True, capture_output=True, cwd=REPO_ROOT,
+                stdin=subprocess.DEVNULL,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
             )
         finally:
             if original_url:
