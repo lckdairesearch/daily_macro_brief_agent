@@ -2,8 +2,8 @@
 
 Providers:
   FixtureMarketProvider        — sample/demo mode; no credentials needed  (Step 5.A)
-  AlphaVantageMarketProvider   — equities, FX, commodities, US yields, BTC, DXY proxy  (Step 5.E)
-  DatabentoMarketProvider      — FESX, DE10Y (FGBL)  (Step 5.E)
+  AlphaVantageMarketProvider   — equities, FX, US yields, BTC, DXY proxy  (Step 5.E)
+  DatabentoMarketProvider      — DE10Y (FGBL), COPPER (HG), WTI (CL), BRENT (BRN)  (Step 5.E)
   FredMarketProvider           — HY OAS (BAMLH0A0HYM2)  (Step 5.E)
   YfinanceMarketProvider       — ^VIX, ^MOVE (low_reliability)  (Step 5.E)
 
@@ -178,15 +178,22 @@ def _db_fetch_daily_ohlcv(
     symbol: str,
     api_key: str,
     start_date: date,
-    end_date: date,
+    end_date: date | str,
     price_to_yield: bool = False,
 ) -> list[dict]:
     """
     Fetch daily close rows from Databento using the ohlcv-1d schema.
 
-    Symbol format confirmed by live probing (2026-05-08):
-      FESX → symbol="FESX.c.0", dataset="XEUR.EOBI", stype_in="continuous"  ✓
-      FGBL → symbol="FGBL.c.0", dataset="XEUR.EOBI", stype_in="continuous"  (untested, same pattern)
+    end_date accepts a date object ("YYYY-MM-DD" → midnight UTC, exclusive) or a
+    timestamp string ("YYYY-MM-DDTHH:MM:SS") passed verbatim to get_range.  Pass a
+    timestamp ending at 22:00 UTC to capture the same-day EOD bar without touching
+    the live-data boundary (~22:13 UTC for GLBX.MDP3, ~22:05 for IFEU.IMPACT).
+
+    Symbol format confirmed by live probing (2026-05-08/09):
+      FGBL  → symbol="FGBL.c.0",  dataset="XEUR.EOBI",   stype_in="continuous"  ✓
+      HG    → symbol="HG.c.0",    dataset="GLBX.MDP3",   stype_in="continuous"  ✓
+      CL    → symbol="CL.c.0",    dataset="GLBX.MDP3",   stype_in="continuous"  ✓
+      BRN   → symbol="BRN.c.0",   dataset="IFEU.IMPACT", stype_in="continuous"  ✓
 
     SAFETY GUARD: validates the symbol resolves before calling get_range to avoid
     accidentally downloading the full dataset (74k+ records for GLBX.MDP3).
@@ -203,6 +210,14 @@ def _db_fetch_daily_ohlcv(
     import concurrent.futures
     import databento as db
 
+    # Normalize end_date: symbology.resolve needs a date object; get_range needs a string.
+    if isinstance(end_date, str):
+        end_date_obj = date.fromisoformat(end_date[:10])
+        end_str = end_date
+    else:
+        end_date_obj = end_date
+        end_str = end_date.isoformat()
+
     client = db.Historical(api_key)
 
     def _resolve():
@@ -212,7 +227,7 @@ def _db_fetch_daily_ohlcv(
             stype_in="continuous",
             stype_out="instrument_id",
             start_date=start_date,
-            end_date=end_date,
+            end_date=end_date_obj,
         )
 
     def _get_range():
@@ -221,7 +236,7 @@ def _db_fetch_daily_ohlcv(
             symbols=[symbol],
             schema="ohlcv-1d",
             start=start_date.isoformat(),
-            end=end_date.isoformat(),
+            end=end_str,
             stype_in="continuous",
         )
 
@@ -518,27 +533,28 @@ _LIVE_LOOKBACK_DAYS = 10  # calendar days; enough to capture 2 trading days acro
 # Instrument metadata tables — canonical instrument_id is the dict key.
 
 _AV_INSTRUMENT_META: dict[str, dict] = {
-    "SPY":    {"function": "TIME_SERIES_DAILY",      "symbol": "SPY",    "display_name": "S&P 500 (proxy)",     "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%"},
-    "QQQ":    {"function": "TIME_SERIES_DAILY",      "symbol": "QQQ",    "display_name": "Nasdaq 100 (proxy)",  "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%"},
+    "SPY":    {"function": "TIME_SERIES_DAILY",      "symbol": "SPY",    "display_name": "S&P 500 (proxy)",                        "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%"},
+    "QQQ":    {"function": "TIME_SERIES_DAILY",      "symbol": "QQQ",    "display_name": "Nasdaq 100 (proxy)",                     "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%"},
+    "FEZ":    {"function": "TIME_SERIES_DAILY",      "symbol": "FEZ",    "display_name": "Euro Stoxx 50 (FEZ, proxy, USD-based)",  "asset_class": AssetClass.EQUITY,    "region": "EU",     "change_unit": "%"},
     "UUP":    {"function": "TIME_SERIES_DAILY",      "symbol": "UUP",    "display_name": "DXY (proxy)",         "asset_class": AssetClass.FX,        "region": "US",     "change_unit": "%"},
     "USDJPY": {"function": "FX_DAILY",               "symbol": "USDJPY", "display_name": "USD/JPY",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%",   "extra": {"from_symbol": "USD", "to_symbol": "JPY"}},
     "EURUSD": {"function": "FX_DAILY",               "symbol": "EURUSD", "display_name": "EUR/USD",             "asset_class": AssetClass.FX,        "region": "EU",     "change_unit": "%",   "extra": {"from_symbol": "EUR", "to_symbol": "USD"}},
     "USDCNH": {"function": "FX_DAILY",               "symbol": "USDCNH", "display_name": "USD/CNH",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%",   "extra": {"from_symbol": "USD", "to_symbol": "CNH"}},
     "GOLD":   {"function": "GOLD_SILVER_HISTORY",     "symbol": "GOLD",   "display_name": "Gold (spot)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
     "SILVER": {"function": "GOLD_SILVER_HISTORY",     "symbol": "SILVER", "display_name": "Silver (spot)",       "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
-    "WTI":    {"function": "WTI",                    "symbol": "",       "display_name": "WTI Crude",           "asset_class": AssetClass.COMMODITY, "region": "US",     "change_unit": "%"},
-    "BRENT":  {"function": "BRENT",                  "symbol": "",       "display_name": "Brent Crude",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
     "BTC":    {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "BTC",    "display_name": "Bitcoin",             "asset_class": AssetClass.CRYPTO,    "region": "Global", "change_unit": "%"},
     "US2Y":   {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 2Y Yield",         "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "extra": {"maturity": "2year"}},
     "US10Y":  {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 10Y Yield",        "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "extra": {"maturity": "10year"}},
 }
 
 _DB_INSTRUMENT_META: dict[str, dict] = {
-    "FESX":   {"dataset": "XEUR.EOBI",  "symbol": "FESX.c.0", "display_name": "Euro Stoxx 50 (front-month)",     "asset_class": AssetClass.EQUITY,    "region": "EU",     "change_unit": "%",   "price_to_yield": False},
-    "DE10Y":  {"dataset": "XEUR.EOBI",  "symbol": "FGBL.c.0", "display_name": "German 10Y Bund (front-month)",   "asset_class": AssetClass.RATES,     "region": "EU",     "change_unit": "bps", "price_to_yield": True},
-    # AV COPPER returns monthly data only — use CME front-month futures via GLBX.MDP3 instead.
+    "DE10Y":  {"dataset": "XEUR.EOBI",  "symbol": "FGBL.c.0", "display_name": "German 10Y Bund",                 "asset_class": AssetClass.RATES,     "region": "EU",     "change_unit": "bps", "price_to_yield": True},
+    # AV COPPER returns monthly data only; AV WTI/BRENT lag by up to 1 week.
+    # Use exchange front-month futures via Databento instead.
     # V1 note: roll artifacts (price jump at contract expiry) not yet detected; easy V2 add.
-    "COPPER": {"dataset": "GLBX.MDP3",  "symbol": "HG.c.0",   "display_name": "Copper (HG front-month)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
+    "COPPER": {"dataset": "GLBX.MDP3",   "symbol": "HG.c.0",  "display_name": "Copper (front-month)",           "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
+    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI Crude (CL front-month)",     "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
+    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent Crude (BRN front-month)",  "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
 }
 
 _FRED_INSTRUMENT_META: dict[str, dict] = {
@@ -681,9 +697,16 @@ class DatabentoMarketProvider:
         self._api_key = api_key
 
     def fetch_watchlist(self, instruments: list[str], as_of: datetime) -> list[MarketSnapshot]:
-        # Cap at yesterday so we only request settled historical bars — no live license needed.
-        end = as_of.date() - timedelta(days=1)
-        start = end - timedelta(days=_LIVE_LOOKBACK_DAYS)
+        # Use 22:00 UTC on the as_of UTC date as the end timestamp.
+        # All EOD bars settle before this (CME ~21:00 UTC, ICE ~17:00 UTC), and it stays
+        # inside the settled (non-live) data boundary (~22:13 UTC for GLBX, ~22:05 for IFEU).
+        # A bare date string "YYYY-MM-DD" would be midnight UTC — one full day too early.
+        as_of_utc = as_of.astimezone(ZoneInfo("UTC"))
+        end_dt_utc = as_of_utc.replace(hour=22, minute=0, second=0, microsecond=0)
+        if end_dt_utc > as_of_utc:
+            end_dt_utc -= timedelta(days=1)
+        end_ts = end_dt_utc.strftime("%Y-%m-%dT%H:%M:%S")
+        start = end_dt_utc.date() - timedelta(days=_LIVE_LOOKBACK_DAYS)
         snapshots: list[MarketSnapshot] = []
         for iid in instruments:
             meta = _DB_INSTRUMENT_META.get(iid)
@@ -696,7 +719,7 @@ class DatabentoMarketProvider:
                     meta["symbol"],
                     self._api_key,
                     start,
-                    end,
+                    end_ts,
                     price_to_yield=meta["price_to_yield"],
                 )
                 if len(rows) < 2:

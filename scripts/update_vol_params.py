@@ -50,8 +50,8 @@ OUTPUT_PATH = REPO_ROOT / "app" / "config" / "vol_params.yaml"
 # Built lazily below after credentials are loaded.
 
 _PCT_INSTRUMENTS = [
-    "SPY", "QQQ", "UUP", "USDJPY", "EURUSD", "USDCNH",
-    "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC", "FESX", "VIX",
+    "SPY", "QQQ", "FEZ", "UUP", "USDJPY", "EURUSD", "USDCNH",
+    "GOLD", "SILVER", "WTI", "BRENT", "COPPER", "BTC", "VIX",
 ]
 _BPS_INSTRUMENTS = ["US2Y", "US10Y", "DE10Y", "HY_OAS"]
 # MOVE uses hardcoded fallback — omitted from live fetch
@@ -67,7 +67,9 @@ def _build_fetchers(creds: Credentials) -> dict[str, tuple[str, object]]:
         return lambda s, e: _av_fetch_daily(symbol, function, av, s, e, **kw)
 
     def db_daily(dataset, symbol, **kw):
-        return lambda s, e: _db_fetch_daily_ohlcv(dataset, symbol, db, s, e, **kw)
+        # Pass a 22:00 UTC timestamp so the request captures the same-day EOD bar
+        # without crossing the live-data boundary (~22:13 UTC for GLBX, ~22:05 IFEU).
+        return lambda s, e: _db_fetch_daily_ohlcv(dataset, symbol, db, s, f"{e.isoformat()}T22:00:00", **kw)
 
     def fred_series(series_id):
         return lambda s, e: _fred_fetch_series(series_id, fred, s, e)
@@ -79,6 +81,7 @@ def _build_fetchers(creds: Credentials) -> dict[str, tuple[str, object]]:
         # Equities / proxies
         "SPY":    ("%", av_daily("SPY",  "TIME_SERIES_DAILY")),
         "QQQ":    ("%", av_daily("QQQ",  "TIME_SERIES_DAILY")),
+        "FEZ":    ("%", av_daily("FEZ",  "TIME_SERIES_DAILY")),
         "UUP":    ("%", av_daily("UUP",  "TIME_SERIES_DAILY")),
         # FX
         "USDJPY": ("%", av_daily("USDJPY", "FX_DAILY", from_symbol="USD", to_symbol="JPY")),
@@ -87,16 +90,15 @@ def _build_fetchers(creds: Credentials) -> dict[str, tuple[str, object]]:
         # Commodities — sources match live providers exactly
         "GOLD":   ("%", av_daily("GOLD",   "GOLD_SILVER_HISTORY")),  # AV spot price
         "SILVER": ("%", av_daily("SILVER", "GOLD_SILVER_HISTORY")),  # AV spot price
-        "WTI":    ("%", av_daily("",       "WTI")),
-        "BRENT":  ("%", av_daily("",       "BRENT")),
-        "COPPER": ("%", db_daily("GLBX.MDP3", "HG.c.0")),  # CME front-month; AV COPPER is monthly-only
+        "COPPER": ("%", db_daily("GLBX.MDP3",   "HG.c.0")),   # CME front-month; AV COPPER is monthly-only
+        "WTI":    ("%", db_daily("GLBX.MDP3",   "CL.c.0")),   # CME front-month; AV WTI lags by up to 1 week
+        "BRENT":  ("%", db_daily("IFEU.IMPACT", "BRN.c.0")),  # ICE front-month; AV BRENT lags by up to 1 week
         # Crypto
         "BTC":    ("%", av_daily("BTC",  "DIGITAL_CURRENCY_DAILY")),
         # Rates (bps — diff, not pct)
         "US2Y":   ("bps", av_daily("", "TREASURY_YIELD", maturity="2year")),
         "US10Y":  ("bps", av_daily("", "TREASURY_YIELD", maturity="10year")),
-        # European futures (Databento)
-        "FESX":   ("%",   db_daily("XEUR.EOBI", "FESX.c.0")),
+        # European rates (Databento — FGBL futures → Bund yield)
         "DE10Y":  ("bps", db_daily("XEUR.EOBI", "FGBL.c.0", price_to_yield=True)),
         # Credit
         "HY_OAS": ("bps", fred_series("BAMLH0A0HYM2")),
