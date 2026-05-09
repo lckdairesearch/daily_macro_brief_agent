@@ -117,6 +117,21 @@ def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer):
     assert result.run_metadata.delivery_status != DeliveryStatus.SUCCESS
 
 
+def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(tmp_path):
+    settings = Settings.load()
+    settings.app.output_dir = str(tmp_path / "outputs")
+
+    def _mock_writer_with_warning(ranked_context, settings, run_date, mode=None):
+        draft, usage = _mock_write_brief(ranked_context, settings, run_date, mode)
+        draft = draft.model_copy(update={"warnings": ["only 2 evidence cards available"]})
+        return draft, usage
+
+    with patch("app.synthesis.writer.write_brief", side_effect=_mock_writer_with_warning):
+        result = run_pipeline(RunMode.SAMPLE, settings)
+
+    assert "only 2 evidence cards available" in result.run_metadata.warnings
+
+
 def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_path):
     """Sample pipeline writes artifacts to a date/run-specific artifact path."""
     settings = Settings.load()

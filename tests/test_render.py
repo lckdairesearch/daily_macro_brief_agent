@@ -425,21 +425,26 @@ def test_render_brief_writes_html_and_text(tmp_path):
     assert "OVERNIGHT BOOK IMPACT" in text
 
 
-def test_warnings_render_at_bottom_as_bullets(tmp_path):
+def test_warnings_do_not_render_in_html_or_text(tmp_path):
     from app.render.email import render_brief
 
     settings = _make_settings()
-    draft = _make_draft().model_copy(update={"warnings": ["first warning", "second warning"]})
+    draft = _make_draft().model_copy(
+        update={
+            "warnings": ["first warning", "second warning"],
+            "run_metadata": {"warnings": ["third warning"]},
+        }
+    )
     paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
     html = Path(paths["html"]).read_text(encoding="utf-8")
     text = Path(paths["text"]).read_text(encoding="utf-8")
 
-    assert html.index("The 3 Things") < html.index("Warnings")
-    assert '<div class="section-header">Warnings</div>' not in html
-    assert '<div class="warning-label">Warnings</div>' in html
-    assert "<li>first warning</li>" in html
-    assert text.index("THEME RADAR") < text.index("WARNINGS")
-    assert "- first warning" in text
+    assert "Warnings" not in html
+    assert "first warning" not in html
+    assert "third warning" not in html
+    assert "WARNINGS" not in text
+    assert "first warning" not in text
+    assert "third warning" not in text
 
 
 def test_theme_radar_topic_renders_before_title(tmp_path):

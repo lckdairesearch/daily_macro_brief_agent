@@ -174,6 +174,9 @@ def run_pipeline(
     try:
         brief_draft, llm_usage = write_brief(ranked_context, settings, data_cutoff, mode)
         llm_usages.append(llm_usage)
+        for warning in brief_draft.warnings:
+            if warning not in warnings:
+                warnings.append(warning)
         _save_json_artifact(
             run_output_dir / "brief_draft.json",
             brief_draft.model_dump(mode="json"),
