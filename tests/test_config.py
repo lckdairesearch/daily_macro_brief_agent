@@ -87,7 +87,7 @@ def test_secrets_not_in_yaml():
     credential_keys = [
         "OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY",
         "ALPHA_VANTAGE_API_KEY", "DATABENTO_API_KEY", "FRED_API_KEY",
-        "LISTEN_NOTES_API_KEY", "SENDGRID_API_KEY",
+        "LISTEN_NOTES_API_KEY", "POSTMARK_API_KEY",
     ]
     yaml_files = [
         CONFIG_DIR / "app.yaml",
@@ -138,6 +138,7 @@ def test_settings_validate_live_email_enabled_reports_postmark():
         enable_email_delivery=True,
         postmark_api_key=None,
         postmark_from_email=None,
+        postmark_maintainer_email=None,
         postmark_to_email=None,
         llm_scout_model=None,
         llm_x_scout_model=None,

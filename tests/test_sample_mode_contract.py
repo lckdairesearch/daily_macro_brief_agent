@@ -35,9 +35,10 @@ def _settings_without_credentials() -> Settings:
         listen_notes_api_key=None,
         taddy_user_id=None,
         taddy_api_key=None,
-        sendgrid_api_key=None,
-        sendgrid_from_email=None,
-        sendgrid_to_email=None,
+        postmark_api_key=None,
+        postmark_from_email=None,
+        postmark_maintainer_email=None,
+        postmark_to_email=None,
         enable_email_delivery=False,
         app_mode=None,
         cache_dir=None,
@@ -135,8 +136,9 @@ def test_sample_cli_runs_without_openai_key_or_live_llm():
             "openai_api_key",
             "gemini_api_key",
             "xai_api_key",
-            "sendgrid_from_email",
-            "sendgrid_to_email",
+            "postmark_from_email",
+            "postmark_maintainer_email",
+            "postmark_to_email",
         }:
             env[name.upper()] = ""
     env["ENABLE_EMAIL_DELIVERY"] = "false"

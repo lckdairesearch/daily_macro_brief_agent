@@ -70,6 +70,7 @@ class Credentials(BaseSettings):
     # Delivery — required for live email send
     postmark_api_key: str | None = None
     postmark_from_email: str | None = None
+    postmark_maintainer_email: str | None = None
     postmark_to_email: str | None = None
     enable_email_delivery: bool = False
 

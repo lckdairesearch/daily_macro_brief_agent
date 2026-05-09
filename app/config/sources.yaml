@@ -70,5 +70,5 @@ scouts:
       - "commodities"
 
 delivery:
-  provider: sendgrid
+  provider: postmark
   default_enabled: false  # overridden by ENABLE_EMAIL_DELIVERY env var

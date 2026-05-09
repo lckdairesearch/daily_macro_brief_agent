@@ -227,9 +227,8 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
             warnings.append(f"Brief rendering failed: {render_exc}")
 
     # --- Step 12: Deliver email ---
-    # Sample: always delivers to configured recipient (subject prefixed [SAMPLE])
-    # Live:   delivers only when ENABLE_EMAIL_DELIVERY=true
-    # Dry-run: no delivery
+    # Sample/dry-run: deliver test output to the maintainer recipient.
+    # Live: deliver to production recipients only when ENABLE_EMAIL_DELIVERY=true.
     from app.delivery import NoopDeliveryProvider, get_provider
     delivery_status = DeliveryStatus.DISABLED
     provider = get_provider(mode, settings)
@@ -244,7 +243,12 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
                 ]
         html_body = _Path(render_paths["html"]).read_text(encoding="utf-8") if render_paths.get("html") else ""
         text_body = _Path(render_paths["text"]).read_text(encoding="utf-8") if render_paths.get("text") else ""
-        subject = "[SAMPLE] Morning Macro Brief" if mode == RunMode.SAMPLE else "Morning Macro Brief"
+        if mode == RunMode.SAMPLE:
+            subject = "[SAMPLE] Morning Macro Brief"
+        elif mode == RunMode.DRY_RUN:
+            subject = "[DRY RUN] Morning Macro Brief"
+        else:
+            subject = "Morning Macro Brief"
         delivery_result = provider.send(
             subject=subject,
             html_body=html_body,

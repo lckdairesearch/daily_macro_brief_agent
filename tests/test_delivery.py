@@ -15,12 +15,14 @@ from app.models import DeliveryResult, RunMode
 def _settings(
     postmark_api_key: str | None = "test-token",
     postmark_from_email: str | None = "brief@test.com",
+    postmark_maintainer_email: str | None = "contact@leonard-dai.com",
     postmark_to_email: str | None = "pm@test.com",
     enable_email_delivery: bool = True,
 ) -> MagicMock:
     s = MagicMock()
     s.creds.postmark_api_key = postmark_api_key
     s.creds.postmark_from_email = postmark_from_email
+    s.creds.postmark_maintainer_email = postmark_maintainer_email
     s.creds.postmark_to_email = postmark_to_email
     s.creds.enable_email_delivery = enable_email_delivery
     return s
@@ -105,6 +107,11 @@ class TestPostmarkDeliveryProvider:
         assert result.success is False
         assert result.error_message is not None
 
+    def test_missing_from_email_returns_failure(self):
+        result = PostmarkDeliveryProvider(_settings(postmark_from_email=None)).send("S", "H", "T")
+        assert result.success is False
+        assert result.error_message is not None
+
     def test_missing_to_email_returns_failure(self):
         result = PostmarkDeliveryProvider(_settings(postmark_to_email=None)).send("S", "H", "T")
         assert result.success is False
@@ -147,14 +154,35 @@ class TestGetProvider:
     def test_sample_mode_without_creds_returns_noop(self):
         assert isinstance(get_provider(RunMode.SAMPLE, _settings(postmark_api_key=None)), NoopDeliveryProvider)
 
-    def test_dry_run_returns_noop(self):
-        assert isinstance(get_provider(RunMode.DRY_RUN, _settings()), NoopDeliveryProvider)
+    def test_sample_mode_sends_to_maintainer_not_production_list(self):
+        provider = get_provider(RunMode.SAMPLE, _settings(postmark_to_email="pm@test.com"))
+        with patch("requests.post", return_value=_ok_response()) as mock_post:
+            provider.send("[SAMPLE] Morning Macro Brief", "H", "T")
+        assert mock_post.call_args.kwargs["json"]["To"] == "contact@leonard-dai.com"
+
+    def test_dry_run_with_creds_returns_postmark(self):
+        assert isinstance(get_provider(RunMode.DRY_RUN, _settings()), PostmarkDeliveryProvider)
+
+    def test_dry_run_sends_to_maintainer_not_production_list(self):
+        provider = get_provider(RunMode.DRY_RUN, _settings(postmark_to_email="pm@test.com"))
+        with patch("requests.post", return_value=_ok_response()) as mock_post:
+            provider.send("[DRY RUN] Morning Macro Brief", "H", "T")
+        assert mock_post.call_args.kwargs["json"]["To"] == "contact@leonard-dai.com"
 
     def test_live_delivery_disabled_returns_noop(self):
         assert isinstance(get_provider(RunMode.LIVE, _settings(enable_email_delivery=False)), NoopDeliveryProvider)
 
     def test_live_delivery_enabled_returns_postmark(self):
         assert isinstance(get_provider(RunMode.LIVE, _settings(enable_email_delivery=True)), PostmarkDeliveryProvider)
+
+    def test_live_delivery_uses_production_list(self):
+        provider = get_provider(
+            RunMode.LIVE,
+            _settings(postmark_maintainer_email="contact@leonard-dai.com", postmark_to_email="pm@test.com"),
+        )
+        with patch("requests.post", return_value=_ok_response()) as mock_post:
+            provider.send("Morning Macro Brief", "H", "T")
+        assert mock_post.call_args.kwargs["json"]["To"] == "pm@test.com"
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ All market numbers come from APIs and data sources — not the LLM. The LLM synt
 
 ## Quickstart
 
-Sample mode requires only `OPENAI_API_KEY`. All other keys are needed for live mode only.
+Sample mode can run without live market credentials. Add Postmark credentials when you want sample or dry-run output delivered to the maintainer inbox.
 
 ```bash
 cp .env.example .env      # add at minimum: OPENAI_API_KEY
@@ -28,8 +28,8 @@ make test
 
 | Mode | Command | Data source | Email sent |
 |---|---|---|---|
-| Sample | `make run-sample` | Fixture data + real LLM (GPT-5) | Never |
-| Dry-run | `make dry-run` | Live APIs, no delivery | Never |
+| Sample | `make run-sample` | Fixture data + deterministic writer | To `POSTMARK_MAINTAINER_EMAIL` when Postmark credentials are present |
+| Dry-run | `make dry-run` | Live APIs | To `POSTMARK_MAINTAINER_EMAIL` when Postmark credentials are present |
 | Live | `make run-live` | Live APIs | Yes, if `ENABLE_EMAIL_DELIVERY=true` |
 
 ## Environment variables
@@ -46,10 +46,12 @@ See `.env.example` for the full list. Key variables by category:
 - `XAI_API_KEY` — X/Grok scout
 - `LISTEN_NOTES_API_KEY` — podcast scout
 
-**Required for live email delivery**
-- `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `SENDGRID_TO_EMAIL`
+**Required for Postmark delivery**
+- `POSTMARK_API_KEY`, `POSTMARK_FROM_EMAIL`
+- `POSTMARK_MAINTAINER_EMAIL` — maintainer/test recipient for sample and dry-run sends
+- `POSTMARK_TO_EMAIL` — comma-separated production recipient list for live sends
 
-`SENDGRID_TO_EMAIL` accepts a comma-separated list. Validation warnings appear as a banner at the top of the email. Email delivery is off by default; set `ENABLE_EMAIL_DELIVERY=true` to enable.
+Validation warnings appear as a banner at the top of the email. Production email delivery is off by default; set `ENABLE_EMAIL_DELIVERY=true` to enable live sends.
 
 ## How live mode works
 

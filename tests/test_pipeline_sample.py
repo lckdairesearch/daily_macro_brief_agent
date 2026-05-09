@@ -67,6 +67,14 @@ def mock_writer():
         yield
 
 
+@pytest.fixture(autouse=True)
+def mock_delivery():
+    """Pipeline smoke tests must not send real email."""
+    from app.delivery import NoopDeliveryProvider
+    with patch("app.delivery.get_provider", return_value=NoopDeliveryProvider()):
+        yield
+
+
 def test_sample_pipeline_returns_pipeline_result(mock_writer):
     """run_pipeline(sample) returns a PipelineResult instance."""
     settings = Settings.load()
@@ -93,8 +101,8 @@ def test_sample_pipeline_run_metadata_populated(mock_writer):
     assert meta.llm_provider == "litellm"
 
 
-def test_sample_pipeline_no_email_sent(mock_writer):
-    """Sample mode delivery status is never SUCCESS — email must not be sent."""
+def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer):
+    """Sample pipeline can be smoke-tested without sending real email."""
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.run_metadata.delivery_status != DeliveryStatus.SUCCESS

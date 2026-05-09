@@ -376,10 +376,11 @@ FRED_API_KEY                    free at fred.stlouisfed.org
 # Discovery — required for live/dry-run
 LISTEN_NOTES_API_KEY            podcast scout
 
-# Delivery — required for live email send
+# Delivery
 POSTMARK_API_KEY
 POSTMARK_FROM_EMAIL             defaults to brief@leonard-dai.com if blank
-POSTMARK_TO_EMAIL               comma-separated list accepted
+POSTMARK_MAINTAINER_EMAIL       sample/dry-run test recipient
+POSTMARK_TO_EMAIL               comma-separated production recipient list
 ENABLE_EMAIL_DELIVERY           optional override, default false
 
 # Optional
@@ -1371,10 +1372,10 @@ NoopDeliveryProvider
 
 ### 15.3 Delivery behavior
 
-- `sample` mode: never send real email.
-- `dry-run` mode: never send real email.
-- `live` mode: send only if `ENABLE_EMAIL_DELIVERY=true` and recipients are configured.
-- `POSTMARK_TO_EMAIL` accepts a comma-separated list for multiple recipients.
+- `sample` mode: send test output to `POSTMARK_MAINTAINER_EMAIL` when Postmark send credentials are configured.
+- `dry-run` mode: send test output to `POSTMARK_MAINTAINER_EMAIL` when Postmark send credentials are configured.
+- `live` mode: send to production recipients only if `ENABLE_EMAIL_DELIVERY=true` and recipients are configured.
+- `POSTMARK_TO_EMAIL` accepts a comma-separated production recipient list for live sends.
 - Always save output artifacts even if email fails.
 - Record delivery status in `RunMetadata`.
 
@@ -1463,6 +1464,7 @@ AZURE_OPENAI_ENDPOINT optional
 AZURE_OPENAI_DEPLOYMENT optional
 POSTMARK_API_KEY
 POSTMARK_FROM_EMAIL
+POSTMARK_MAINTAINER_EMAIL
 POSTMARK_TO_EMAIL
 ```
 

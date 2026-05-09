@@ -51,18 +51,18 @@ Agreed schedule:
 
 Delivery provider preference:
 
-- Use SendGrid as the default V1 email provider because the developer has more experience with it.
+- Use Postmark as the V1 email provider.
 - Keep Azure Communication Services as a replaceable future option.
 - Keep the delivery layer replaceable.
 - Do not hard-code credentials.
 
 Delivery behavior:
 
-- Single send at 07:15 HKT to all configured recipients (`SENDGRID_TO_EMAIL` accepts a comma-separated list).
+- Sample and dry-run sends go to `POSTMARK_MAINTAINER_EMAIL` for maintainer review.
+- Live sends go to the configured production recipients (`POSTMARK_TO_EMAIL` accepts a comma-separated list) when `ENABLE_EMAIL_DELIVERY=true`.
 - Validation warnings do not suppress delivery. Minor validation failures render as a warning banner at the top of the email so recipients can judge the output quality themselves.
 - Critical validation failures (missing required sections, invented numbers without source metadata) hard-fail the run and suppress delivery entirely.
-- Email delivery is off by default. Set `ENABLE_EMAIL_DELIVERY=true` to enable in live mode.
-- Sample and dry-run modes never send real email regardless of the toggle.
+- Production email delivery is off by default. Set `ENABLE_EMAIL_DELIVERY=true` to enable live mode delivery.
 
 ## 4. Core brief sections
 

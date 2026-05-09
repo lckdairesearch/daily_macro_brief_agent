@@ -32,8 +32,9 @@ class NoopDeliveryProvider:
 
 
 class PostmarkDeliveryProvider:
-    def __init__(self, settings: "Settings") -> None:
+    def __init__(self, settings: "Settings", recipient_override: str | None = None) -> None:
         self._settings = settings
+        self._recipient_override = recipient_override
 
     def send(
         self,
@@ -43,15 +44,17 @@ class PostmarkDeliveryProvider:
         inline_images: list[dict[str, Any]] | None = None,
     ) -> DeliveryResult:
         api_key = self._settings.creds.postmark_api_key
-        to_email = self._settings.creds.postmark_to_email
+        to_email = self._recipient_override or self._settings.creds.postmark_to_email
         from_email = self._settings.creds.postmark_from_email
 
         if not api_key:
             return DeliveryResult(success=False, error_message="POSTMARK_API_KEY not set")
+        if not from_email:
+            return DeliveryResult(success=False, error_message="POSTMARK_FROM_EMAIL not set")
 
         recipients = [e.strip() for e in (to_email or "").split(",") if e.strip()]
         if not recipients:
-            return DeliveryResult(success=False, error_message="POSTMARK_TO_EMAIL not set or empty")
+            return DeliveryResult(success=False, error_message="Postmark recipient not set or empty")
 
         payload: dict[str, Any] = {
             "Subject": subject,
@@ -105,12 +108,12 @@ def get_provider(
 ) -> NoopDeliveryProvider | PostmarkDeliveryProvider:
     """Return PostmarkDeliveryProvider when delivery should run; Noop otherwise.
 
-    Sample mode always delivers (to configured recipient) if credentials are present.
+    Sample and dry-run deliver test output to POSTMARK_MAINTAINER_EMAIL when
+    POSTMARK_API_KEY is present.
     Live mode delivers only when ENABLE_EMAIL_DELIVERY=true.
-    Dry-run never delivers.
     """
-    if mode == RunMode.SAMPLE and settings.creds.postmark_api_key:
-        return PostmarkDeliveryProvider(settings)
+    if mode in {RunMode.SAMPLE, RunMode.DRY_RUN} and settings.creds.postmark_api_key:
+        return PostmarkDeliveryProvider(settings, settings.creds.postmark_maintainer_email)
     if mode == RunMode.LIVE and settings.creds.enable_email_delivery:
         return PostmarkDeliveryProvider(settings)
     return NoopDeliveryProvider()

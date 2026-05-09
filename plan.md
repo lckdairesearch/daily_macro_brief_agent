@@ -30,7 +30,7 @@ Each task is intended to be self-contained: a coding agent should be able to pic
 
 The full acceptance criteria are defined in `spec.md §12.2`. Do not duplicate them here.
 
-Summary: V1 is done when `make run-sample`, `make test`, and `make lint` all pass, the sample brief contains all six required sections with no invented data, the validator catches hallucination-sensitive failures, GitHub Actions can run the scheduled workflow, email delivery defaults to off, and `costs.md` and `memo/memo.md` are complete.
+Summary: V1 is done when `make run-sample`, `make test`, and `make lint` all pass, the sample brief contains all six required sections with no invented data, the validator catches hallucination-sensitive failures, GitHub Actions can run the scheduled workflow, production email delivery defaults to off, and `costs.md` and `memo/memo.md` are complete.
 
 ## 5. Suggested agent workflow
 
@@ -56,22 +56,6 @@ Use one task branch or one small pull request per main step when possible.
 | M6 | Add synthesis/validation/rendering | Brief writer, validator, HTML/text/chart | Review brief quality |
 | M7 | Add delivery/scheduling | Postmark/noop delivery, GitHub Actions | Add secrets or keep dry-run |
 | M8 | Finalize submission | README, costs, memo, acceptance pass | Final human review |
-
-## 7. Current implementation status
-
-This section records what has actually been implemented so later agents do not treat planned work as completed.
-
-| Step | Status | Notes |
-| --- | --- | --- |
-| 0-4 | Implemented | Repo structure, configs, typed models, CLI entry point, and pipeline skeleton exist. |
-| 5 | Implemented with modifications | Market module includes fixture/live providers, vol params, move detection, cache fallback, `SILVER`, and Databento copper via `HG.c.0`. |
-| 6 | Partially implemented module-level | Fixture calendar, Investing.com fetch/cache/normalization, and consensus candidate guardrails exist. Live calendar and any LLM consensus-enrichment scout are not yet wired into `app/pipeline.py`. |
-| 7 | Implemented | LiteLLM wrapper and prompt registry exist; OpenAI Responses API is used directly where web search tools are needed. |
-| 8 | Implemented with modifications | News/central bank/research use OpenAI Responses web search; podcast uses Listen Notes + LLM filtering + web recall; X uses `xai-sdk` `x_search`. |
-| 9 | Implemented | Evidence deduper and ranker exist with tests. |
-| 10+ | Not yet implemented in main app | Writer, deterministic validator, renderer, chart builder, delivery, and normal pipeline artifact persistence remain stubs/upcoming work. |
-
-`scripts/live_eval_run.py` is a diagnostic runner that exercises live collection, discovery, ranking, an LLM markdown brief, and saved raw/eval artifacts. It is not yet the production pipeline path.
 
 ---
 
@@ -1194,8 +1178,8 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 - Define `DeliveryProvider` protocol.
 - Implement `NoopDeliveryProvider`.
 - Implement `PostmarkDeliveryProvider`.
-- Sample and dry-run modes must never send real email.
-- Live mode sends only if delivery is enabled and required recipients are configured.
+- Sample and dry-run modes send test output to `POSTMARK_MAINTAINER_EMAIL` when Postmark send credentials are configured.
+- Live mode sends to `POSTMARK_TO_EMAIL` only if delivery is enabled and required production recipients are configured.
 - Always save artifacts even if email delivery fails.
 
 **Human input needed:** Provide Postmark sender/recipient decisions and local secrets outside git.
@@ -1204,7 +1188,7 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 
 - Noop delivery records success without sending.
 - Postmark path can be unit-tested with mocked HTTP request.
-- Missing email secrets fail clearly only when live sending is enabled.
+- Missing email secrets fail clearly when a Postmark send path is selected.
 
 ### 12.2 Wire delivery into pipeline
 
@@ -1218,15 +1202,15 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 
 **Implementation notes:**
 
-- In sample and dry-run, use noop delivery.
-- In live mode, use Postmark only when enabled.
+- In sample and dry-run, use Postmark with `POSTMARK_MAINTAINER_EMAIL` when Postmark send credentials are configured.
+- In live mode, use Postmark with `POSTMARK_TO_EMAIL` only when enabled.
 - Record delivery status in `RunMetadata`.
 
 **Human input needed:** Confirm whether live mode default should be dry-run until final manual toggle.
 
 **Acceptance checks:**
 
-- Sample mode does not attempt Postmark.
+- Sample and dry-run send to the maintainer recipient, not the production recipient list.
 - Delivery status appears in run metadata.
 
 ---
@@ -1249,7 +1233,7 @@ New function `fetch_chart_series(instruments, lookback_days, as_of, settings, sa
 
 **Implementation notes:**
 
-- Use fixture market data, fixture calendar data, fixture evidence, deterministic writer or mocked/stubbed LLM path, validator, renderer, and noop delivery.
+- Use fixture market data, fixture calendar data, fixture evidence, deterministic writer or mocked/stubbed LLM path, validator, renderer, and maintainer-routed Postmark delivery when configured.
 - Always produce the three expected sample artifacts.
 
 **Human input needed:** Review final sample brief quality and determine whether it is impressive enough for the case study.
