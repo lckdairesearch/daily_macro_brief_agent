@@ -5,7 +5,7 @@ Providers:
   AlphaVantageMarketProvider   — equities, FX, US yields, BTC, DXY proxy  (Step 5.E)
   DatabentoMarketProvider      — DE10Y (FGBL), COPPER (HG), WTI (CL), BRENT (BRN)  (Step 5.E)
   FredMarketProvider           — ICE BofA US High Yield OAS (BAMLH0A0HYM2)  (Step 5.E)
-  YfinanceMarketProvider       — ^VIX, ^MOVE (low_reliability)  (Step 5.E)
+  YfinanceMarketProvider       — ^VIX, ^MOVE  (Step 5.E)
 
 Falls back to latest cached snapshot with a warning if live calls fail.  (Step 5.F)
 """
@@ -482,8 +482,6 @@ def _yf_fetch_daily(
     """
     Fetch daily close rows from yfinance (no API key required).
 
-    Marked low_reliability — yfinance has no SLA and the upstream Yahoo Finance
-    feed occasionally returns empty results or stale data without warning.
     Callers should treat a missing result as non-fatal and fall back to cache.
 
     Confirmed working symbols (probed 2026-05-08):
@@ -553,8 +551,8 @@ _DB_INSTRUMENT_META: dict[str, dict] = {
     # Use exchange front-month futures via Databento instead.
     # V1 note: roll artifacts (price jump at contract expiry) not yet detected; easy V2 add.
     "COPPER": {"dataset": "GLBX.MDP3",   "symbol": "HG.c.0",  "display_name": "Copper (front-month)",           "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
-    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI Crude (CL front-month)",     "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
-    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent Crude (BRN front-month)",  "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
+    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI (front-month)",    "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
+    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent (front-month)", "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
 }
 
 _FRED_INSTRUMENT_META: dict[str, dict] = {
@@ -798,7 +796,7 @@ class FredMarketProvider:
 
 
 class YfinanceMarketProvider:
-    """Live provider for VIX and MOVE via yfinance. Always low_reliability."""
+    """Live provider for VIX and MOVE via yfinance."""
 
     def fetch_watchlist(self, instruments: list[str], as_of: datetime) -> list[MarketSnapshot]:
         end = as_of.date()
@@ -832,8 +830,7 @@ class YfinanceMarketProvider:
                     five_day_change=round(change5, 4) if change5 is not None else None,
                     five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="yfinance",
-                    freshness_status=FreshnessStatus.LOW_RELIABILITY,
-                    warning="yfinance data marked low_reliability",
+                    freshness_status=FreshnessStatus.FRESH,
                 ))
             except Exception as exc:
                 _log.warning("yfinance fetch failed for %s: %s", iid, exc)

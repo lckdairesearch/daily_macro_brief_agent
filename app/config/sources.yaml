@@ -3,7 +3,7 @@
 market:
   primary: alpha_vantage
   supplemental: databento
-  move_index: yfinance  # low_reliability flag applied automatically
+  move_index: yfinance
   hy_oas: fred
 
 calendar:

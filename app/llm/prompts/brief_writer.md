@@ -44,8 +44,7 @@ Return a JSON object matching this schema exactly. Do not add extra top-level ke
     "supporting_evidence_ids": ["ev_005"],
     "confidence": 0.6
   },
-  "chart_caption": "≤30 words tied to the day's top theme. null if no chart fits.",
-  "warnings": ["data gaps or limitations to disclose"]
+  "chart_caption": "≤30 words tied to the day's top theme. null if no chart fits."
 }
 ```
 
@@ -69,7 +68,7 @@ Selection priority (use `proposed_three_things` cards as seeds):
 4. Non-mainstream research with a clear thesis and direct book relevance.
 
 Rules:
-- Provide 1–3 items. Provide exactly 3 when evidence supports 3 high-quality items; provide fewer otherwise and add a `warnings` entry explaining the gap.
+- Provide 1–3 items. Provide exactly 3 when evidence supports 3 high-quality items; provide fewer otherwise.
 - Each `body` is **≤80 words**. Cut aggressively — no filler.
 - `so_what` names a specific position, not a generic direction (e.g. "short duration" not "bearish").
 - If a referenced instrument is listed in `stale_instruments`, include `(price data is stale)` in `body`.
@@ -88,7 +87,7 @@ Rules:
 - `body` is **50–100 words**.
 - Frame as a watch item: what the market is NOT pricing and why it deserves attention.
 - Must be supported by at least one evidence card or a cross-asset observation from `market_snapshots`.
-- If no genuine mispricing narrative is supported by the supplied evidence, return `null` and add a `warnings` entry.
+- If no genuine mispricing narrative is supported by the supplied evidence, return `null`.
 
 ### chart_caption
 
