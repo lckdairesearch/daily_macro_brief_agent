@@ -111,6 +111,26 @@ class TestPushChartToGithub:
         # Last set-url restores the original
         assert "x-access-token" not in " ".join(set_url_calls[-1])
 
+    def test_run_folder_chart_copied_to_outputs_root(self, tmp_path):
+        """Charts inside outputs/runs/ (gitignored) must be staged from outputs/ root."""
+        run_dir = REPO_ROOT / "outputs" / "runs" / "2026-05-09" / "test_run"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        chart = run_dir / "_test_chart.png"
+        chart.write_bytes(b"\x89PNG fake")
+        root_copy = REPO_ROOT / "outputs" / "_test_chart.png"
+        try:
+            url, mock_run = self._run_with_mocks(chart, changed=True)
+            assert url is not None
+            assert "outputs/_test_chart.png" in url
+            assert "outputs/runs/" not in url
+            cmds = [c.args[0] for c in mock_run.call_args_list]
+            add_calls = [c for c in cmds if "add" in c]
+            assert add_calls
+            assert all("outputs/runs/" not in " ".join(c) for c in add_calls)
+        finally:
+            chart.unlink(missing_ok=True)
+            root_copy.unlink(missing_ok=True)
+
     def test_commit_message_contains_skip_ci(self, tmp_path):
         chart = _chart(tmp_path)
         commits = []

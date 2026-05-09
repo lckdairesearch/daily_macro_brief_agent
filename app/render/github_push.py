@@ -1,11 +1,13 @@
 """Push chart PNG to GitHub; return raw.githubusercontent.com URL on success."""
 from __future__ import annotations
 
+import shutil
 import subprocess
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_OUTPUTS_RUNS = REPO_ROOT / "outputs" / "runs"
 
 
 def push_chart_to_github(
@@ -19,10 +21,17 @@ def push_chart_to_github(
     Returns None on failure — caller falls back to CID attachment.
     Skips commit when chart has not changed (diff-index --quiet).
     """
+    resolved = chart_path.resolve()
     try:
-        rel_path = chart_path.resolve().relative_to(REPO_ROOT)
+        rel_path = resolved.relative_to(REPO_ROOT)
     except ValueError:
         return None  # chart outside repo
+
+    # outputs/runs/** is gitignored; copy to outputs/ root where chart_*.png is tracked.
+    if resolved.is_relative_to(_OUTPUTS_RUNS):
+        git_path = REPO_ROOT / "outputs" / chart_path.name
+        shutil.copy2(resolved, git_path)
+        rel_path = git_path.relative_to(REPO_ROOT)
 
     try:
         changed = subprocess.run(
