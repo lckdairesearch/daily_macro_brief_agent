@@ -13,6 +13,10 @@
             padding: 20px;
             line-height: 1.5;
         }
+        .micro-note { font-size: 10px; color: #999; }
+        .meta-text { font-size: 11px; color: #666; }
+        .body-compact { font-size: 13px; color: #444; }
+        .body-emphasis { font-size: 14px; color: #24292e; font-weight: 500; }
         .container { max-width: 650px; margin: 0 auto; }
         .date-line {
             font-size: 11px;
@@ -79,7 +83,7 @@
         .so-what-tag {
             color: #004dcf;
             font-weight: bold;
-            font-size: 11px;
+            font-size: 13px;
             margin-top: 10px;
             display: block;
             background: rgba(0, 77, 207, 0.05);
@@ -88,19 +92,17 @@
             border-radius: 2px;
             border-left: 2px solid #004dcf;
         }
-        .calendar-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px 20px;
-            font-size: 12px;
-        }
+        .calendar-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .calendar-col { width: 50%; vertical-align: top; padding-right: 10px; }
+        .calendar-col-right { padding-left: 10px; padding-right: 0; }
+        .calendar-spacer { width: 12px; }
         .cal-item {
             border-bottom: 1px dashed #eee;
             padding: 6px 0;
         }
         .cal-meta { color: #666; font-variant-numeric: tabular-nums; font-size: 11px; margin-bottom: 2px; }
-        .cal-event { font-weight: 700; color: #1a1a1a; display: block; }
-        .cal-impact-high::before { content: "● "; color: #d93025; font-size: 10px; vertical-align: middle; }
+        .cal-event { font-weight: 700; color: #1a1a1a; display: block; font-size: 13px; line-height: 1.35; }
+        .cal-marker { color: #d93025; font-size: 10px; vertical-align: middle; padding-right: 4px; }
         .cal-vals { color: #555; font-size: 11px; margin-top: 2px; }
         .chart-box { margin: 20px 0; }
         .chart-img { width: 100%; height: auto; border-radius: 4px; border: 1px solid #eee; }
@@ -139,7 +141,12 @@
             display: block;
         }
         @media (max-width: 580px) {
-            .calendar-grid { grid-template-columns: 1fr; }
+            .calendar-table, .calendar-table tbody, .calendar-table tr, .calendar-col, .calendar-spacer {
+                display: block !important;
+                width: 100% !important;
+            }
+            .calendar-col, .calendar-col-right { padding-left: 0 !important; padding-right: 0 !important; }
+            .calendar-spacer { height: 0 !important; }
             h1 { font-size: 24px; }
             .section-header { font-size: 15px; }
         }
@@ -192,16 +199,33 @@
         {% endfor %}
 
         <div class="section-header">Today's Calendar</div>
-        <div class="calendar-grid">
-            {% for event in calendar_events %}
-            <div class="cal-item">
-                <div class="cal-meta">{{ event.time_hkt }} • {{ event.country_or_region }}</div>
-                <span class="cal-event{% if event.high_importance %} cal-impact-high{% endif %}">{{ event.event_name }}</span>
-                <div class="cal-vals">Exp: {{ event.consensus }} | Prev: {{ event.previous }}</div>
-            </div>
-            {% endfor %}
-        </div>
-        <p style="font-size: 10px; color: #999; margin-top: 8px;">* All times indicated are in HKT.</p>
+        <table class="calendar-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tbody>
+                {% for left, right in calendar_event_rows %}
+                <tr>
+                    <td class="calendar-col">
+                        <div class="cal-item">
+                            <div class="cal-meta">{{ left.time_hkt }} • {{ left.country_or_region }}</div>
+                            <span class="cal-event">{% if left.importance_marker %}<span class="cal-marker">{{ left.importance_marker }}</span>{% endif %}{{ left.event_name }}</span>
+                            <div class="cal-vals">Exp: {{ left.consensus }} | Prev: {{ left.previous }}</div>
+                        </div>
+                    </td>
+                    <td class="calendar-spacer"></td>
+                    <td class="calendar-col calendar-col-right">
+                        {% if right %}
+                        <div class="cal-item">
+                            <div class="cal-meta">{{ right.time_hkt }} • {{ right.country_or_region }}</div>
+                            <span class="cal-event">{% if right.importance_marker %}<span class="cal-marker">{{ right.importance_marker }}</span>{% endif %}{{ right.event_name }}</span>
+                            <div class="cal-vals">Exp: {{ right.consensus }} | Prev: {{ right.previous }}</div>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="micro-note" style="margin-top: 8px;">* Red marker denotes key events for our book.</p>
+        <p class="micro-note" style="margin-top: 8px;">* All times indicated are in HKT.</p>
 
         {% if chart %}
         <div class="section-header">One Chart Worth Seeing</div>
@@ -229,14 +253,14 @@
         <div class="section-header">Contrarian Corner</div>
         <div class="contrarian-section">
             <span class="contrarian-label">The Missing Narrative</span>
-            <p style="margin: 0; font-size: 14px;">{{ contrarian_corner.body }}</p>
+            <p class="body-emphasis" style="margin: 0;">{{ contrarian_corner.body }}</p>
             {% if contrarian_corner.so_what %}
             <span class="so-what-tag">Watch item: {{ contrarian_corner.so_what }}</span>
             {% endif %}
         </div>
         {% endif %}
 
-<div style="padding: 40px 0; font-size: 11px; color: #999; text-align: center;">
+<div class="meta-text" style="padding: 40px 0; text-align: center;">
             Macro Brief Agent | For Internal Use Only
         </div>
     </div>

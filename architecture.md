@@ -1347,6 +1347,21 @@ The template should prioritize readability:
 - Contrarian corner.
 - Source/failure warnings if applicable.
 
+Email typography scale:
+
+- The runtime reference is `app/render/templates/brief_template.html`.
+- `app/render/templates/example.html` should mirror the scale for visual review, but it is not the source of truth.
+- Use a compact PM-scanning hierarchy:
+  - `10px`: footnotes and micro notes
+  - `11px`: metadata, table headers, and small utility text
+  - `12px`: chart caption
+  - `13px`: body copy, dashboard table body, calendar event text, and calendar values
+  - `14px`: impact-summary body and contrarian body
+  - `15px`: emphasized local titles such as `thing-title` and `radar-title`
+  - `17px`: section headers
+  - `28px` desktop / `24px` mobile: main title
+- Do not leave calendar event text implicit; `cal-event` must define its own compact size instead of inheriting the default body font.
+
 Dashboard presentation rules:
 
 - 1D direction color is derived from the sign of `one_day_change`.
