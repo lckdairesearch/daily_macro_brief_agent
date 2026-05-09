@@ -129,16 +129,16 @@ def test_settings_validate_live_mode_reports_missing():
     assert "ALPHA_VANTAGE_API_KEY" in errors
 
 
-def test_settings_validate_live_email_enabled_reports_sendgrid():
-    """validate_for_mode(LIVE) reports SendGrid keys when email delivery is enabled."""
+def test_settings_validate_live_email_enabled_reports_postmark():
+    """validate_for_mode(LIVE) reports Postmark keys when email delivery is enabled."""
     app = AppConfig()
     creds = Credentials.model_construct(
         openai_api_key="sk-test",
         alpha_vantage_api_key="av-test",
         enable_email_delivery=True,
-        sendgrid_api_key=None,
-        sendgrid_from_email=None,
-        sendgrid_to_email=None,
+        postmark_api_key=None,
+        postmark_from_email=None,
+        postmark_to_email=None,
         llm_scout_model=None,
         llm_x_scout_model=None,
         llm_synthesis_model=None,
@@ -146,9 +146,9 @@ def test_settings_validate_live_email_enabled_reports_sendgrid():
     )
     settings = Settings(app, creds, {}, {}, {}, {})
     errors = settings.validate_for_mode(RunMode.LIVE)
-    assert "SENDGRID_API_KEY" in errors
-    assert "SENDGRID_FROM_EMAIL" in errors
-    assert "SENDGRID_TO_EMAIL" in errors
+    assert "POSTMARK_API_KEY" in errors
+    assert "POSTMARK_FROM_EMAIL" in errors
+    assert "POSTMARK_TO_EMAIL" in errors
 
 
 def test_settings_load_resolves_all_yaml():

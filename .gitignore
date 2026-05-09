@@ -15,8 +15,16 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# Generated run outputs
-outputs/
+# Generated run outputs — track sample artifacts and live chart PNGs only
+outputs/*
+!outputs/.gitkeep
+!outputs/sample_brief.html
+!outputs/sample_brief.txt
+!outputs/sample_chart.png
+!outputs/live_eval/
+outputs/live_eval/*
+!outputs/live_eval/*.png
+outputs/_test_chart.png
 
 # Build / packaging
 dist/

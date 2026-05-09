@@ -68,10 +68,15 @@ class Credentials(BaseSettings):
     taddy_api_key: str | None = None
 
     # Delivery — required for live email send
-    sendgrid_api_key: str | None = None
-    sendgrid_from_email: str | None = None
-    sendgrid_to_email: str | None = None
+    postmark_api_key: str | None = None
+    postmark_from_email: str | None = None
+    postmark_to_email: str | None = None
     enable_email_delivery: bool = False
+
+    # GitHub chart hosting (auto-commit after each run)
+    github_token: str | None = None
+    github_repo: str | None = None
+    github_branch: str | None = None
 
     # Deployment-specific overrides
     app_mode: str | None = None
@@ -147,9 +152,9 @@ class Settings:
 
         if mode == RunMode.LIVE and self.creds.enable_email_delivery:
             for name, val in [
-                ("SENDGRID_API_KEY", self.creds.sendgrid_api_key),
-                ("SENDGRID_FROM_EMAIL", self.creds.sendgrid_from_email),
-                ("SENDGRID_TO_EMAIL", self.creds.sendgrid_to_email),
+                ("POSTMARK_API_KEY", self.creds.postmark_api_key),
+                ("POSTMARK_FROM_EMAIL", self.creds.postmark_from_email),
+                ("POSTMARK_TO_EMAIL", self.creds.postmark_to_email),
             ]:
                 if not val:
                     missing.append(name)

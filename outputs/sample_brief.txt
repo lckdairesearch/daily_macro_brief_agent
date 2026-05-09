@@ -1,0 +1,52 @@
+2026-05-09 | Morning Brief
+Macro Synthesis
+
+OVERNIGHT BOOK IMPACT
+Higher real-rate pressure supports the short-duration sleeve, while metals strength reinforces the long metals complex and monetary debasement theme.
+
+OVERNIGHT DASHBOARD
+S&P 500 (proxy): 520.00 | -1.20% | 5D ↘
+Nasdaq 100 (proxy): 430.00 | -2.10% | 5D ↘
+Euro Stoxx 50: 4,850.0 | +0.31% | 5D →
+US 2Y Yield: 4.720% | +3.0bps | 5D →
+US 10Y Yield: 4.450% | +5.0bps | 5D →
+German 10Y (Bund): 2.520% | +2.0bps | 5D →
+DXY (proxy): 104.20 | -0.29% | 5D ↘
+USD/JPY: 153.40 | +0.33% | 5D ↗
+EUR/USD: 1.085 | -0.12% | 5D ↘
+USD/CNH: 7.245 | +0.08% | 5D ↗
+Gold (spot): 4,698.0 | +0.35% | 5D ↗
+WTI Crude: 78.5 | -1.01% | 5D ↘
+Brent Crude: 82.3 | -0.85% | 5D ↘
+Silver (spot): 26.5 | +0.85% | 5D →
+Copper (HG front-month): 6.12 | -0.60% | 5D →
+Bitcoin: 62,500.0 | +1.30% | 5D ↗
+VIX: 16.8 | -2.89% | 5D →
+MOVE Index: 108.00 | +1.89% | 5D ↗
+HY OAS (BAMLH0A0HYM2): 330.000% | +5.0bps | 5D ↗
+
+THE 3 THINGS
+1. Metals complex gains on central bank accumulation
+Gold and silver moved higher amid continued central bank buying. Reserve managers are diversifying away from dollar-denominated assets, keeping the bid elevated. Real yields softened, removing a key headwind for non-yielding metals and reinforcing the structural debasement narrative.
+So what: Supports long metals complex position in the book.
+
+TODAY'S CALENDAR
+20:30 US - Nonfarm Payrolls (Apr) (Exp: 65K; Prev: 178K)
+20:30 US - Average Hourly Earnings (MoM) (Apr) (Exp: 0.3%; Prev: 0.2%)
+20:30 US - Unemployment Rate (Apr) (Exp: 4.3%; Prev: 4.3%)
+08:30 Japan - S&P Global Services PMI (Apr) (Exp: 51.2; Prev: 53.4)
+15:00 EU - ECB President Lagarde Speaks (Exp: n/a; Prev: n/a)
+19:30 US - FOMC Member Bowman Speaks (Exp: n/a; Prev: n/a)
+
+ONE CHART WORTH SEEING
+Overnight market moves
+outputs/sample_chart.png
+
+THEME RADAR
+Fiscal Dominance Thesis — Research Note - Sample Economic Source
+https://example.com/placeholder
+Author argues fiscal dominance is now the primary driver of long-end yields. Evidence includes persistently widening deficits and sustained Treasury issuance at elevated supply levels. Central banks are losing credibility as effective inflation anchors. Historical parallels drawn to the 1940s yield curve control era when fiscal needs overrode monetary independence. Non-mainstream source challenges the consensus soft-landing narrative. What this means for our book: reinforces short duration positioning.
+Reinforces short duration positioning in our book.
+
+WARNINGS
+- contrarian_corner is absent

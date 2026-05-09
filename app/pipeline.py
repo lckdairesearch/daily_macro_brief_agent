@@ -161,10 +161,10 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         )
     warnings.extend(validation.warnings)
 
-    # --- Step 10: Render HTML/text/chart ---
-    # TODO Step 11: from app.render.email import render_brief
+    # --- Step 10: Build chart ---
     from app.render.charts import build_chart
     output_paths: dict[str, str] = {}
+    chart_image_url: str | None = None
     try:
         chart_spec = build_chart(
             draft=brief_draft,
@@ -176,19 +176,86 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         if chart_spec.file_path:
             output_paths["chart"] = chart_spec.file_path
             brief_draft = brief_draft.model_copy(update={"chart": chart_spec})
+
+            # Push chart to GitHub for inline email rendering
+            from pathlib import Path as _Path
+            from app.render.github_push import push_chart_to_github
+            chart_image_url = push_chart_to_github(
+                chart_path=_Path(chart_spec.file_path),
+                repo=settings.creds.github_repo or "lckdairesearch/daily_macro_brief_agent",
+                branch=settings.creds.github_branch or "master",
+                token=settings.creds.github_token,
+            )
+            if not chart_image_url:
+                warnings.append("Chart GitHub push failed — chart will appear as email attachment")
     except Exception as _chart_exc:
         _log.warning("Chart generation failed: %s", _chart_exc)
         warnings.append(f"Chart generation failed: {_chart_exc}")
 
-    # --- Step 11: Deliver email if enabled ---
-    # Sample and dry-run never send real email.
-    if mode == RunMode.LIVE and settings.creds.enable_email_delivery:
-        # TODO Step 12: from app.delivery import send_email
-        delivery_status = DeliveryStatus.SKIPPED
-    else:
-        delivery_status = DeliveryStatus.DISABLED
+    # --- Step 11: Render HTML/text ---
+    from app.data.market import load_vol_params
+    from app.render.email import render_brief
+    render_paths: dict[str, str] = {}
 
-    # --- Step 12: Record run metadata ---
+    # Back-fill run_metadata so the render has full context
+    if brief_draft is not None:
+        # Temporary metadata for render (will be updated after delivery)
+        _tmp_meta = RunMetadata(
+            run_id=run_id,
+            run_started_at=started_at,
+            data_cutoff_at=data_cutoff,
+            timezone=settings.app.timezone,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            token_usage=llm_usages,
+            warnings=warnings,
+            failed_sources=failed_sources,
+            delivery_status=DeliveryStatus.DISABLED,
+            output_paths=output_paths,
+        )
+        brief_draft.run_metadata = _tmp_meta.model_dump(mode="json")
+        try:
+            render_paths = render_brief(
+                draft=brief_draft,
+                settings=settings,
+                vol_params=load_vol_params(settings.config_dir),
+                chart_image_url=chart_image_url,
+            )
+            output_paths.update(render_paths)
+        except Exception as render_exc:
+            _log.warning("Brief rendering failed: %s", render_exc)
+            warnings.append(f"Brief rendering failed: {render_exc}")
+
+    # --- Step 12: Deliver email ---
+    # Sample: always delivers to configured recipient (subject prefixed [SAMPLE])
+    # Live:   delivers only when ENABLE_EMAIL_DELIVERY=true
+    # Dry-run: no delivery
+    from app.delivery import NoopDeliveryProvider, get_provider
+    delivery_status = DeliveryStatus.DISABLED
+    provider = get_provider(mode, settings)
+    if not isinstance(provider, NoopDeliveryProvider):
+        from pathlib import Path as _Path
+        inline_images = None
+        if not chart_image_url and brief_draft and brief_draft.chart and brief_draft.chart.file_path:
+            _cpath = _Path(brief_draft.chart.file_path)
+            if _cpath.exists():
+                inline_images = [
+                    {"cid": "chart@brief", "name": "chart.png", "data": _cpath.read_bytes()}
+                ]
+        html_body = _Path(render_paths["html"]).read_text(encoding="utf-8") if render_paths.get("html") else ""
+        text_body = _Path(render_paths["text"]).read_text(encoding="utf-8") if render_paths.get("text") else ""
+        subject = "[SAMPLE] Morning Macro Brief" if mode == RunMode.SAMPLE else "Morning Macro Brief"
+        delivery_result = provider.send(
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+            inline_images=inline_images,
+        )
+        delivery_status = DeliveryStatus.SUCCESS if delivery_result.success else DeliveryStatus.FAILED
+        if not delivery_result.success:
+            warnings.append(f"Email delivery failed: {delivery_result.error_message}")
+
+    # --- Step 13: Record run metadata ---
     run_metadata = RunMetadata(
         run_id=run_id,
         run_started_at=started_at,
@@ -205,26 +272,8 @@ def run_pipeline(mode: RunMode | str, settings: "Settings") -> PipelineResult:
         delivery_status=delivery_status,
         output_paths=output_paths,
     )
-
-    # Back-fill run_metadata into the draft so rendering has full context
     if brief_draft is not None:
         brief_draft.run_metadata = run_metadata.model_dump(mode="json")
-        try:
-            from app.data.market import load_vol_params
-            from app.render.email import render_brief
-
-            render_paths = render_brief(
-                draft=brief_draft,
-                settings=settings,
-                vol_params=load_vol_params(settings.config_dir),
-            )
-            output_paths.update(render_paths)
-            run_metadata.output_paths = output_paths
-            brief_draft.run_metadata = run_metadata.model_dump(mode="json")
-        except Exception as render_exc:
-            _log.warning("Brief rendering failed: %s", render_exc)
-            warnings.append(f"Brief rendering failed: {render_exc}")
-            run_metadata.warnings = warnings
 
     return PipelineResult(success=True, run_metadata=run_metadata, brief_draft=brief_draft)
 

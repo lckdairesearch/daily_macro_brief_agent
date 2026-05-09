@@ -28,12 +28,13 @@ def render_brief(
     settings: "Settings",
     output_dir: str | Path | None = None,
     vol_params: dict[str, dict[str, Any]] | None = None,
+    chart_image_url: str | None = None,
 ) -> dict[str, str]:
     """Render HTML and plain-text artifacts and return their paths."""
     out_dir = Path(output_dir or settings.app.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    context = build_render_context(draft, settings, vol_params=vol_params)
+    context = build_render_context(draft, settings, vol_params=vol_params, chart_image_url=chart_image_url)
     html = render_html(context)
     text = render_text(context)
 
@@ -117,6 +118,7 @@ def build_render_context(
     draft: BriefDraft,
     settings: "Settings",
     vol_params: dict[str, dict[str, Any]] | None = None,
+    chart_image_url: str | None = None,
 ) -> dict[str, Any]:
     """Convert a BriefDraft into template-ready display fields."""
     metadata = draft.run_metadata or {}
@@ -133,7 +135,7 @@ def build_render_context(
         ],
         "three_things": draft.three_things,
         "calendar_events": [_format_calendar_event(event) for event in draft.todays_calendar],
-        "chart": _format_chart(draft.chart),
+        "chart": _format_chart(draft.chart, image_url=chart_image_url),
         "radar_items": draft.radar_items,
         "contrarian_corner": draft.contrarian_corner,
     }
@@ -183,10 +185,15 @@ def _format_calendar_event(event: CalendarEvent) -> dict[str, str | bool]:
     }
 
 
-def _format_chart(chart: ChartSpec | None) -> dict[str, str] | None:
+def _format_chart(chart: ChartSpec | None, image_url: str | None = None) -> dict[str, str] | None:
     if chart is None or not chart.file_path:
         return None
+    path = Path(chart.file_path)
+    if not path.exists() and not image_url:
+        return None
+    src = image_url or "cid:chart@brief"
     return {
+        "src": src,
         "file_path": chart.file_path,
         "title": chart.title or "Market analysis chart",
         "caption": chart.caption,
