@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from datetime import datetime
 from pathlib import Path
 from time import perf_counter
@@ -60,19 +59,19 @@ def run_pipeline(
      12. Save artifacts and metadata
     """
     mode = RunMode(mode)
-    started_at = datetime.now()
+    tz = ZoneInfo(settings.app.timezone)
+    started_at = datetime.now(tz)
     warnings: list[str] = []
     failed_sources: list[str] = []
     llm_usages: list[LLMUsage] = []
     timings: list[dict] = []
     output_paths: dict[str, str] = {}
-    run_id = str(uuid.uuid4())
 
     # --- Step 1: Determine run window ---
     _progress(progress, "Determine run window")
     _step_started = perf_counter()
-    tz = ZoneInfo(settings.app.timezone)
     data_cutoff = _data_cutoff(settings, tz, data_cutoff)
+    run_id = _run_id(mode, started_at)
     run_output_dir = _run_output_dir(settings, data_cutoff, run_id)
     llm_cfg = settings.sources.get("llm", {})
     llm_provider = llm_cfg.get("provider", "litellm")
@@ -423,6 +422,14 @@ def _chart_output_path(
 def _run_output_dir(settings: "Settings", data_cutoff: datetime, run_id: str) -> Path:
     """Return the per-run artifact directory."""
     return Path(settings.app.output_dir) / "runs" / data_cutoff.strftime("%Y-%m-%d") / run_id
+
+
+def _run_id(mode: RunMode, started_at: datetime) -> str:
+    """Return a timestamp-based run id, with sample runs explicitly labeled."""
+    run_id = started_at.strftime("%Y%m%d_%H%M%S")
+    if mode == RunMode.SAMPLE:
+        return f"{run_id}_sample"
+    return run_id
 
 
 def _evidence_output_path(settings: "Settings", data_cutoff: datetime, run_id: str) -> Path:

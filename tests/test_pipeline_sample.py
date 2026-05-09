@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -101,8 +102,9 @@ def test_sample_pipeline_run_metadata_populated(mock_writer):
     settings = Settings.load()
     result = run_pipeline(RunMode.SAMPLE, settings)
     meta = result.run_metadata
-    assert meta.run_id
+    assert re.fullmatch(r"\d{8}_\d{6}_sample", meta.run_id)
     assert meta.run_started_at is not None
+    assert meta.run_started_at.tzinfo is not None
     assert meta.data_cutoff_at is not None
     assert meta.timezone == "Asia/Hong_Kong"
     assert meta.llm_provider == "litellm"
@@ -153,6 +155,7 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, tmp_pat
     assert chart_path.name == "sample_chart.png"
     assert rendered_html_path.name == "brief_rendered.html"
     assert metadata_path.name == "run_metadata.json"
+    assert re.fullmatch(r"\d{8}_\d{6}_sample", result.run_metadata.run_id)
     assert evidence_path.parent.name == result.run_metadata.run_id
     assert evidence_path.parent.parent.name == result.run_metadata.data_cutoff_at.strftime("%Y-%m-%d")
     assert evidence_path.parent.parent.parent.name == "runs"
