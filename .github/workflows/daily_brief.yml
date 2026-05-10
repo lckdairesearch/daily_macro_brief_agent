@@ -50,5 +50,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: brief-outputs-${{ github.run_id }}
-          path: outputs/
+          path: outputs/runs/
           retention-days: 30
