@@ -1,5 +1,7 @@
 # Memo — Daily Macro Brief Agent
 
+**GitHub:** https://github.com/lckdairesearch/daily_macro_brief_agent
+
 ## Design Tradeoffs
 
 **LLM stack — OpenAI via Azure.** Azure OpenAI was chosen as the primary provider because it offers a plug-and-play enterprise API available and compliant in Hong Kong, with no data-residency friction. Models are tiered by task: GPT-5.5 (higher reasoning) for synthesis and editorial review; GPT-5.4 (faster, cheaper) for scout extraction and chart selection. This keeps quality high where it matters and cost controlled where it does not.
