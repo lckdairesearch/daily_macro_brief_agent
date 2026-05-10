@@ -174,21 +174,39 @@ def _av_fetch_daily(
 _DB_TIMEOUT_SECS = 120
 
 
+def _db_safe_end_dt(as_of: datetime) -> datetime:
+    """Return the safe Databento end datetime: 22:00 UTC, rolled back to Friday on weekends.
+
+    All EOD bars settle before 22:00 UTC (CME ~21:00, ICE ~17:00), and it stays inside
+    the live-data boundary (~22:13 UTC for GLBX.MDP3, ~22:05 for IFEU.IMPACT).
+    A bare date ("YYYY-MM-DD") maps to midnight UTC — exceeds the boundary on weekends.
+    """
+    utc = as_of.astimezone(ZoneInfo("UTC"))
+    end = utc.replace(hour=22, minute=0, second=0, microsecond=0)
+    if end > utc:
+        end -= timedelta(days=1)
+    weekday = end.weekday()
+    if weekday == 5:      # Saturday → Friday
+        end -= timedelta(days=1)
+    elif weekday == 6:    # Sunday → Friday
+        end -= timedelta(days=2)
+    return end
+
+
 def _db_fetch_daily_ohlcv(
     dataset: str,
     symbol: str,
     api_key: str,
     start_date: date,
-    end_date: date | str,
+    as_of: datetime,
     price_to_yield: bool = False,
 ) -> list[dict]:
     """
     Fetch daily close rows from Databento using the ohlcv-1d schema.
 
-    end_date accepts a date object ("YYYY-MM-DD" → midnight UTC, exclusive) or a
-    timestamp string ("YYYY-MM-DDTHH:MM:SS") passed verbatim to get_range.  Pass a
-    timestamp ending at 22:00 UTC to capture the same-day EOD bar without touching
-    the live-data boundary (~22:13 UTC for GLBX.MDP3, ~22:05 for IFEU.IMPACT).
+    End time is computed internally via _db_safe_end_dt: pinned to 22:00 UTC and
+    rolled back to Friday on weekends to stay inside the live-data boundary
+    (~22:13 UTC for GLBX.MDP3, ~22:05 for IFEU.IMPACT).
 
     Symbol format confirmed by live probing (2026-05-08/09):
       FGBL  → symbol="FGBL.c.0",  dataset="XEUR.EOBI",   stype_in="continuous"  ✓
@@ -211,13 +229,9 @@ def _db_fetch_daily_ohlcv(
     import concurrent.futures
     import databento as db
 
-    # Normalize end_date: symbology.resolve needs a date object; get_range needs a string.
-    if isinstance(end_date, str):
-        end_date_obj = date.fromisoformat(end_date[:10])
-        end_str = end_date
-    else:
-        end_date_obj = end_date
-        end_str = end_date.isoformat()
+    end_dt = _db_safe_end_dt(as_of)
+    end_date_obj = end_dt.date()
+    end_str = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     client = db.Historical(api_key)
 
@@ -731,23 +745,7 @@ class DatabentoMarketProvider:
         self._api_key = api_key
 
     def fetch_watchlist(self, instruments: list[str], as_of: datetime) -> list[MarketSnapshot]:
-        # Use 22:00 UTC on the as_of UTC date as the end timestamp.
-        # All EOD bars settle before this (CME ~21:00 UTC, ICE ~17:00 UTC), and it stays
-        # inside the settled (non-live) data boundary (~22:13 UTC for GLBX, ~22:05 for IFEU).
-        # A bare date string "YYYY-MM-DD" would be midnight UTC — one full day too early.
-        as_of_utc = as_of.astimezone(ZoneInfo("UTC"))
-        end_dt_utc = as_of_utc.replace(hour=22, minute=0, second=0, microsecond=0)
-        if end_dt_utc > as_of_utc:
-            end_dt_utc -= timedelta(days=1)
-        # Roll back to Friday if end falls on a weekend — Databento has no weekend bars
-        # and will return 422 data_end_after_available_end for Saturday/Sunday end times.
-        weekday = end_dt_utc.weekday()  # Mon=0, Sat=5, Sun=6
-        if weekday == 5:    # Saturday → Friday
-            end_dt_utc -= timedelta(days=1)
-        elif weekday == 6:  # Sunday → Friday
-            end_dt_utc -= timedelta(days=2)
-        end_ts = end_dt_utc.strftime("%Y-%m-%dT%H:%M:%S")
-        start = end_dt_utc.date() - timedelta(days=_LIVE_LOOKBACK_DAYS)
+        start = _db_safe_end_dt(as_of).date() - timedelta(days=_LIVE_LOOKBACK_DAYS)
         snapshots: list[MarketSnapshot] = []
         for iid in instruments:
             meta = _DB_INSTRUMENT_META.get(iid)
@@ -760,7 +758,7 @@ class DatabentoMarketProvider:
                     meta["symbol"],
                     self._api_key,
                     start,
-                    end_ts,
+                    as_of,
                     price_to_yield=meta["price_to_yield"],
                 )
                 if len(rows) < 2:
@@ -1012,9 +1010,12 @@ def fetch_chart_series(
                 rows = _db_fetch_daily_ohlcv(
                     meta["dataset"], meta["symbol"],
                     settings.creds.databento_api_key,
-                    start, end,
+                    start, as_of,
                     price_to_yield=meta["price_to_yield"],
                 )
+                if rows and not _is_observation_current(rows, as_of):
+                    _warn_stale_observation("Databento/chart", iid, rows, as_of)
+                    rows = []
             elif iid in _FRED_INSTRUMENT_META:
                 meta = _FRED_INSTRUMENT_META[iid]
                 rows = _fred_fetch_series(meta["series_id"], settings.creds.fred_api_key, start, end)

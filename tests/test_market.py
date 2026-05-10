@@ -125,6 +125,7 @@ def test_fgbl_price_to_yield_round_trip():
 
 _START = date(2026, 5, 6)
 _END = date(2026, 5, 8)
+_AS_OF = datetime(2026, 5, 8, 20, 0, 0, tzinfo=timezone.utc)  # Thursday 20:00 UTC → safe end = same day 22:00 UTC
 
 
 def _mock_response(payload: dict) -> MagicMock:
@@ -337,7 +338,7 @@ def test_db_fetch_daily_symbol_not_found(db_client_mock):
 
     with patch("databento.Historical", return_value=db_client_mock):
         with pytest.raises(ValueError, match="could not be resolved"):
-            _db_fetch_daily_ohlcv("GLBX.MDP3", "VX.c.0", "key", _START, _END)
+            _db_fetch_daily_ohlcv("GLBX.MDP3", "VX.c.0", "key", _START, _AS_OF)
 
 
 def test_db_fetch_daily_empty_dataframe(db_client_mock):
@@ -349,7 +350,7 @@ def test_db_fetch_daily_empty_dataframe(db_client_mock):
     db_client_mock.timeseries.get_range.return_value = store
 
     with patch("databento.Historical", return_value=db_client_mock):
-        rows = _db_fetch_daily_ohlcv("XEUR.EOBI", "FESX.c.0", "key", _START, _END)
+        rows = _db_fetch_daily_ohlcv("XEUR.EOBI", "FESX.c.0", "key", _START, _AS_OF)
     assert rows == []
 
 
@@ -367,7 +368,7 @@ def test_db_fetch_daily_deduplication(db_client_mock):
     db_client_mock.timeseries.get_range.return_value = store
 
     with patch("databento.Historical", return_value=db_client_mock):
-        rows = _db_fetch_daily_ohlcv("XEUR.EOBI", "FESX.c.0", "key", _START, _END)
+        rows = _db_fetch_daily_ohlcv("XEUR.EOBI", "FESX.c.0", "key", _START, _AS_OF)
 
     assert len(rows) == 2
     assert rows[0]["close"] == pytest.approx(5000.0)  # high-volume row for 2026-05-07
@@ -386,7 +387,7 @@ def test_db_fetch_daily_price_to_yield(db_client_mock):
 
     with patch("databento.Historical", return_value=db_client_mock):
         rows = _db_fetch_daily_ohlcv(
-            "XEUR.EOBI", "FGBL.c.0", "key", _START, _END, price_to_yield=True
+            "XEUR.EOBI", "FGBL.c.0", "key", _START, _AS_OF, price_to_yield=True
         )
 
     assert len(rows) == 1
@@ -407,7 +408,7 @@ def test_db_fetch_daily_maps_22utc_bar_to_trading_date(db_client_mock):
     db_client_mock.timeseries.get_range.return_value = store
 
     with patch("databento.Historical", return_value=db_client_mock):
-        rows = _db_fetch_daily_ohlcv("GLBX.MDP3", "CL.c.0", "key", _START, _END)
+        rows = _db_fetch_daily_ohlcv("GLBX.MDP3", "CL.c.0", "key", _START, _AS_OF)
 
     assert [row["date"] for row in rows] == ["2026-05-07", "2026-05-08"]
 
@@ -421,10 +422,52 @@ def test_db_fetch_daily_schema_is_ohlcv_1d(db_client_mock):
     db_client_mock.timeseries.get_range.return_value = store
 
     with patch("databento.Historical", return_value=db_client_mock):
-        _db_fetch_daily_ohlcv("XEUR.EOBI", "FESX.c.0", "key", _START, _END)
+        _db_fetch_daily_ohlcv("XEUR.EOBI", "FESX.c.0", "key", _START, _AS_OF)
 
     call_kwargs = db_client_mock.timeseries.get_range.call_args
     assert call_kwargs.kwargs.get("schema") == "ohlcv-1d"
+
+
+# ---------------------------------------------------------------------------
+# Phase B: _db_safe_end_dt — weekend / time rollback logic
+# ---------------------------------------------------------------------------
+
+def test_db_safe_end_dt_weekday_after_22utc():
+    """Weekday run after 22:00 UTC → same day 22:00 UTC."""
+    from app.data.market import _db_safe_end_dt
+    # Thursday 23:00 UTC → Thursday 22:00 UTC
+    as_of = datetime(2026, 5, 7, 23, 0, 0, tzinfo=timezone.utc)
+    result = _db_safe_end_dt(as_of)
+    assert result == datetime(2026, 5, 7, 22, 0, 0, tzinfo=timezone.utc)
+
+
+def test_db_safe_end_dt_weekday_before_22utc():
+    """Weekday run before 22:00 UTC → previous day 22:00 UTC."""
+    from app.data.market import _db_safe_end_dt
+    # Thursday 12:00 UTC → Wednesday 22:00 UTC
+    as_of = datetime(2026, 5, 7, 12, 0, 0, tzinfo=timezone.utc)
+    result = _db_safe_end_dt(as_of)
+    assert result == datetime(2026, 5, 6, 22, 0, 0, tzinfo=timezone.utc)
+
+
+def test_db_safe_end_dt_saturday():
+    """Saturday run → previous Friday 22:00 UTC."""
+    from app.data.market import _db_safe_end_dt
+    # Saturday 20:00 UTC (e.g. 2026-05-09)
+    as_of = datetime(2026, 5, 9, 20, 0, 0, tzinfo=timezone.utc)
+    result = _db_safe_end_dt(as_of)
+    assert result.weekday() == 4  # Friday
+    assert result == datetime(2026, 5, 8, 22, 0, 0, tzinfo=timezone.utc)
+
+
+def test_db_safe_end_dt_sunday():
+    """Sunday run → previous Friday 22:00 UTC."""
+    from app.data.market import _db_safe_end_dt
+    # Sunday 12:00 UTC (e.g. 2026-05-10, 8pm HKT)
+    as_of = datetime(2026, 5, 10, 12, 0, 0, tzinfo=timezone.utc)
+    result = _db_safe_end_dt(as_of)
+    assert result.weekday() == 4  # Friday
+    assert result == datetime(2026, 5, 8, 22, 0, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
