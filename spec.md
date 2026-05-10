@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build a Python agent that produces a concise morning macro brief for a macro PM before the market day starts.
+Build a Python agent that produces a concise Daily Macro Brief for a macro PM before the market day starts.
 
 The brief should answer:
 

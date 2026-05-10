@@ -421,11 +421,11 @@ def run_pipeline(
         html_body = _Path(render_paths["html"]).read_text(encoding="utf-8") if render_paths.get("html") else ""
         text_body = _Path(render_paths["text"]).read_text(encoding="utf-8") if render_paths.get("text") else ""
         if mode == RunMode.SAMPLE:
-            subject = "[SAMPLE] Morning Macro Brief"
+            subject = "[SAMPLE] Daily Macro Brief"
         elif mode == RunMode.DRY_RUN:
-            subject = "[DRY RUN] Morning Macro Brief"
+            subject = "[DRY RUN] Daily Macro Brief"
         else:
-            subject = "Morning Macro Brief"
+            subject = "Daily Macro Brief"
         delivery_result = provider.send(
             subject=subject,
             html_body=html_body,

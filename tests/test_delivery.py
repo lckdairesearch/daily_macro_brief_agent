@@ -174,7 +174,7 @@ class TestGetProvider:
             ),
         )
         with patch("requests.post", return_value=_ok_response()) as mock_post:
-            provider.send("Morning Macro Brief", "H", "T")
+            provider.send("Daily Macro Brief", "H", "T")
         assert mock_post.call_args.kwargs["json"]["To"] == "maintainer@test.com"
 
     def test_live_delivery_disabled_returns_noop(self):
@@ -189,7 +189,7 @@ class TestGetProvider:
             _settings(postmark_maintainer_email="contact@leonard-dai.com", postmark_to_email="pm@test.com"),
         )
         with patch("requests.post", return_value=_ok_response()) as mock_post:
-            provider.send("Morning Macro Brief", "H", "T")
+            provider.send("Daily Macro Brief", "H", "T")
         assert mock_post.call_args.kwargs["json"]["To"] == "pm@test.com"
 
 
