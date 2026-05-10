@@ -136,7 +136,16 @@ def build_render_context(
     """Convert a BriefDraft into template-ready display fields."""
     metadata = draft.run_metadata or {}
     header_dt = metadata.get("brief_date") or metadata.get("data_cutoff_at")
-    header_line = f"{_format_header_date(header_dt)} | Morning Brief"
+    cutoff_raw = metadata.get("data_cutoff_at")
+    is_weekend_run = False
+    if cutoff_raw:
+        try:
+            cutoff_dt = datetime.fromisoformat(str(cutoff_raw).replace("Z", "+00:00"))
+            is_weekend_run = cutoff_dt.weekday() in (5, 6)  # Sat=5, Sun=6
+        except ValueError:
+            pass
+    weekend_suffix = " (For Upcoming Monday)" if is_weekend_run else ""
+    header_line = f"{_format_header_date(header_dt)} | Morning Brief{weekend_suffix}"
     dashboard_snapshots = _select_dashboard_snapshots(draft.overnight_dashboard, settings)
     label_map = _build_display_label_map(settings)
 

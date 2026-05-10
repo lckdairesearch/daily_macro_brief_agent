@@ -936,6 +936,42 @@ def test_chart_selector_falls_back_when_llm_selection_errors(monkeypatch):
 # Email render context
 # ---------------------------------------------------------------------------
 
+def test_header_line_includes_weekend_suffix_for_saturday_run():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    # May 10 2026 is a Saturday
+    draft = _make_draft().model_copy(
+        update={
+            "run_metadata": {
+                "brief_date": "2026-05-11T00:00:00+08:00",
+                "data_cutoff_at": "2026-05-10T06:45:00+08:00",
+            }
+        }
+    )
+    ctx = build_render_context(draft, settings)
+    assert ctx["header_line"].endswith("(For Upcoming Monday)")
+    assert "Monday, May 11, 2026" in ctx["header_line"]
+
+
+def test_header_line_has_no_suffix_for_weekday_run():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    # May 8 2026 is a Friday
+    draft = _make_draft().model_copy(
+        update={
+            "run_metadata": {
+                "brief_date": "2026-05-08T00:00:00+08:00",
+                "data_cutoff_at": "2026-05-08T06:45:00+08:00",
+            }
+        }
+    )
+    ctx = build_render_context(draft, settings)
+    assert "(For Upcoming Monday)" not in ctx["header_line"]
+    assert "Friday, May 8, 2026" in ctx["header_line"]
+
+
 def test_dashboard_render_row_uses_significance_and_five_day_arrow():
     from app.render.email import build_render_context
 
