@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
 import requests
+import time
 import yaml
 
 from app.models import AssetClass, FreshnessStatus, MarketSnapshot
@@ -670,7 +671,9 @@ class AlphaVantageMarketProvider:
         end = as_of.date()
         start = end - timedelta(days=_LIVE_LOOKBACK_DAYS)
         snapshots: list[MarketSnapshot] = []
-        for iid in instruments:
+        for i, iid in enumerate(instruments):
+            if i > 0:
+                time.sleep(0.25)  # stay under 5 req/s burst limit
             meta = _AV_INSTRUMENT_META.get(iid)
             if meta is None:
                 _log.warning("AlphaVantage: unknown instrument %s — skipped", iid)
