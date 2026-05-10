@@ -23,9 +23,9 @@ The brief is a fixed six-section document written for a macro PM:
 | Section | Content |
 |---|---|
 | Overnight dashboard | Market snapshot — equities, rates, FX, metals, commodities, crypto, vol |
-| Three things that matter | Top macro themes with body, portfolio impact, and sourcing |
 | Today's calendar | Economic events and central bank speakers with consensus |
 | One chart worth seeing | A single rendered chart selected for today's context |
+| Three things that matter | Top macro themes with body, portfolio impact, and sourcing |
 | Theme radar | Thematic signals from research, news, and podcasts |
 | Contrarian corner | Opposing view or risk the consensus is underweighting |
 
