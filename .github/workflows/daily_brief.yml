@@ -2,14 +2,14 @@ name: Daily Macro Brief
 
 on:
   schedule:
-    # 07:15 HKT Mon–Fri = 23:15 UTC Sun–Thu
-    - cron: "15 23 * * 0-4"
+    # 06:45 HKT Mon–Fri = 22:45 UTC Sun–Thu
+    - cron: "45 22 * * 0-4"
   workflow_dispatch:  # allow manual trigger
 
 jobs:
   run-brief:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -18,9 +18,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e '.[dev]'
+        run: pip install -e '.'
 
       - name: Run brief (live mode)
         env:
@@ -29,11 +30,11 @@ jobs:
           DATABENTO_API_KEY:                 ${{ secrets.DATABENTO_API_KEY }}
           FRED_API_KEY:                      ${{ secrets.FRED_API_KEY }}
           XAI_API_KEY:                       ${{ secrets.XAI_API_KEY }}
-          LISTEN_NOTES_API_KEY:              ${{ secrets.LISTEN_NOTES_API_KEY }}
+          TADDY_USER_ID:                     ${{ secrets.TADDY_USER_ID }}
+          TADDY_API_KEY:                     ${{ secrets.TADDY_API_KEY }}
           GEMINI_API_KEY:                    ${{ secrets.GEMINI_API_KEY }}
           POSTMARK_API_KEY:                  ${{ secrets.POSTMARK_API_KEY }}
           POSTMARK_FROM_EMAIL:               ${{ secrets.POSTMARK_FROM_EMAIL }}
-          POSTMARK_TO_EMAIL:                 ${{ secrets.POSTMARK_TO_EMAIL }}
           ENABLE_EMAIL_DELIVERY:             "true"
           CLOUDFLARE_R2_ACCOUNT_ID:          ${{ secrets.CLOUDFLARE_R2_ACCOUNT_ID }}
           CLOUDFLARE_R2_ACCESS_KEY_ID:       ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
