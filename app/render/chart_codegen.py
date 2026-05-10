@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -79,6 +80,85 @@ def _load_templates() -> list[dict]:
     return raw.get("templates", [])
 
 
+def _slice_rows_by_calendar_window(rows: list[dict], window_days: int) -> list[dict]:
+    if not rows:
+        return []
+    last_day = date.fromisoformat(rows[-1]["date"])
+    start_day = last_day - timedelta(days=window_days - 1)
+    return [row for row in rows if date.fromisoformat(row["date"]) >= start_day]
+
+
+def _segment_rows(rows: list[dict]) -> list[list[dict]]:
+    if not rows:
+        return []
+    segments: list[list[dict]] = [[rows[0]]]
+    previous_day = date.fromisoformat(rows[0]["date"])
+    for row in rows[1:]:
+        current_day = date.fromisoformat(row["date"])
+        if (current_day - previous_day).days > 1:
+            segments.append([])
+        segments[-1].append(row)
+        previous_day = current_day
+    return segments
+
+
+def _compute_avg_shared_gap_ratio(plot_rows: dict[str, list[dict]], names: list[str]) -> float | None:
+    if len(names) != 2:
+        return None
+    left_rows = plot_rows.get(names[0], [])
+    right_rows = plot_rows.get(names[1], [])
+    if not left_rows or not right_rows:
+        return None
+    shared_dates = sorted({row["date"] for row in left_rows} & {row["date"] for row in right_rows})
+    if len(shared_dates) < 2:
+        return None
+    all_values = [float(row["close"]) for row in left_rows + right_rows]
+    denom = max(all_values) - min(all_values)
+    if denom <= 0:
+        return 0.0
+    left_by_date = {row["date"]: float(row["close"]) for row in left_rows}
+    right_by_date = {row["date"]: float(row["close"]) for row in right_rows}
+    gaps = [abs(left_by_date[d] - right_by_date[d]) / denom for d in shared_dates]
+    return sum(gaps) / len(gaps)
+
+
+def _build_plotting_context(
+    series_data: dict[str, list[dict]],
+    display_names: dict[str, str],
+    window_days: int,
+) -> dict[str, object]:
+    plot_rows: dict[str, list[dict]] = {}
+    series_segments: dict[str, list[list[dict]]] = {}
+    names = [display_names.get(iid, iid) for iid in series_data]
+
+    for iid, rows in series_data.items():
+        name = display_names.get(iid, iid)
+        clipped = _slice_rows_by_calendar_window(rows, window_days)
+        plot_rows[name] = clipped
+        series_segments[name] = _segment_rows(clipped)
+
+    avg_shared_gap_ratio = _compute_avg_shared_gap_ratio(plot_rows, names)
+    primary_series_name: str | None = None
+    secondary_series_name: str | None = None
+    if len(names) == 2:
+        range_by_name = {}
+        for name in names:
+            values = [float(row["close"]) for row in plot_rows.get(name, [])]
+            range_by_name[name] = (max(values) - min(values)) if values else 0.0
+        ordered = sorted(names, key=lambda name: range_by_name[name], reverse=True)
+        primary_series_name = ordered[0]
+        secondary_series_name = ordered[1]
+
+    prefer_dual_axis = not (avg_shared_gap_ratio is not None and avg_shared_gap_ratio < 0.10)
+    return {
+        "plot_rows": plot_rows,
+        "series_segments": series_segments,
+        "avg_shared_gap_ratio": avg_shared_gap_ratio,
+        "prefer_dual_axis": prefer_dual_axis,
+        "primary_series_name": primary_series_name,
+        "secondary_series_name": secondary_series_name,
+    }
+
 
 def build_data_preamble(
     label: str,
@@ -88,10 +168,13 @@ def build_data_preamble(
     units: dict[str, str],
     events: list[dict],
     output_path: str,
+    window_days: int = 30,
 ) -> str:
     """Build the Python variable-definition block injected before LLM code."""
     if not series_data:
         return ""
+
+    plotting_context = _build_plotting_context(series_data, display_names, window_days)
 
     # Shared date union for x-axis ticks and event lookups
     all_dates = sorted({r["date"] for rows in series_data.values() for r in rows})
@@ -118,8 +201,15 @@ def build_data_preamble(
         "import matplotlib.dates as mdates\n"
         "\n"
         f"dates = {dates_repr}\n"
+        f"window_days = {window_days!r}\n"
         f"series_dates = {{\n{chr(10).join(series_dates_lines)}\n}}\n"
         f"series = {{\n{chr(10).join(series_lines)}\n}}\n"
+        f"plot_rows = {plotting_context['plot_rows']!r}\n"
+        f"series_segments = {plotting_context['series_segments']!r}\n"
+        f"avg_shared_gap_ratio = {plotting_context['avg_shared_gap_ratio']!r}\n"
+        f"prefer_dual_axis = {plotting_context['prefer_dual_axis']!r}\n"
+        f"primary_series_name = {plotting_context['primary_series_name']!r}\n"
+        f"secondary_series_name = {plotting_context['secondary_series_name']!r}\n"
         f"units = {{\n{chr(10).join(units_lines)}\n}}\n"
         f"asset_classes = {{\n{chr(10).join(ac_lines)}\n}}\n"
         f"events = {events!r}\n"
@@ -140,12 +230,24 @@ def generate_chart_code(
     error_context: str = "",
 ) -> str:
     """Call LLM to generate matplotlib visualization code. Returns full executable Python."""
+    window_days = 7 if chart_plan.window.value == "1w" else 30
     preamble = build_data_preamble(
-        chart_plan.title, series_data, display_names, asset_classes, units, events, output_path,
+        chart_plan.title,
+        series_data,
+        display_names,
+        asset_classes,
+        units,
+        events,
+        output_path,
+        window_days=window_days,
     )
     prompt = load_prompt("chart_codegen")
     llm_cfg = settings.sources.get("llm", {})
     model = llm_cfg.get("chart_model") or llm_cfg.get("synthesis_model", "openai/gpt-4o")
+    reasoning_effort = llm_cfg.get("chart_reasoning_effort", llm_cfg.get("synthesis_reasoning_effort"))
+    verbosity = llm_cfg.get("chart_verbosity", llm_cfg.get("synthesis_verbosity"))
+    timeout_seconds = int(llm_cfg.get("chart_timeout_seconds", llm_cfg.get("synthesis_timeout_seconds", 180)))
+    max_tokens = int(llm_cfg.get("chart_max_tokens", 3000))
 
     user_msg = (
         "The following variables are already defined before your code — "
@@ -153,9 +255,15 @@ def generate_chart_code(
         f"```python\n{preamble}\n```\n\n"
         "Data integrity check you MUST honour before plotting:\n"
         "- len(series[name]) == len(series_dates[name]) for every name — they are pre-aligned.\n"
-        "- Always use series_dates[name] (NOT the shared `dates`) as x-values in ax.plot().\n"
+        "- plot_rows[name] is the active calendar-window slice for each series.\n"
+        "- series_segments[name] splits plot_rows[name] into contiguous date runs.\n"
+        "- Plot each segment separately. Never connect across a missing calendar date.\n"
+        "- Never synthesize weekend or holiday values. Never draw dotted weekend bridges.\n"
         "- The shared `dates` is the union of all series dates — use it ONLY for x-axis tick "
-        "setup and event-annotation lookups.\n\n"
+        "setup and event-annotation lookups.\n"
+        "- For exactly 2 selected series, use dual axis unless prefer_dual_axis is False.\n"
+        "- primary_series_name should stay solid; secondary_series_name should be dashed first "
+        "if overlap remains annoying.\n\n"
         f"Render this fixed chart plan:\n"
         f"- chart_window = {chart_plan.window.value!r}\n"
         f"- chart_type = {chart_plan.chart_type!r}\n"
@@ -170,7 +278,16 @@ def generate_chart_code(
             f"\n\nPrevious attempt failed — fix this error:\n```\n{error_context}\n```"
         )
 
-    client = LLMClient(LLMConfig(model=model, temperature=0.2, max_tokens=3000))
+    client = LLMClient(
+        LLMConfig(
+            model=model,
+            temperature=0.2,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+            reasoning_effort=reasoning_effort,
+            verbosity=verbosity,
+        )
+    )
     raw = client.generate_text(system_prompt=prompt.text, user_message=user_msg)
     return preamble + "\n" + _remove_label_slicing(_strip_fences(raw))
 

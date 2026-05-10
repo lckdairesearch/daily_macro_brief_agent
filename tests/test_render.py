@@ -25,6 +25,7 @@ from app.models import (
     SourceType,
 )
 from app.render.chart_codegen import (
+    _build_plotting_context,
     build_data_preamble,
     execute_chart_code,
     select_instruments,
@@ -202,10 +203,85 @@ def test_build_data_preamble_contains_all_variables():
     asset_classes = {"SPY": "equity"}
     units = {"SPY": "price"}
     preamble = build_data_preamble("Test chart", series_data, display_names, asset_classes, units, [], "out.png")
-    for var in ("dates", "series", "units", "asset_classes", "events", "title", "output_path"):
+    for var in (
+        "dates",
+        "series",
+        "plot_rows",
+        "series_segments",
+        "prefer_dual_axis",
+        "units",
+        "asset_classes",
+        "events",
+        "title",
+        "output_path",
+    ):
         assert var in preamble
     assert "matplotlib.use" in preamble
     assert "out.png" in preamble
+
+
+def test_plotting_context_splits_weekday_gap_into_two_segments():
+    series_data = {
+        "US10Y": [
+            {"date": "2026-05-01", "close": 4.4},
+            {"date": "2026-05-04", "close": 4.45},
+        ]
+    }
+    display_names = {"US10Y": "US 10Y Yield"}
+
+    ctx = _build_plotting_context(series_data, display_names, window_days=7)
+
+    assert ctx["plot_rows"]["US 10Y Yield"] == series_data["US10Y"]
+    assert ctx["series_segments"]["US 10Y Yield"] == [
+        [{"date": "2026-05-01", "close": 4.4}],
+        [{"date": "2026-05-04", "close": 4.45}],
+    ]
+
+
+def test_plotting_context_prefers_dual_axis_for_visibly_separated_pair():
+    series_data = {
+        "US10Y": [
+            {"date": "2026-05-01", "close": 4.39},
+            {"date": "2026-05-02", "close": 4.40},
+            {"date": "2026-05-03", "close": 4.41},
+        ],
+        "COPPER": [
+            {"date": "2026-05-01", "close": 5.92},
+            {"date": "2026-05-02", "close": 5.88},
+            {"date": "2026-05-03", "close": 5.84},
+        ],
+    }
+    display_names = {"US10Y": "US 10Y Yield", "COPPER": "Copper (front-month)"}
+
+    ctx = _build_plotting_context(series_data, display_names, window_days=7)
+
+    assert ctx["prefer_dual_axis"] is True
+    assert ctx["avg_shared_gap_ratio"] is not None
+    assert ctx["avg_shared_gap_ratio"] >= 0.10
+    assert ctx["primary_series_name"] in {"US 10Y Yield", "Copper (front-month)"}
+    assert ctx["secondary_series_name"] in {"US 10Y Yield", "Copper (front-month)"}
+
+
+def test_plotting_context_allows_single_axis_for_very_close_pair():
+    series_data = {
+        "LEFT": [
+            {"date": "2026-05-01", "close": 100.0},
+            {"date": "2026-05-02", "close": 101.0},
+            {"date": "2026-05-03", "close": 102.0},
+        ],
+        "RIGHT": [
+            {"date": "2026-05-01", "close": 100.05},
+            {"date": "2026-05-02", "close": 101.05},
+            {"date": "2026-05-03", "close": 102.05},
+        ],
+    }
+    display_names = {"LEFT": "Left", "RIGHT": "Right"}
+
+    ctx = _build_plotting_context(series_data, display_names, window_days=7)
+
+    assert ctx["avg_shared_gap_ratio"] is not None
+    assert ctx["avg_shared_gap_ratio"] < 0.10
+    assert ctx["prefer_dual_axis"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -411,9 +487,13 @@ def test_chart_codegen_prompt_aligns_one_day_bar_chart_dates():
     prompt = load_prompt("chart_codegen")
     assert "chart_window == \"1w\"" in prompt.text
     assert "chart_window == \"1m\"" in prompt.text
+    assert "last 7 calendar days" in prompt.text
+    assert "last 30 calendar days" in prompt.text
     assert "Do not choose a different window or a different series" in prompt.text
     assert "missing dates across series are acceptable" in prompt.text
     assert "Ignore the `events` variable entirely" in prompt.text
+    assert "Do not draw dotted weekend bridges" in prompt.text
+    assert "Plot each contiguous segment separately" in prompt.text
 
 
 def test_chart_selector_candidates_include_daily_and_reinforcing_pair():
@@ -451,14 +531,57 @@ def test_chart_codegen_prompt_includes_dual_axis_overlap_guidance():
     from app.llm.prompt_registry import clear_prompt_cache, load_prompt
     clear_prompt_cache()
     prompt = load_prompt("chart_codegen")
-    assert "For exactly 2 selected series on dual axes" in prompt.text
+    assert "Use dual-axis by default" in prompt.text
+    assert "average shared-date separation is already below 10%" in prompt.text
     assert "shared dates" in prompt.text
     assert "abs(yl - yr) < 0.04" in prompt.text
     assert "never change the data values" in prompt.text
-    assert "Adjust only `ax2` limits asymmetrically" in prompt.text
+    assert "adjust only `ax2` limits asymmetrically" in prompt.text
     assert "at least `0.08` apart" in prompt.text
     assert "padding reaches `15%`" in prompt.text
     assert "np.median" in prompt.text
+    assert "`secondary_series_name` to a dashed line" in prompt.text
+    assert "This is a return condition, not a style preference" in prompt.text
+    assert "Before returning code, run your own final check" in prompt.text
+
+
+def test_chart_codegen_uses_chart_specific_llm_overrides(monkeypatch):
+    from app.render.chart_codegen import generate_chart_code
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, config):
+            captured["config"] = config
+
+        def generate_text(self, *, system_prompt, user_message):
+            return "plt.tight_layout(pad=1.5)\nplt.savefig(output_path, dpi=150, bbox_inches=\"tight\", transparent=True)"
+
+    monkeypatch.setattr("app.render.chart_codegen.LLMClient", FakeClient)
+
+    settings = _make_settings()
+    settings.sources["llm"]["chart_model"] = "openai/gpt-5.5"
+    settings.sources["llm"]["chart_reasoning_effort"] = "high"
+    settings.sources["llm"]["chart_verbosity"] = "medium"
+    settings.sources["llm"]["chart_timeout_seconds"] = 300
+    settings.sources["llm"]["chart_max_tokens"] = 5000
+
+    generate_chart_code(
+        chart_plan=_make_chart_plan(),
+        series_data=fetch_chart_series(["VIX", "MOVE"], lookback_days=30, as_of=_AS_OF, sample_mode=True),
+        display_names={"VIX": "VIX", "MOVE": "MOVE Index"},
+        asset_classes={"VIX": "volatility", "MOVE": "volatility"},
+        units={"VIX": "index", "MOVE": "index"},
+        events=[],
+        output_path="out.png",
+        settings=settings,
+    )
+
+    assert captured["config"].model == "openai/gpt-5.5"
+    assert captured["config"].reasoning_effort == "high"
+    assert captured["config"].verbosity == "medium"
+    assert captured["config"].timeout_seconds == 300
+    assert captured["config"].max_tokens == 5000
 
 
 def test_chart_selector_prompt_exists_and_restricts_choice_to_shortlist():

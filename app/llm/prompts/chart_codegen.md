@@ -19,6 +19,13 @@ The chart is embedded in an HTML email. It must be clean, professional, and imme
 dates         # list[str] — ISO date strings "YYYY-MM-DD", union of all series dates, ascending
 series_dates  # dict[str, list[str]] — {display_name: own ISO dates, only trading days for that series}
 series        # dict[str, list[float]] — {display_name: [close_values aligned to series_dates[name]]}
+window_days   # int — calendar width of the selected chart window
+plot_rows     # dict[str, list[dict]] — {display_name: [{"date","close"}]} already clipped to the active calendar window
+series_segments # dict[str, list[list[dict]]] — contiguous date-run segments inside plot_rows; plot each segment separately
+avg_shared_gap_ratio # float | None — average normalized shared-date separation for 2-series charts
+prefer_dual_axis # bool — use dual axis when True; rare single-axis exception when False
+primary_series_name # str | None — larger-range series for 2-series charts
+secondary_series_name # str | None — smaller-range series for 2-series charts
 units         # dict[str, str] — {display_name: "price" | "%" | "bps" | "index"}
 asset_classes # dict[str, str] — {display_name: "equity"|"rates"|"fx"|"commodity"|"volatility"|"credit"|"crypto"}
 events        # list[dict] — present for compatibility only; ignore it and do not annotate from it
@@ -26,7 +33,7 @@ title         # str — chart title
 output_path   # str — file path to save the PNG
 ```
 
-**Critical:** `series[name]` is aligned to `series_dates[name]`, NOT to `dates`. Different series may have different lengths (e.g. one has 30 calendar-day rows, another has 21 trading-day rows). Always use `series_dates[name]` as x-values when plotting a line — never use the shared `dates` for plotting.
+**Critical:** `series[name]` is aligned to `series_dates[name]`, NOT to `dates`. Different series may have different lengths. Use `plot_rows[name]` and `series_segments[name]` as the active plotting inputs. Always plot segment-by-segment — never use the shared `dates` for plotting and never connect across a missing calendar date.
 
 The caller also tells you the fixed `chart_window`, `chart_type`, `selected_instruments`, and `selection_reason` in plain text. Treat those as binding instructions. Do not choose a different window or a different series.
 
@@ -49,22 +56,21 @@ The chart is displayed in an HTML email at approximately 500px wide and 175px ta
 
 The selector has already chosen the window and the series. Your job is to render that fixed plan cleanly.
 
-- If `chart_window == "1w"`, use the last 5 observations from each selected series.
-- If `chart_window == "1m"`, use the last 21 observations from each selected series.
+- If `chart_window == "1w"`, use all observations from the last 7 calendar days of each selected series.
+- If `chart_window == "1m"`, use all observations from the last 30 calendar days of each selected series.
 - Assume `chart_type == "line"` for the code you generate here.
 - Plot the selected series only. Do not add extra series and do not drop one of the selected series.
 
-For **line charts**: missing dates across series are acceptable. Slice each series to the chosen window by taking the last N entries of `series_dates[name]` and `series[name]` before plotting. Keep the sliced dates in a local variable (e.g. `plot_dates`) — use it for axis bounds and ticks in place of the full `dates` list.
+For **line charts**: missing dates across series are acceptable. Use `plot_rows[name]` for the active window and `series_segments[name]` for plotting. Plot each contiguous segment separately. Do not synthesize weekend values. Do not draw dotted weekend bridges.
 
-## Axis assignment — scale-based, NOT unit-based
-
-Use the actual value range of each series to assign axes, regardless of unit type.
+## Axis assignment — dual-axis by default for 2-series charts
 
 **2-series case:**
-1. Compute `r1 = max(v1) − min(v1)` and `r2 = max(v2) − min(v2)` for the two series.
-2. If `max(r1, r2) / min(r1, r2) > 5` → dual axis: larger range on left (`ax`), smaller range on right (`ax2 = ax.twinx()`).
-3. Otherwise → single left axis; do not create `ax2`.
-4. Label each visible axis: use the series name, not just the unit.
+1. Use dual-axis by default when `prefer_dual_axis` is `True`.
+2. Use the rare single-axis exception only when `prefer_dual_axis` is `False`, which means the average shared-date separation is already below 10%.
+3. In dual-axis mode, plot `primary_series_name` on the left axis and `secondary_series_name` on the right axis.
+4. In the single-axis exception, keep `primary_series_name` solid and render `secondary_series_name` dashed from the start.
+5. Label each visible axis with the series name, not just the unit.
 
 **3-series case (only when necessary per above):**
 1. Rank the three ranges. Put the two closest-ranged series on the left axis.
@@ -93,16 +99,21 @@ Plot all lines with `linewidth=2.0`. Avoid full-series markers.
 
 To reduce visual artefacts:
 - Add a small horizontal margin with `ax.margins(x=0.03)` so the first and last observations are not glued to the frame.
+- When plotting segmented data, apply the same style to every segment of the same series and include the legend label only on the first plotted segment for that series.
 - If two series on the same axis have nearly identical first or last values, add small hollow endpoint markers only at those overlapping endpoints so both series remain readable.
 - For exactly 2 selected series on dual axes (`ax` and `ax2`), check for visual overlap across shared dates after plotting and after the normal top-padding step. Compare normalized vertical positions, not raw values.
 - Build shared-date pairs only from dates present in both plotted series. For each shared date, compute the line positions in axis space:
   - `yl = (y_left - left_min) / (left_max - left_min)`
   - `yr = (y_right - right_min) / (right_max - right_min)`
 - Treat the lines as visually overlapping when at least 2 shared dates satisfy `abs(yl - yr) < 0.04`.
-- If overlap is detected, never change the data values and never move the left axis. Adjust only `ax2` limits asymmetrically so the right-axis line moves away on-screen while the axis labels stay truthful.
+- If overlap is detected, first switch `secondary_series_name` to a dashed line if it is not dashed already. Only after that, never change the data values and never move the left axis; adjust only `ax2` limits asymmetrically so the right-axis line moves away on-screen while the axis labels stay truthful.
 - Use the median sign of `(yr - yl)` across the close shared dates to choose direction. If the right-axis line should move up, lower `ax2`'s bottom limit. If it should move down, raise `ax2`'s top limit.
 - Recompute the normalized gaps after each adjustment and stop once the close shared dates are at least `0.08` apart, or once the extra right-axis padding reaches `15%`.
 - The endpoint-marker rule is secondary; use it only for endpoint collisions and not as a substitute for the dual-axis overlap check.
+- This is a return condition, not a style preference: do not return code while a 2-series dual-axis chart still has 2 or more shared dates with normalized gap below `0.08` after your final axis adjustment.
+- Before returning code, run your own final check on the plotted values and shared dates. If the separation rule still fails, rework the right-axis limits again before returning code.
+- If early shared dates remain visually merged, treat that as a failed chart even if later dates separate.
+- If separation cannot be achieved elegantly, prefer stronger asymmetric right-axis padding over returning a visually merged chart.
 
 Dual-axis overlap adjustment pattern:
 
@@ -128,16 +139,18 @@ if shared and ax2 is not None:
 
 ## Plotting lines
 
-After slicing to the chosen window, use per-series dates as x-values — do NOT use the shared `dates`:
+After slicing to the chosen window, plot each series segment separately — do NOT use the shared `dates`:
 
 ```python
-# slice to chosen window (e.g. last 7 entries for 1-week)
-x = [datetime.date.fromisoformat(d) for d in series_dates[name][-n:]]
-y = series[name][-n:]
-ax_target.plot(x, y, color=color, linewidth=2.0, label=name)
+first_segment = True
+for segment in series_segments[name]:
+    x = [datetime.date.fromisoformat(row["date"]) for row in segment]
+    y = [row["close"] for row in segment]
+    ax_target.plot(x, y, color=color, linewidth=2.0, linestyle=linestyle, label=name if first_segment else None)
+    first_segment = False
 ```
 
-Each series has its own `x` and `y` slice. Never index into a shared x-array using a series' position.
+Each series has its own segmented `x` and `y` data. Never index into a shared x-array using a series' position.
 
 ## X-axis formatting (line charts only)
 
