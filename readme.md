@@ -234,27 +234,3 @@ Each run directory contains:
 Sample runs also refresh stable local aliases at `outputs/samples/sample_brief.{html,txt,png}`.
 
 Dry-run and live runs publish their full directory to R2 and refresh a no-cache `latest/brief_rendered.html` alias.
-
----
-
-## Known Gaps
-
-- Calendar consensus currently comes only from Investing.com forecasts when present; separate consensus enrichment beyond that is not implemented or wired into the pipeline
-- Investing.com calendar is a prototype dependency, not a licensed feed
-
----
-
-## Contributing
-
-Read `spec.md → architecture.md → plan.md` before making changes.
-
-Every contribution should include a handoff note:
-
-```
-Files changed:
-Tests run and result:
-Known gaps:
-Human decisions needed:
-```
-
-Ask before deleting tests, fixtures, or source files.
