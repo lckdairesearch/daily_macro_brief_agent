@@ -239,7 +239,7 @@ Dry-run and live runs publish their full directory to R2 and refresh a no-cache 
 
 ## Known Gaps
 
-- Consensus enrichment is designed in `architecture.md` but not yet wired into the pipeline
+- Calendar consensus currently comes only from Investing.com forecasts when present; separate consensus enrichment beyond that is not implemented or wired into the pipeline
 - Investing.com calendar is a prototype dependency, not a licensed feed
 - The critic/repair second-pass prompt exists but is not active
 
