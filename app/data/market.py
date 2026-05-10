@@ -728,6 +728,13 @@ class DatabentoMarketProvider:
         end_dt_utc = as_of_utc.replace(hour=22, minute=0, second=0, microsecond=0)
         if end_dt_utc > as_of_utc:
             end_dt_utc -= timedelta(days=1)
+        # Roll back to Friday if end falls on a weekend — Databento has no weekend bars
+        # and will return 422 data_end_after_available_end for Saturday/Sunday end times.
+        weekday = end_dt_utc.weekday()  # Mon=0, Sat=5, Sun=6
+        if weekday == 5:    # Saturday → Friday
+            end_dt_utc -= timedelta(days=1)
+        elif weekday == 6:  # Sunday → Friday
+            end_dt_utc -= timedelta(days=2)
         end_ts = end_dt_utc.strftime("%Y-%m-%dT%H:%M:%S")
         start = end_dt_utc.date() - timedelta(days=_LIVE_LOOKBACK_DAYS)
         snapshots: list[MarketSnapshot] = []

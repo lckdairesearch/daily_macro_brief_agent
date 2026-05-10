@@ -756,6 +756,32 @@ def test_db_provider_wti_sunday_allows_friday_observation(db_client_mock):
     assert snaps[0].observation_date == "2026-05-08"
 
 
+def test_db_provider_end_ts_rolled_back_for_sunday_as_of(db_client_mock):
+    """end_ts must be Friday 22:00 UTC when as_of is Sunday — not Saturday (422 territory)."""
+    store = MagicMock()
+    store.to_df.return_value = pd.DataFrame()
+    db_client_mock.timeseries.get_range.return_value = store
+    sunday_as_of = datetime(2026, 5, 10, 7, 0, tzinfo=timezone.utc)  # Sunday
+    with patch("databento.Historical", return_value=db_client_mock):
+        DatabentoMarketProvider("key").fetch_watchlist(["WTI"], sunday_as_of)
+
+    call_kwargs = db_client_mock.timeseries.get_range.call_args.kwargs
+    assert call_kwargs["end"] == "2026-05-08T22:00:00"  # Friday, not Saturday
+
+
+def test_db_provider_end_ts_rolled_back_for_monday_as_of(db_client_mock):
+    """end_ts must be Friday 22:00 UTC when as_of is Monday morning — not Sunday (422 territory)."""
+    store = MagicMock()
+    store.to_df.return_value = pd.DataFrame()
+    db_client_mock.timeseries.get_range.return_value = store
+    monday_as_of = datetime(2026, 5, 11, 7, 0, tzinfo=timezone.utc)  # Monday
+    with patch("databento.Historical", return_value=db_client_mock):
+        DatabentoMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
+
+    call_kwargs = db_client_mock.timeseries.get_range.call_args.kwargs
+    assert call_kwargs["end"] == "2026-05-08T22:00:00"  # Friday, not Sunday
+
+
 def test_av_provider_us10y_bps_change():
     payload = {"data": [
         {"date": "2026-05-07", "value": "4.50"},
