@@ -21,7 +21,6 @@ EXPECTED_PROMPTS = [
     "brief_writer",
     "brief_reviewer",
     "chart_codegen",
-    "critic",
     "scouts/news_search",
     "scouts/central_bank_extract",
     "scouts/research_search",
