@@ -642,7 +642,7 @@ def test_build_chart_supports_explicit_rebased_render_family(tmp_path, monkeypat
             instrument_ids=["US10Y", "COPPER"],
             render_family="pair_line_rebased",
             title="Copper vs 10Y, rebased",
-            caption="Both series are indexed to 100 on the first shared observation date.",
+            caption="Both series are rebased to 100 at the start of the chart window.",
         ),
         settings=settings,
         output_path=output,

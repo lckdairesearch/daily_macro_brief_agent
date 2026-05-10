@@ -268,7 +268,7 @@ def _resolve_render_family(
 def _effective_caption(caption: str, render_family: str) -> str:
     if render_family != _REBASED:
         return caption
-    disclosure = "Both series are indexed to 100 on the first shared observation date."
+    disclosure = "Both series are rebased to 100 at the start of the chart window."
     if disclosure in caption:
         return caption
     return f"{caption.rstrip('.')} {disclosure}"
@@ -420,7 +420,7 @@ def _render_deterministic_pair_line_chart(
         right_y = [100.0 * float(row["close"]) / base_values[right_id] for row in rebased_rows[right_id]]
         ax.plot(left_x, left_y, color=_LINE_COLORS[0], linewidth=2.2, label=left_name)
         ax.plot(right_x, right_y, color=_LINE_COLORS[1], linewidth=2.2, label=right_name)
-        ax.set_ylabel("Indexed Level (First Shared Date = 100)", fontsize=9)
+        ax.set_ylabel("Rebased Level (Start = 100)", fontsize=9)
     else:
         left_x = [date.fromisoformat(row["date"]) for row in plot_rows[left_id]]
         right_x = [date.fromisoformat(row["date"]) for row in plot_rows[right_id]]

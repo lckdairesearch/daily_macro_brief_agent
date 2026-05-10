@@ -606,7 +606,7 @@ def _pair_caption(
 ) -> str:
     suffix = ""
     if render_family == "pair_line_rebased":
-        suffix = " Both series are indexed to 100 on the first shared observation date."
+        suffix = " Both series are rebased to 100 at the start of the chart window."
     if family == "sharp_reversal":
         return f"{_WINDOW_LABEL[window]} view of a developing reversal between {left_name} and {right_name}.{suffix}"
     if family == "opposite_direction":
