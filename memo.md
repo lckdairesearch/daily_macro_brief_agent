@@ -1,6 +1,6 @@
 # Memo — Daily Macro Brief Agent
 
-**GitHub:** https://github.com/lckdairesearch/daily_macro_brief_agent
+**GitHub:** [https://github.com/lckdairesearch/daily_macro_brief_agent](https://github.com/lckdairesearch/daily_macro_brief_agent)
 
 ## Design Tradeoffs
 
