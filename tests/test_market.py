@@ -756,6 +756,40 @@ def test_db_provider_wti_sunday_allows_friday_observation(db_client_mock):
     assert snaps[0].observation_date == "2026-05-08"
 
 
+def test_db_provider_wti_monday_allows_thursday_observation(db_client_mock):
+    """Monday run must accept Thursday data — AV not refreshed over weekend, run is Sunday UTC."""
+    entries = [
+        {"date": "2026-05-05", "close": 109.00, "volume": 10000},
+        {"date": "2026-05-07", "close": 110.00, "volume": 12000},  # Thursday
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+    monday_as_of = datetime(2026, 5, 11, 7, 0, tzinfo=timezone.utc)  # Monday
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-07"
+
+
+def test_db_provider_wti_tuesday_allows_two_day_old_observation(db_client_mock):
+    """Tue–Fri runs accept data up to 2 days old to absorb AV cache delay after FRED publishes."""
+    entries = [
+        {"date": "2026-05-07", "close": 109.00, "volume": 10000},
+        {"date": "2026-05-10", "close": 110.00, "volume": 12000},  # Sunday (no market but tests buffer)
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+    tuesday_as_of = datetime(2026, 5, 12, 7, 0, tzinfo=timezone.utc)  # Tuesday
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], tuesday_as_of)
+
+    assert len(snaps) == 1  # May 10 >= May 10 (Tuesday - 2 days)
+    assert snaps[0].observation_date == "2026-05-10"
+
+
 def test_db_provider_wti_sunday_allows_thursday_observation(db_client_mock):
     """Sunday run must accept Thursday data — Friday yields not published until Monday."""
     entries = [
