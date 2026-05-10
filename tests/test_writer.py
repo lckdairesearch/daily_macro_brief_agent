@@ -137,12 +137,14 @@ def _make_settings(has_key: bool = True) -> MagicMock:
             "synthesis_reasoning_effort": "medium",
             "synthesis_verbosity": "medium",
             "synthesis_timeout_seconds": 180,
+            "synthesis_max_tokens": 6000,
             "synthesis_review_enabled": True,
-            "synthesis_review_model": "openai/gpt-5.5",
+            "synthesis_review_model": "openai/gpt-5.4",
             "synthesis_review_temperature": 0.0,
             "synthesis_review_reasoning_effort": "high",
             "synthesis_review_verbosity": "low",
             "synthesis_review_timeout_seconds": 180,
+            "synthesis_review_max_tokens": 2500,
             "synthesis_context_card_count": 10,
             "temperature": 0.2,
         }
@@ -223,7 +225,7 @@ def _make_review_output() -> BriefReviewOutput:
 
 
 def _make_review_result(review_output: BriefReviewOutput) -> LLMResult:
-    usage = LLMUsage(model="openai/gpt-5.5", latency_seconds=0.8, prompt_tokens=300, completion_tokens=120)
+    usage = LLMUsage(model="openai/gpt-5.4", latency_seconds=0.8, prompt_tokens=300, completion_tokens=120)
     return LLMResult(output=review_output, usage=usage, raw_text="{}")
 
 

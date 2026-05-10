@@ -287,18 +287,22 @@ class BriefDraft(BaseModel):
 
 class LLMUsage(BaseModel):
     """LLM usage metadata."""
-    
+
     model: str
     latency_seconds: float
+    stage: str | None = None
     prompt_tokens: int | None = None
+    cached_prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    reasoning_tokens: int | None = None
     total_tokens: int | None = None
+    tool_calls_count: int | None = None
     estimated_cost_usd: float | None = None
 
 
 class RunMetadata(BaseModel):
     """Audit information for each run."""
-    
+
     run_id: str
     run_started_at: datetime
     data_cutoff_at: datetime
@@ -310,6 +314,7 @@ class RunMetadata(BaseModel):
     llm_model: str
     prompt_versions: dict[str, str] | None = None
     token_usage: list[LLMUsage] = Field(default_factory=list)
+    cost_by_stage: dict[str, float] = Field(default_factory=dict)
     estimated_cost_usd: float | None = None
     warnings: list[str] = Field(default_factory=list)
     failed_sources: list[str] = Field(default_factory=list)

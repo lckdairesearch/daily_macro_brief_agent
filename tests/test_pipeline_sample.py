@@ -272,7 +272,7 @@ def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer, i
          patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]) as mock_fetch, \
          patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
-         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=([], [])), \
          patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
         result = run_pipeline(RunMode.DRY_RUN, isolated_settings, data_cutoff=override)
 
@@ -287,7 +287,7 @@ def test_dry_run_pipeline_calls_calendar_provider_with_brief_date(mock_writer, i
          patch("app.pipeline.fetch_live_market_with_cache", return_value=[]), \
          patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]) as mock_calendar, \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
-         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=([], [])), \
          patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
         result = run_pipeline(RunMode.DRY_RUN, isolated_settings, data_cutoff=override)
 
@@ -336,6 +336,7 @@ def test_pipeline_marks_non_one_day_chart_fallback_as_degraded(mock_writer, isol
                 series_instrument_ids=["US10Y", "MOVE"],
                 code_generated=False,
             ),
+            [],
         )
 
     with patch("app.render.charts.build_chart", side_effect=_fake_build_chart):
@@ -378,6 +379,7 @@ def test_pipeline_keeps_one_day_fallback_as_success(mock_writer, isolated_settin
                 series_instrument_ids=[],
                 code_generated=False,
             ),
+            [],
         )
 
     with patch("app.render.charts.build_chart", side_effect=_fake_build_chart):
@@ -413,7 +415,7 @@ def test_dry_run_pipeline_publishes_run_artifacts_and_latest_alias(mock_writer, 
          patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]), \
          patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
-         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=([], [])), \
          patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/chart.png") as mock_chart_upload, \
          patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/brief.html"]) as mock_run_upload, \
          patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/latest.html") as mock_alias_upload:
@@ -451,7 +453,7 @@ def test_live_pipeline_publishes_run_artifacts_even_when_delivery_fails(mock_wri
          patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]), \
          patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
-         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=([], [])), \
          patch("app.delivery.get_provider", return_value=FailingProvider()), \
          patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/chart.png"), \
          patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/brief.html"]) as mock_run_upload, \
@@ -489,7 +491,7 @@ def test_dry_run_pipeline_delivery_enabled_sends_to_maintainer_only(mock_writer,
          patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]), \
          patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
-         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=([], [])), \
          patch(
              "app.delivery.get_provider",
              return_value=PostmarkDeliveryProvider(

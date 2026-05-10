@@ -27,16 +27,19 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from app.discovery.scouts.base import (
+    CandidateBuildResult,
     DiscoveryContext,
     DEFAULT_SCOUT_TIMEOUT_SECONDS,
     _EvidenceCandidateList,
     _parse_or_structure,
     build_market_context,
+    ScoutRunResult,
     to_evidence_cards,
 )
 from app.llm import litellm_compat
+from app.llm.provider import usage_from_response
 from app.llm.prompt_registry import load_prompt
-from app.models import EvidenceCard, SourceType
+from app.models import EvidenceCard, LLMUsage, SourceType
 
 logger = logging.getLogger(__name__)
 
@@ -114,21 +117,23 @@ class PodcastScout:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
         episodes = self._fetch_episodes(context.evidence_window_start)
         if not episodes:
             logger.info("PodcastScout: no episodes found")
-            return []
+            return ScoutRunResult(cards=[])
 
-        relevant = self._filter_relevant(episodes, context)
+        relevant, llm_usage = self._filter_relevant(episodes, context)
         if not relevant:
             logger.info("PodcastScout: no portfolio-relevant episodes after filtering")
-            return []
+            return ScoutRunResult(cards=[], llm_usage=llm_usage)
 
         cards: list[EvidenceCard] = []
+        usages = list(llm_usage)
         for ep in relevant[: self.max_relevant_episodes]:
             try:
-                card = self._extract_episode_insights(ep, context)
+                card, card_usage = self._extract_episode_insights(ep, context)
+                usages.extend(card_usage)
                 if card:
                     cards.append(card)
             except Exception as exc:
@@ -138,7 +143,7 @@ class PodcastScout:
                     exc,
                 )
 
-        return cards
+        return ScoutRunResult(cards=cards, llm_usage=usages)
 
     # ------------------------------------------------------------------
     # Step 1: Fetch episodes from Taddy
@@ -172,7 +177,7 @@ class PodcastScout:
 
     def _fetch_curated_episodes(
         self, podcast_name: str, cutoff_ts: int
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], list[LLMUsage]]:
         """Get latest episodes for a named series; filter client-side by date."""
         query = """
         {
@@ -294,10 +299,16 @@ class PodcastScout:
             response = litellm_compat.completion(**kwargs)
             text = response.choices[0].message.content or '{"relevant_indices": []}'
             result = _EpisodeFilterResult.model_validate_json(text)
-            return [episodes[i] for i in result.relevant_indices if i < len(episodes)]
+            usage = usage_from_response(
+                response,
+                fallback_model=self.scout_model,
+                latency_seconds=0.0,
+                stage="scout:podcast_filter",
+            )
+            return [episodes[i] for i in result.relevant_indices if i < len(episodes)], [usage]
         except Exception as exc:
             logger.warning("PodcastScout: episode filter LLM call failed: %s", exc)
-            return []
+            return [], []
 
     # ------------------------------------------------------------------
     # Step 3: Extract insights — transcript-backed or web-search fallback
@@ -305,7 +316,7 @@ class PodcastScout:
 
     def _extract_episode_insights(
         self, episode: dict[str, Any], context: DiscoveryContext
-    ) -> EvidenceCard | None:
+    ) -> tuple[EvidenceCard | None, list[LLMUsage]]:
         title = episode.get("name", "")
         series = episode.get("podcastSeries") or {}
         podcast_name = series.get("name", "")
@@ -328,36 +339,39 @@ class PodcastScout:
             transcript_text = _fetch_plain_transcript(episode)
 
         if transcript_text:
-            candidates = self._extract_from_transcript(
+            result = self._extract_from_transcript(
                 title, podcast_name, pub_date, transcript_text,
                 system_prompt, portfolio_themes, market_ctx,
             )
         else:
-            candidates = self._extract_via_web_search(
+            result = self._extract_via_web_search(
                 title, podcast_name, episode_url, pub_date,
                 system_prompt, portfolio_themes, market_ctx,
             )
 
-        if not candidates.cards:
-            return None
+        if not result.candidates.cards:
+            return None, result.llm_usage
 
-        c = candidates.cards[0]
+        c = result.candidates.cards[0]
         pub_dt = datetime.fromtimestamp(pub_ts, tz=timezone.utc) if pub_ts else None
 
-        return EvidenceCard(
-            id=f"ev_{uuid.uuid4().hex[:8]}",
-            title=c.title or title,
-            source_name=podcast_name or c.source_name,
-            source_type=SourceType.PODCAST,
-            url=episode_url or c.url,
-            published_at=pub_dt,
-            retrieved_at=context.evidence_window_end.astimezone(timezone.utc),
-            thesis=c.thesis,
-            evidence=c.evidence,
-            macro_relevance=c.macro_relevance,
-            portfolio_relevance=c.portfolio_relevance,
-            confidence=c.confidence,
-            tags=c.tags,
+        return (
+            EvidenceCard(
+                id=f"ev_{uuid.uuid4().hex[:8]}",
+                title=c.title or title,
+                source_name=podcast_name or c.source_name,
+                source_type=SourceType.PODCAST,
+                url=episode_url or c.url,
+                published_at=pub_dt,
+                retrieved_at=context.evidence_window_end.astimezone(timezone.utc),
+                thesis=c.thesis,
+                evidence=c.evidence,
+                macro_relevance=c.macro_relevance,
+                portfolio_relevance=c.portfolio_relevance,
+                confidence=c.confidence,
+                tags=c.tags,
+            ),
+            result.llm_usage,
         )
 
     def _extract_from_transcript(
@@ -369,7 +383,7 @@ class PodcastScout:
         system_prompt: str,
         portfolio_themes: list[str],
         market_ctx: dict[str, Any],
-    ) -> _EvidenceCandidateList:
+    ) -> CandidateBuildResult:
         payload = {
             "episode_title": title,
             "podcast_name": podcast_name,
@@ -399,10 +413,20 @@ class PodcastScout:
         try:
             response = litellm_compat.completion(**kwargs)
             text = response.choices[0].message.content or '{"cards": []}'
-            return _EvidenceCandidateList.model_validate_json(text)
+            return CandidateBuildResult(
+                candidates=_EvidenceCandidateList.model_validate_json(text),
+                llm_usage=[
+                    usage_from_response(
+                        response,
+                        fallback_model=self.scout_model,
+                        latency_seconds=0.0,
+                        stage="scout:podcast_transcript_extract",
+                    )
+                ],
+            )
         except Exception as exc:
             logger.warning("PodcastScout: transcript extraction failed: %s", exc)
-            return _EvidenceCandidateList(cards=[])
+            return CandidateBuildResult(candidates=_EvidenceCandidateList(cards=[]))
 
     def _extract_via_web_search(
         self,
@@ -413,7 +437,7 @@ class PodcastScout:
         system_prompt: str,
         portfolio_themes: list[str],
         market_ctx: dict[str, Any],
-    ) -> _EvidenceCandidateList:
+    ) -> CandidateBuildResult:
         payload = {
             "episode_title": title,
             "podcast_name": podcast_name,
@@ -442,7 +466,17 @@ class PodcastScout:
             input=json.dumps(payload, ensure_ascii=False),
         )
         text = oai_response.output_text or ""
-        return _parse_or_structure(text, model=self.scout_model, api_key=self.api_key)
+        parsed = _parse_or_structure(text, model=self.scout_model, api_key=self.api_key)
+        usage = usage_from_response(
+            oai_response,
+            fallback_model=self.scout_model,
+            latency_seconds=0.0,
+            stage="scout:podcast_web_search",
+        )
+        return CandidateBuildResult(
+            candidates=parsed.candidates,
+            llm_usage=[usage, *parsed.llm_usage],
+        )
 
 
 # ------------------------------------------------------------------

@@ -9,7 +9,7 @@ import warnings
 warnings.filterwarnings("ignore", message="There is no current event loop")
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -18,7 +18,8 @@ from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError
 
 from app.llm import litellm_compat
-from app.models import EvidenceCard, RunMode, SourceType
+from app.llm.provider import usage_from_response
+from app.models import EvidenceCard, LLMUsage, RunMode, SourceType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures"
@@ -57,7 +58,15 @@ class Scout(Protocol):
     name: str
     optional: bool
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]: ...
+    def run(self, context: DiscoveryContext) -> "ScoutRunResult": ...
+
+
+@dataclass(frozen=True)
+class ScoutRunResult:
+    """Normalized scout output plus tracked usage."""
+
+    cards: list[EvidenceCard]
+    llm_usage: list[LLMUsage] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +94,14 @@ class _EvidenceCandidateList(BaseModel):
     """Top-level LLM output."""
 
     cards: list[_EvidenceCandidate]
+
+
+@dataclass(frozen=True)
+class CandidateBuildResult:
+    """Parsed evidence candidates plus call metadata."""
+
+    candidates: _EvidenceCandidateList
+    llm_usage: list[LLMUsage] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +158,7 @@ def web_search_and_structure(
     user_payload: dict[str, Any],
     temperature: float = 0.2,
     timeout: int = DEFAULT_SCOUT_TIMEOUT_SECONDS,
-) -> _EvidenceCandidateList:
+) -> CandidateBuildResult:
     """Call OpenAI Responses API with web_search_preview; parse into candidate list.
 
     LiteLLM's chat completions endpoint rejects the web_search_preview tool type,
@@ -160,7 +177,17 @@ def web_search_and_structure(
         input=json.dumps(user_payload, ensure_ascii=False),
     )
     text: str = response.output_text or ""
-    return _parse_or_structure(text, model=model, api_key=api_key)
+    parsed = _parse_or_structure(text, model=model, api_key=api_key)
+    usage = usage_from_response(
+        response,
+        fallback_model=model,
+        latency_seconds=0.0,
+        stage="scout:web_search",
+    )
+    return CandidateBuildResult(
+        candidates=parsed.candidates,
+        llm_usage=[usage, *parsed.llm_usage],
+    )
 
 
 def plain_completion_and_structure(
@@ -171,7 +198,7 @@ def plain_completion_and_structure(
     user_payload: dict[str, Any],
     temperature: float = 0.2,
     timeout: int = 60,
-) -> _EvidenceCandidateList:
+) -> CandidateBuildResult:
     """Call LLM without web search (for pre-filtered content); parse into candidate list."""
     messages: list[dict[str, str]] = [
         {
@@ -196,7 +223,17 @@ def plain_completion_and_structure(
     response = litellm_compat.completion(**kwargs)
     text: str = response.choices[0].message.content or ""
     try:
-        return _EvidenceCandidateList.model_validate_json(text)
+        return CandidateBuildResult(
+            candidates=_EvidenceCandidateList.model_validate_json(text),
+            llm_usage=[
+                usage_from_response(
+                    response,
+                    fallback_model=model,
+                    latency_seconds=0.0,
+                    stage="scout:completion",
+                )
+            ],
+        )
     except (ValidationError, ValueError) as exc:
         raise ValueError(f"LLM did not return valid candidate list JSON: {exc}") from exc
 
@@ -206,17 +243,19 @@ def _parse_or_structure(
     *,
     model: str,
     api_key: str | None,
-) -> _EvidenceCandidateList:
+) -> CandidateBuildResult:
     """Try direct JSON parse; fall back to a structuring call."""
     try:
-        return _EvidenceCandidateList.model_validate_json(text)
+        return CandidateBuildResult(candidates=_EvidenceCandidateList.model_validate_json(text))
     except (ValidationError, ValueError):
         pass
 
     match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
     if match:
         try:
-            return _EvidenceCandidateList.model_validate_json(match.group(1).strip())
+            return CandidateBuildResult(
+                candidates=_EvidenceCandidateList.model_validate_json(match.group(1).strip())
+            )
         except (ValidationError, ValueError):
             pass
 
@@ -242,8 +281,18 @@ def _parse_or_structure(
     if api_key:
         kwargs["api_key"] = api_key
     cleanup = litellm_compat.completion(**kwargs)
-    return _EvidenceCandidateList.model_validate_json(
-        cleanup.choices[0].message.content or "{\"cards\": []}"
+    return CandidateBuildResult(
+        candidates=_EvidenceCandidateList.model_validate_json(
+            cleanup.choices[0].message.content or "{\"cards\": []}"
+        ),
+        llm_usage=[
+            usage_from_response(
+                cleanup,
+                fallback_model=model,
+                latency_seconds=0.0,
+                stage="scout:cleanup",
+            )
+        ],
     )
 
 
@@ -298,9 +347,9 @@ class FixtureDiscoveryScout:
     name = "fixture"
     optional = False
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
         path = FIXTURE_DIR / "evidence_sample.json"
         if not path.exists():
             raise FileNotFoundError(f"Evidence fixture not found: {path}")
         raw = json.loads(path.read_text(encoding="utf-8"))
-        return [EvidenceCard.model_validate(c) for c in raw["cards"]]
+        return ScoutRunResult(cards=[EvidenceCard.model_validate(c) for c in raw["cards"]])

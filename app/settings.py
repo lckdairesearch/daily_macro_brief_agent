@@ -64,13 +64,19 @@ class Credentials(BaseSettings):
     llm_synthesis_reasoning_effort: str | None = None
     llm_synthesis_verbosity: str | None = None
     llm_synthesis_timeout_seconds: int | None = None
+    llm_synthesis_max_tokens: int | None = None
     llm_synthesis_review_enabled: bool | None = None
     llm_synthesis_review_model: str | None = None
     llm_synthesis_review_temperature: float | None = None
     llm_synthesis_review_reasoning_effort: str | None = None
     llm_synthesis_review_verbosity: str | None = None
     llm_synthesis_review_timeout_seconds: int | None = None
+    llm_synthesis_review_max_tokens: int | None = None
     llm_synthesis_context_card_count: int | None = None
+    llm_chart_selector_model: str | None = None
+    llm_chart_selector_max_tokens: int | None = None
+    llm_chart_codegen_model: str | None = None
+    llm_chart_codegen_max_tokens: int | None = None
 
     # Market data — required for live/dry-run
     alpha_vantage_api_key: str | None = None
@@ -144,6 +150,8 @@ class Settings:
             llm["synthesis_verbosity"] = creds.llm_synthesis_verbosity
         if creds.llm_synthesis_timeout_seconds is not None:
             llm["synthesis_timeout_seconds"] = creds.llm_synthesis_timeout_seconds
+        if creds.llm_synthesis_max_tokens is not None:
+            llm["synthesis_max_tokens"] = creds.llm_synthesis_max_tokens
         if creds.llm_synthesis_review_enabled is not None:
             llm["synthesis_review_enabled"] = creds.llm_synthesis_review_enabled
         if creds.llm_synthesis_review_model:
@@ -156,8 +164,18 @@ class Settings:
             llm["synthesis_review_verbosity"] = creds.llm_synthesis_review_verbosity
         if creds.llm_synthesis_review_timeout_seconds is not None:
             llm["synthesis_review_timeout_seconds"] = creds.llm_synthesis_review_timeout_seconds
+        if creds.llm_synthesis_review_max_tokens is not None:
+            llm["synthesis_review_max_tokens"] = creds.llm_synthesis_review_max_tokens
         if creds.llm_synthesis_context_card_count is not None:
             llm["synthesis_context_card_count"] = creds.llm_synthesis_context_card_count
+        if creds.llm_chart_selector_model:
+            llm["chart_selector_model"] = creds.llm_chart_selector_model
+        if creds.llm_chart_selector_max_tokens is not None:
+            llm["chart_selector_max_tokens"] = creds.llm_chart_selector_max_tokens
+        if creds.llm_chart_codegen_model:
+            llm["chart_codegen_model"] = creds.llm_chart_codegen_model
+        if creds.llm_chart_codegen_max_tokens is not None:
+            llm["chart_codegen_max_tokens"] = creds.llm_chart_codegen_max_tokens
 
         # Env var overrides for deployment-specific fields
         if creds.cache_dir:

@@ -193,12 +193,13 @@ def write_brief(
     reasoning_effort = llm_cfg.get("synthesis_reasoning_effort")
     verbosity = llm_cfg.get("synthesis_verbosity")
     timeout_seconds = int(llm_cfg.get("synthesis_timeout_seconds", 180))
+    max_tokens = int(llm_cfg.get("synthesis_max_tokens", 6000))
 
     client = LLMClient(
         LLMConfig(
             model=model,
             temperature=temperature,
-            max_tokens=8000,
+            max_tokens=max_tokens,
             timeout_seconds=timeout_seconds,
             reasoning_effort=reasoning_effort,
             verbosity=verbosity,
@@ -210,6 +211,7 @@ def write_brief(
         system_prompt=prompt.text,
         user_payload=payload,
         schema=BriefWriterOutput,
+        stage="synthesis:writer",
     )
 
     draft = _assemble_draft(result.output, ranked_context)
@@ -318,17 +320,18 @@ def _review_brief(
         return draft, None
 
     prompt = load_prompt("brief_reviewer")
-    model = llm_cfg.get("synthesis_review_model") or llm_cfg.get("synthesis_model", "openai/gpt-5.5")
+    model = llm_cfg.get("synthesis_review_model") or "openai/gpt-5.4"
     temperature = float(llm_cfg.get("synthesis_review_temperature", 0.0))
     reasoning_effort = llm_cfg.get("synthesis_review_reasoning_effort", "high")
     verbosity = llm_cfg.get("synthesis_review_verbosity", "low")
     timeout_seconds = int(llm_cfg.get("synthesis_review_timeout_seconds", llm_cfg.get("synthesis_timeout_seconds", 180)))
+    max_tokens = int(llm_cfg.get("synthesis_review_max_tokens", 2500))
 
     client = LLMClient(
         LLMConfig(
             model=model,
             temperature=temperature,
-            max_tokens=4000,
+            max_tokens=max_tokens,
             timeout_seconds=timeout_seconds,
             reasoning_effort=reasoning_effort,
             verbosity=verbosity,
@@ -340,6 +343,7 @@ def _review_brief(
             system_prompt=prompt.text,
             user_payload=_build_review_payload(draft, ctx, settings, run_date),
             schema=BriefReviewOutput,
+            stage="synthesis:reviewer",
         )
         reviewed = _apply_review(draft, result.output)
     except LLMResponseError:

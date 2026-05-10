@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.discovery.scouts.base import (
     DiscoveryContext,
+    ScoutRunResult,
     build_market_context,
     to_evidence_cards,
     web_search_and_structure,
@@ -23,7 +24,7 @@ class NewsScout:
         self.temperature = temperature
         self.api_key = api_key
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
         system_prompt = load_prompt("scouts/news_search").text
         payload = build_market_context(context)
         payload["instruction"] = (
@@ -32,11 +33,14 @@ class NewsScout:
             "that explain the flagged market moves or are relevant to the themes and calendar events. "
             "Return up to 5 high-signal evidence cards as JSON."
         )
-        candidates = web_search_and_structure(
+        result = web_search_and_structure(
             model=self.model,
             api_key=self.api_key,
             system_prompt=system_prompt,
             user_payload=payload,
             temperature=self.temperature,
         )
-        return to_evidence_cards(candidates, SourceType.NEWS)
+        return ScoutRunResult(
+            cards=to_evidence_cards(result.candidates, SourceType.NEWS),
+            llm_usage=result.llm_usage,
+        )

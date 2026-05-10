@@ -64,10 +64,16 @@ def test_sources_yaml_loads():
     assert raw["llm"]["scout_model"] == "openai/gpt-5.4"
     assert raw["llm"]["synthesis_model"] == "openai/gpt-5.5"
     assert raw["llm"]["chart_model"] == "openai/gpt-5.4"
-    assert raw["llm"]["synthesis_review_model"] == "openai/gpt-5.5"
+    assert raw["llm"]["chart_selector_model"] == "openai/gpt-5.4-mini"
+    assert raw["llm"]["chart_codegen_model"] == "openai/gpt-5.4"
+    assert raw["llm"]["synthesis_review_model"] == "openai/gpt-5.4"
     assert raw["llm"]["synthesis_timeout_seconds"] == 180
+    assert raw["llm"]["synthesis_max_tokens"] == 6000
     assert raw["llm"]["synthesis_review_timeout_seconds"] == 180
+    assert raw["llm"]["synthesis_review_max_tokens"] == 2500
     assert raw["llm"]["synthesis_context_card_count"] == 10
+    assert raw["llm"]["chart_selector_max_tokens"] == 1200
+    assert raw["llm"]["chart_codegen_max_tokens"] == 3000
     assert raw["llm"]["x_scout_model"] == "xai/grok-4-1-fast-reasoning"
 
 
@@ -136,13 +142,19 @@ def test_settings_validate_live_mode_reports_missing():
         llm_synthesis_reasoning_effort=None,
         llm_synthesis_verbosity=None,
         llm_synthesis_timeout_seconds=None,
+        llm_synthesis_max_tokens=None,
         llm_synthesis_review_enabled=None,
         llm_synthesis_review_model=None,
         llm_synthesis_review_temperature=None,
         llm_synthesis_review_reasoning_effort=None,
         llm_synthesis_review_verbosity=None,
         llm_synthesis_review_timeout_seconds=None,
+        llm_synthesis_review_max_tokens=None,
         llm_synthesis_context_card_count=None,
+        llm_chart_selector_model=None,
+        llm_chart_selector_max_tokens=None,
+        llm_chart_codegen_model=None,
+        llm_chart_codegen_max_tokens=None,
     )
     settings = Settings(app, creds, {}, {}, {}, {})
     errors = settings.validate_for_mode(RunMode.LIVE)
@@ -168,13 +180,19 @@ def test_settings_validate_live_email_enabled_reports_postmark():
         llm_synthesis_reasoning_effort=None,
         llm_synthesis_verbosity=None,
         llm_synthesis_timeout_seconds=None,
+        llm_synthesis_max_tokens=None,
         llm_synthesis_review_enabled=None,
         llm_synthesis_review_model=None,
         llm_synthesis_review_temperature=None,
         llm_synthesis_review_reasoning_effort=None,
         llm_synthesis_review_verbosity=None,
         llm_synthesis_review_timeout_seconds=None,
+        llm_synthesis_review_max_tokens=None,
         llm_synthesis_context_card_count=None,
+        llm_chart_selector_model=None,
+        llm_chart_selector_max_tokens=None,
+        llm_chart_codegen_model=None,
+        llm_chart_codegen_max_tokens=None,
     )
     settings = Settings(app, creds, {}, {}, {}, {})
     errors = settings.validate_for_mode(RunMode.LIVE)
@@ -201,13 +219,19 @@ def test_settings_validate_dry_run_email_enabled_reports_maintainer_postmark():
         llm_synthesis_reasoning_effort=None,
         llm_synthesis_verbosity=None,
         llm_synthesis_timeout_seconds=None,
+        llm_synthesis_max_tokens=None,
         llm_synthesis_review_enabled=None,
         llm_synthesis_review_model=None,
         llm_synthesis_review_temperature=None,
         llm_synthesis_review_reasoning_effort=None,
         llm_synthesis_review_verbosity=None,
         llm_synthesis_review_timeout_seconds=None,
+        llm_synthesis_review_max_tokens=None,
         llm_synthesis_context_card_count=None,
+        llm_chart_selector_model=None,
+        llm_chart_selector_max_tokens=None,
+        llm_chart_codegen_model=None,
+        llm_chart_codegen_max_tokens=None,
     )
     settings = Settings(app, creds, {}, {}, {}, {})
     errors = settings.validate_for_mode(RunMode.DRY_RUN)
@@ -239,13 +263,19 @@ def test_settings_applies_llm_env_overrides_to_sources():
         llm_synthesis_reasoning_effort="high",
         llm_synthesis_verbosity="low",
         llm_synthesis_timeout_seconds=240,
+        llm_synthesis_max_tokens=6200,
         llm_synthesis_review_enabled=True,
-        llm_synthesis_review_model="openai/gpt-5.5",
+        llm_synthesis_review_model="openai/gpt-5.4",
         llm_synthesis_review_temperature=0.0,
         llm_synthesis_review_reasoning_effort="xhigh",
         llm_synthesis_review_verbosity="medium",
         llm_synthesis_review_timeout_seconds=300,
+        llm_synthesis_review_max_tokens=2600,
         llm_synthesis_context_card_count=12,
+        llm_chart_selector_model="openai/gpt-5.4-mini",
+        llm_chart_selector_max_tokens=900,
+        llm_chart_codegen_model="openai/gpt-5.4",
+        llm_chart_codegen_max_tokens=3500,
     )
     settings = Settings(app, creds, {}, {}, {"llm": {}}, {})
     assert settings.sources["llm"]["scout_model"] == "openai/gpt-5.5"
@@ -256,13 +286,19 @@ def test_settings_applies_llm_env_overrides_to_sources():
     assert settings.sources["llm"]["synthesis_reasoning_effort"] == "high"
     assert settings.sources["llm"]["synthesis_verbosity"] == "low"
     assert settings.sources["llm"]["synthesis_timeout_seconds"] == 240
+    assert settings.sources["llm"]["synthesis_max_tokens"] == 6200
     assert settings.sources["llm"]["synthesis_review_enabled"] is True
-    assert settings.sources["llm"]["synthesis_review_model"] == "openai/gpt-5.5"
+    assert settings.sources["llm"]["synthesis_review_model"] == "openai/gpt-5.4"
     assert settings.sources["llm"]["synthesis_review_temperature"] == 0.0
     assert settings.sources["llm"]["synthesis_review_reasoning_effort"] == "xhigh"
     assert settings.sources["llm"]["synthesis_review_verbosity"] == "medium"
     assert settings.sources["llm"]["synthesis_review_timeout_seconds"] == 300
+    assert settings.sources["llm"]["synthesis_review_max_tokens"] == 2600
     assert settings.sources["llm"]["synthesis_context_card_count"] == 12
+    assert settings.sources["llm"]["chart_selector_model"] == "openai/gpt-5.4-mini"
+    assert settings.sources["llm"]["chart_selector_max_tokens"] == 900
+    assert settings.sources["llm"]["chart_codegen_model"] == "openai/gpt-5.4"
+    assert settings.sources["llm"]["chart_codegen_max_tokens"] == 3500
 
 
 def test_settings_accepts_cloudflare_r2_credentials():

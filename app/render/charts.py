@@ -17,6 +17,7 @@ from app.models import (
     ChartPlan,
     ChartSpec,
     ChartWindow,
+    LLMUsage,
 )
 from app.render.chart_windowing import (
     build_window_ticks,
@@ -60,7 +61,7 @@ def build_chart(
     output_path: str = "outputs/samples/sample_chart.png",
     sample_mode: bool = True,
     as_of: datetime | None = None,
-) -> tuple[ChartSpec, ChartBuildInfo]:
+) -> tuple[ChartSpec, ChartBuildInfo, list[LLMUsage]]:
     """Generate a chart PNG and return a ChartSpec with file_path set."""
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     dash_by_id = {s.instrument_id: s for s in draft.overnight_dashboard}
@@ -80,7 +81,7 @@ def build_chart(
             requested_instrument_ids=requested_instrument_ids,
             used_instrument_ids=list(spec.instrument_ids),
             code_generated=False,
-        )
+        ), []
 
     if len(instrument_ids) < 2:
         instrument_ids = [s.instrument_id for s in draft.overnight_dashboard[:2]]
@@ -105,7 +106,7 @@ def build_chart(
             requested_instrument_ids=requested_instrument_ids,
             used_instrument_ids=list(spec.instrument_ids),
             code_generated=False,
-        )
+        ), []
 
     display_names = {iid: dash_by_id[iid].display_name for iid in series_data if iid in dash_by_id}
     asset_classes = {iid: dash_by_id[iid].asset_class.value for iid in series_data if iid in dash_by_id}
@@ -153,15 +154,16 @@ def build_chart(
                 used_instrument_ids=list(spec.instrument_ids),
                 series_instrument_ids=list(used_rows.keys()),
                 code_generated=False,
-            )
+            ), []
         except Exception as exc:
             _log.warning("build_chart: deterministic render failed: %s", exc)
 
     attempts: list[ChartBuildAttempt] = []
+    llm_usage: list[LLMUsage] = []
     error_context = ""
     for attempt in range(2):
         try:
-            code = generate_chart_code(
+            code, usage = generate_chart_code(
                 chart_plan=chart_plan,
                 series_data=series_data,
                 display_names=display_names,
@@ -172,6 +174,7 @@ def build_chart(
                 settings=settings,
                 error_context=error_context,
             )
+            llm_usage.append(usage)
             execute_chart_code(code, output_path)
             attempts.append(ChartBuildAttempt(attempt_number=attempt + 1, status="success"))
             spec = ChartSpec(
@@ -198,7 +201,7 @@ def build_chart(
                 series_instrument_ids=list(series_data.keys()),
                 code_generated=True,
                 attempts=attempts,
-            )
+            ), llm_usage
         except Exception as exc:
             error_context = str(exc)
             attempts.append(
@@ -223,7 +226,7 @@ def build_chart(
         series_instrument_ids=list(series_data.keys()),
         code_generated=False,
         attempts=attempts,
-    )
+    ), llm_usage
 
 
 def _supports_deterministic_pair_line_chart(chart_plan: ChartPlan, instrument_ids: list[str]) -> bool:
