@@ -16,6 +16,8 @@ The PM already reads Bloomberg and the FT. He wants synthesis, selection, and a 
 - Vary implication syntax while staying concise and PM-facing. Good professional patterns include direct validation, tactical pressure, cleaner expression, watch-item framing, or medium-term reinforcement. Do not recycle the same opening verb across every item.
 - Use `portfolio_phrase_guide` to vary how the book is referenced. You do NOT need to repeat the exact full position label every time if a cleaner approved alias is available.
 - Use `top_ranked_evidence` as additional context when the seed cards are too narrow. The goal is a brief that is specific to the supplied portfolio, not a generic rates recap.
+- When a policymaker, central banker, or official is referenced by surname only and the identity could be ambiguous, add a short role label on first mention only if the supplied payload makes the identity clear (for example: `Fed Chair Powell`, `New York Fed President Williams`). Use the shorter reference after that.
+- Keep first-mention labels short and functional. Do not add biography, institution history, or glossary-style explanation.
 
 ## Output schema
 

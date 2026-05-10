@@ -595,6 +595,8 @@ def test_brief_writer_prompt_mentions_support_first_so_what_rules():
     assert "It does not need to begin with a fixed phrase." in prompt.text
     assert "Use `portfolio_phrase_guide` to vary how the book is referenced." in prompt.text
     assert "Use `top_ranked_evidence` as additional context" in prompt.text
+    assert "When a policymaker, central banker, or official is referenced by surname only" in prompt.text
+    assert "Keep first-mention labels short and functional." in prompt.text
     assert "`so_what` should answer: what matters for the book today or into the next event?" in prompt.text
     assert "If the same exposure appears more than once across the brief, change both the phrasing and the angle." in prompt.text
     assert "Macro events like payrolls, wages, CPI, or Fed communication should usually map first to rates, policy, or USD implications" in prompt.text
