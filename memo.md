@@ -19,9 +19,9 @@ Missing position data was filled with a plausible family office book oriented ar
 | Position | Instruments | Direction | Thesis |
 |---|---|---|---|
 | Metals complex | Gold, Silver, Copper | Long | Monetary debasement hedge |
-| Agriculture | Wheat, Corn, Soybeans | Long | Food security, climate disruption |
 | Long-end US rates | 30Y / 10Y Treasuries | Short | Fiscal dominance, structural inflation |
 | FX | USD concentration | Diversify | De-dollarization risk |
+| Agriculture | Wheat, Corn, Soybeans | Long | Food security, climate disruption, agricultural cost |
 
 ---
 
