@@ -740,6 +740,22 @@ def test_db_provider_wti_monday_allows_friday_observation(db_client_mock):
     assert snaps[0].observation_date == "2026-05-08"
 
 
+def test_db_provider_wti_sunday_allows_friday_observation(db_client_mock):
+    entries = [
+        {"date": "2026-05-07", "close": 110.00, "volume": 10000},
+        {"date": "2026-05-08", "close": 111.00, "volume": 12000},
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+    sunday_as_of = datetime(2026, 5, 10, 7, 0, tzinfo=timezone.utc)
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], sunday_as_of)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-08"
+
+
 def test_av_provider_us10y_bps_change():
     payload = {"data": [
         {"date": "2026-05-07", "value": "4.50"},

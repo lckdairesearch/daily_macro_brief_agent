@@ -34,13 +34,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _make_context(mode: RunMode = RunMode.SAMPLE) -> DiscoveryContext:
+    cutoff = datetime(2026, 5, 8, 6, 45, tzinfo=timezone.utc)
     return DiscoveryContext(
         market_snapshots=[],
         calendar_events=[],
         themes=[{"id": "monetary_debasement", "keywords": ["Fed", "inflation"]}],
         portfolio={"core_positions": [{"rationale": "Monetary debasement hedge"}]},
         lookback_hours=24,
-        data_cutoff=datetime(2026, 5, 8, 6, 45, tzinfo=timezone.utc),
+        data_cutoff=cutoff,
+        evidence_window_start=cutoff.replace(day=7),
+        evidence_window_end=cutoff,
         mode=mode,
     )
 
@@ -353,6 +356,33 @@ def test_x_scout_returns_social_cards(mock_client_cls):
 
 
 @patch("app.discovery.scouts.x.Client")
+def test_x_scout_uses_context_window_start_for_search(mock_client_cls):
+    import app.discovery.scouts.x as x_mod
+
+    valid_url = "https://x.com/macro_analyst/status/12345678901234567"
+    cards_json = json.dumps({"cards": [
+        {"title": "Post A", "source_name": "macro_analyst", "url": valid_url,
+         "thesis": "T", "evidence": "E", "macro_relevance": "M",
+         "portfolio_relevance": "P", "confidence": 0.7, "tags": []},
+    ]})
+    mock_client_cls.return_value = _mock_xai_chat(cards_json)
+    original_search = x_mod.x_search
+    original_user = x_mod.xai_user
+    try:
+        x_mod.x_search = lambda **kwargs: kwargs
+        x_mod.xai_user = lambda text: text
+        ctx = _make_context(RunMode.LIVE)
+        scout = XScout(model="grok-4", api_key="xai-test")
+        scout.run(ctx)
+    finally:
+        x_mod.x_search = original_search
+        x_mod.xai_user = original_user
+
+    tools = mock_client_cls.return_value.chat.create.call_args.kwargs["tools"]
+    assert tools[0]["from_date"] == ctx.evidence_window_start.astimezone(timezone.utc)
+
+
+@patch("app.discovery.scouts.x.Client")
 def test_x_scout_filters_hallucinated_urls(mock_client_cls):
     bad_url = "https://x.com/macro_analyst123/status/1787891234567890123fake"
     cards_json = json.dumps({"cards": [
@@ -517,7 +547,7 @@ def test_podcast_scout_curated_then_freeflow_fallback(mock_post):
         max_curated_queries=1,
         max_freeflow_queries=1,
     )
-    episodes = scout._fetch_episodes()
+    episodes = scout._fetch_episodes(_make_context().evidence_window_start)
 
     assert any(ep["uuid"] == "ep-curated" for ep in episodes)
     assert any(ep["uuid"] == "ep-free" for ep in episodes)
@@ -537,7 +567,7 @@ def test_podcast_scout_filters_stale_episodes(mock_post):
         curated_min_episodes=0,
         max_curated_queries=1,
     )
-    episodes = scout._fetch_episodes()
+    episodes = scout._fetch_episodes(_make_context().evidence_window_start)
 
     assert [ep["uuid"] for ep in episodes] == ["fresh"]
 

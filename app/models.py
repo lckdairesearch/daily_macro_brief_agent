@@ -277,6 +277,7 @@ class RunMetadata(BaseModel):
     run_id: str
     run_started_at: datetime
     data_cutoff_at: datetime
+    brief_date: datetime | None = None
     timezone: str
     config_hash: str | None = None
     git_commit: str | None = None

@@ -33,7 +33,8 @@ class ResearchScout:
         payload["portfolio_themes"] = portfolio_themes
         payload["instruction"] = (
             "Search for research notes, Substack analysis, or buy-side commentary published "
-            "in the last 48 hours that give a non-consensus or primary-source view on the "
+            f"between {context.evidence_window_start.isoformat()} and {context.evidence_window_end.isoformat()} "
+            "that give a non-consensus or primary-source view on the "
             "themes and market moves listed. Favour material with a clear implication for the "
             "portfolio themes. Return up to 4 evidence cards as JSON."
         )

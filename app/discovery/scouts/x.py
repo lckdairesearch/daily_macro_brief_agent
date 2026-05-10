@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import timezone
 from typing import Any
 
 from app.discovery.scouts.base import (
@@ -57,6 +57,8 @@ class XScout:
         payload: dict[str, Any] = {
             "data_cutoff": market_context["data_cutoff"],
             "lookback_hours": context.lookback_hours,
+            "evidence_window_start": context.evidence_window_start.isoformat(),
+            "evidence_window_end": context.evidence_window_end.isoformat(),
             "flagged_market_moves": market_context["flagged_market_moves"][:5],
             "calendar_highlights": market_context["calendar_highlights"][:5],
             "theme_keywords": market_context["theme_keywords"][:15],
@@ -73,6 +75,8 @@ class XScout:
         targets = _search_targets(payload)
         context_lines = [
             f"Data cutoff: {payload['data_cutoff']}",
+            f"Search window start: {payload['evidence_window_start']}",
+            f"Search window end: {payload['evidence_window_end']}",
             f"Search targets: {', '.join(targets)}",
             "Use the targets above; do not run a broad macro search.",
         ]
@@ -90,7 +94,7 @@ class XScout:
             + '\n\nReturn valid JSON only. If nothing qualifies, return {"cards":[]}.'
         )
 
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        since = context.evidence_window_start.astimezone(timezone.utc)
         # Strip provider prefix if present (xai_sdk uses bare model names)
         clean_model = self.model.removeprefix("xai/")
 
@@ -118,7 +122,11 @@ class XScout:
         text: str = result.content or ""
         # Cleanup structuring falls back to LiteLLM — must use prefixed model name.
         candidates = _parse_or_structure(text, model=self.model, api_key=self.api_key)
-        cards = to_evidence_cards(candidates, SourceType.SOCIAL)
+        cards = to_evidence_cards(
+            candidates,
+            SourceType.SOCIAL,
+            retrieved_at=context.evidence_window_end.astimezone(timezone.utc),
+        )
         return _filter_verified(cards)
 
 

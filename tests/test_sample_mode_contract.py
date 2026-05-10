@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 from app import settings as settings_module
@@ -94,6 +95,8 @@ def _sample_ranked_context(settings: Settings):
             portfolio=settings.portfolio,
             lookback_hours=24,
             data_cutoff=data_cutoff,
+            evidence_window_start=data_cutoff - timedelta(days=1),
+            evidence_window_end=data_cutoff,
             mode=RunMode.SAMPLE,
         ),
         failed_sources=[],

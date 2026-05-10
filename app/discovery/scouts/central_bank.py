@@ -34,7 +34,9 @@ class CentralBankScout:
         payload["institutions"] = _CB_INSTITUTIONS
         payload["instruction"] = (
             "Search for speeches, statements, minutes, or official releases from the listed "
-            "central banks published in the last 48 hours. Extract policy-relevant signals: "
+            "central banks published between "
+            f"{context.evidence_window_start.isoformat()} and {context.evidence_window_end.isoformat()}. "
+            "Extract policy-relevant signals: "
             "rate path signals, balance sheet changes, inflation or growth language shifts. "
             "Return up to 4 evidence cards as JSON."
         )

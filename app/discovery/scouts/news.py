@@ -27,8 +27,9 @@ class NewsScout:
         system_prompt = load_prompt("scouts/news_search").text
         payload = build_market_context(context)
         payload["instruction"] = (
-            "Search for news published in the last 24 hours that explain the flagged "
-            "market moves or are relevant to the themes and calendar events. "
+            "Search for news published between "
+            f"{context.evidence_window_start.isoformat()} and {context.evidence_window_end.isoformat()} "
+            "that explain the flagged market moves or are relevant to the themes and calendar events. "
             "Return up to 5 high-signal evidence cards as JSON."
         )
         candidates = web_search_and_structure(

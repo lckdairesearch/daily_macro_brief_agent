@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from math import sqrt
 from pathlib import Path
 import re
@@ -134,8 +135,8 @@ def build_render_context(
 ) -> dict[str, Any]:
     """Convert a BriefDraft into template-ready display fields."""
     metadata = draft.run_metadata or {}
-    cutoff = metadata.get("data_cutoff_at")
-    header_line = f"{_format_header_date(cutoff)} | Morning Brief"
+    header_dt = metadata.get("brief_date") or metadata.get("data_cutoff_at")
+    header_line = f"{_format_header_date(header_dt)} | Morning Brief"
     dashboard_snapshots = _select_dashboard_snapshots(draft.overnight_dashboard, settings)
     label_map = _build_display_label_map(settings)
 
@@ -394,6 +395,12 @@ def _format_header_date(value: Any) -> str:
     if hasattr(value, "strftime"):
         return f"{value:%A, %B} {value.day}, {value:%Y}"
     text = str(value)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = None
+    if parsed is not None:
+        return f"{parsed:%A, %B} {parsed.day}, {parsed:%Y}"
     return text[:10] if len(text) >= 10 else text
 
 

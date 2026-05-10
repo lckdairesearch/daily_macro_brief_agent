@@ -28,8 +28,10 @@ from app.pipeline import (
     _chart_output_path,
     _data_cutoff,
     _load_fixture_calendar,
+    _resolve_run_window,
     run_pipeline,
 )
+from app.render.email import build_render_context
 from app.settings import Settings
 
 
@@ -113,6 +115,7 @@ def test_sample_pipeline_run_metadata_populated(mock_writer, isolated_settings):
     assert meta.run_started_at is not None
     assert meta.run_started_at.tzinfo is not None
     assert meta.data_cutoff_at is not None
+    assert meta.brief_date is not None
     assert meta.timezone == "Asia/Hong_Kong"
     assert meta.llm_provider == "litellm"
 
@@ -274,7 +277,29 @@ def test_dry_run_pipeline_calls_calendar_provider_with_cutoff_date(mock_writer, 
          patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
         run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
 
-    mock_cal.assert_called_once_with(override)
+    mock_cal.assert_called_once_with(override.date())
+
+
+def test_dry_run_pipeline_weekend_rolls_calendar_to_monday(mock_writer, isolated_settings):
+    settings = isolated_settings
+    override = datetime(2026, 5, 9, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+
+    with patch("app.pipeline.load_vol_params", return_value={}), \
+         patch("app.pipeline.fetch_live_market_with_cache", return_value=[]), \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]) as mock_cal, \
+         patch("app.pipeline.build_scouts", return_value=[]), \
+         patch("app.pipeline.run_discovery", return_value=[]), \
+         patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
+        result = run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+
+    assert result.run_metadata.brief_date == datetime(2026, 5, 11, 0, 0, tzinfo=ZoneInfo(settings.app.timezone))
+    mock_cal.assert_called_once_with(datetime(2026, 5, 11, 0, 0, tzinfo=ZoneInfo(settings.app.timezone)).date())
+    assert result.brief_draft is not None
+    draft = result.brief_draft.model_copy(
+        update={"run_metadata": result.run_metadata.model_dump(mode="json")}
+    )
+    render_context = build_render_context(draft, settings, vol_params={})
+    assert render_context["header_line"] == "Monday, May 11, 2026 | Morning Brief"
 
 
 def test_chart_output_path_sample_uses_tracked_artifact():
@@ -324,6 +349,18 @@ def test_data_cutoff_override_aware_converts_to_configured_timezone():
     assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=tz)
 
 
+def test_resolve_run_window_rolls_weekend_to_monday():
+    settings = Settings.load()
+    cutoff = datetime(2026, 5, 10, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+
+    window = _resolve_run_window(settings, cutoff)
+
+    assert window.brief_date.isoformat() == "2026-05-11"
+    assert window.calendar_date.isoformat() == "2026-05-11"
+    assert window.evidence_window_start == datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    assert window.evidence_window_end == cutoff
+
+
 def test_load_fixture_market():
     """FixtureMarketProvider returns non-empty list of MarketSnapshot objects."""
     snapshots = FixtureMarketProvider().fetch_watchlist([], datetime.now(timezone.utc))
@@ -347,7 +384,11 @@ def test_load_fixture_evidence():
     """FixtureDiscoveryScout returns non-empty list of EvidenceCard objects."""
     ctx = DiscoveryContext(
         market_snapshots=[], calendar_events=[], themes=[], portfolio={},
-        lookback_hours=24, data_cutoff=datetime.now(timezone.utc), mode=RunMode.SAMPLE,
+        lookback_hours=24,
+        data_cutoff=datetime.now(timezone.utc),
+        evidence_window_start=datetime.now(timezone.utc),
+        evidence_window_end=datetime.now(timezone.utc),
+        mode=RunMode.SAMPLE,
     )
     cards = FixtureDiscoveryScout().run(ctx)
     assert len(cards) > 0

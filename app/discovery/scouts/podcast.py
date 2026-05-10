@@ -19,7 +19,7 @@ import logging
 import re
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -115,7 +115,7 @@ class PodcastScout:
     # ------------------------------------------------------------------
 
     def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
-        episodes = self._fetch_episodes()
+        episodes = self._fetch_episodes(context.evidence_window_start)
         if not episodes:
             logger.info("PodcastScout: no episodes found")
             return []
@@ -144,10 +144,8 @@ class PodcastScout:
     # Step 1: Fetch episodes from Taddy
     # ------------------------------------------------------------------
 
-    def _fetch_episodes(self) -> list[dict[str, Any]]:
-        cutoff_ts = int(
-            (datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)).timestamp()
-        )
+    def _fetch_episodes(self, window_start: datetime) -> list[dict[str, Any]]:
+        cutoff_ts = int(window_start.astimezone(timezone.utc).timestamp())
         episodes: list[dict[str, Any]] = []
 
         # Curated shows: fetch latest episodes directly from each series
@@ -353,7 +351,7 @@ class PodcastScout:
             source_type=SourceType.PODCAST,
             url=episode_url or c.url,
             published_at=pub_dt,
-            retrieved_at=datetime.now(timezone.utc),
+            retrieved_at=context.evidence_window_end.astimezone(timezone.utc),
             thesis=c.thesis,
             evidence=c.evidence,
             macro_relevance=c.macro_relevance,

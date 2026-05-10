@@ -40,6 +40,8 @@ class DiscoveryContext:
     portfolio: dict[str, Any]
     lookback_hours: int
     data_cutoff: datetime
+    evidence_window_start: datetime
+    evidence_window_end: datetime
     mode: RunMode
 
 

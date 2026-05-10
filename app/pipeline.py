@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Callable
@@ -35,6 +36,15 @@ from app.synthesis.ranker import RankedBriefContext
 
 if TYPE_CHECKING:
     from app.settings import Settings
+
+
+@dataclass(frozen=True)
+class _RunWindow:
+    actual_cutoff_at: datetime
+    brief_date: date
+    calendar_date: date
+    evidence_window_start: datetime
+    evidence_window_end: datetime
 
 
 def run_pipeline(
@@ -71,6 +81,7 @@ def run_pipeline(
     _progress(progress, "Determine run window")
     _step_started = perf_counter()
     data_cutoff = _data_cutoff(settings, tz, data_cutoff)
+    run_window = _resolve_run_window(settings, data_cutoff)
     run_id = _run_id(mode, started_at)
     run_output_dir = _run_output_dir(settings, mode, data_cutoff, run_id)
     llm_cfg = settings.sources.get("llm", {})
@@ -111,7 +122,7 @@ def run_pipeline(
             _calendar_events = InvestingCalendarProvider(
                 config=_cal_cfg,
                 cache_dir=Path(settings.app.cache_dir) / "calendar",
-            ).fetch_for_date(data_cutoff)
+            ).fetch_for_date(run_window.calendar_date)
         except CalendarIngestionError as exc:
             _calendar_events = []
             warnings.append(f"Calendar fetch failed — no events loaded: {exc}")
@@ -134,6 +145,8 @@ def run_pipeline(
         portfolio=settings.portfolio,
         lookback_hours=24,
         data_cutoff=data_cutoff,
+        evidence_window_start=run_window.evidence_window_start,
+        evidence_window_end=run_window.evidence_window_end,
         mode=mode,
     )
     evidence_cards = run_discovery(scouts, discovery_context, failed_sources, timings)
@@ -189,6 +202,7 @@ def run_pipeline(
             run_id=run_id,
             run_started_at=started_at,
             data_cutoff_at=data_cutoff,
+            brief_date=_brief_date_datetime(run_window, tz),
             timezone=settings.app.timezone,
             llm_provider=llm_provider,
             llm_model=llm_model,
@@ -217,6 +231,7 @@ def run_pipeline(
             run_id=run_id,
             run_started_at=started_at,
             data_cutoff_at=data_cutoff,
+            brief_date=_brief_date_datetime(run_window, tz),
             timezone=settings.app.timezone,
             llm_provider=llm_provider,
             llm_model=llm_model,
@@ -284,11 +299,13 @@ def run_pipeline(
             brief_draft = brief_draft.model_copy(update={"chart": chart_spec})
 
             # Upload chart to public hosting for inline email rendering.
-            from pathlib import Path as _Path
-            from app.render.chart_uploader import publish_chart
-            chart_image_url = publish_chart(_Path(chart_spec.file_path), settings)
-            if not chart_image_url:
-                warnings.append("Chart upload failed — chart will appear as email attachment")
+            if mode in {RunMode.DRY_RUN, RunMode.LIVE}:
+                from pathlib import Path as _Path
+                from app.render.chart_uploader import publish_chart
+
+                chart_image_url = publish_chart(_Path(chart_spec.file_path), settings)
+                if not chart_image_url:
+                    warnings.append("Chart upload failed — chart will appear as email attachment")
     except Exception as _chart_exc:
         _log.warning("Chart generation failed: %s", _chart_exc)
         warnings.append(f"Chart generation failed: {_chart_exc}")
@@ -309,6 +326,7 @@ def run_pipeline(
             run_id=run_id,
             run_started_at=started_at,
             data_cutoff_at=data_cutoff,
+            brief_date=_brief_date_datetime(run_window, tz),
             timezone=settings.app.timezone,
             llm_provider=llm_provider,
             llm_model=llm_model,
@@ -385,6 +403,7 @@ def run_pipeline(
         run_id=run_id,
         run_started_at=started_at,
         data_cutoff_at=data_cutoff,
+        brief_date=_brief_date_datetime(run_window, tz),
         timezone=settings.app.timezone,
         llm_provider=llm_provider,
         llm_model=llm_model,
@@ -396,13 +415,12 @@ def run_pipeline(
         failed_sources=failed_sources,
         delivery_status=delivery_status,
         output_paths=output_paths,
-        timings=timings,
+        timings=[],
     )
-    _save_run_metadata(run_output_dir, run_metadata, output_paths)
-    if brief_draft is not None:
-        brief_draft.run_metadata = run_metadata.model_dump(mode="json")
     _record_timing(timings, "Record metadata", _step_started)
     run_metadata.timings = timings
+    _save_run_metadata(run_output_dir, run_metadata, output_paths)
+    _publish_run_backups(mode, settings, run_output_dir, output_paths)
     if brief_draft is not None:
         brief_draft.run_metadata = run_metadata.model_dump(mode="json")
 
@@ -426,6 +444,50 @@ def _data_cutoff(
 
     hour, minute = (int(p) for p in settings.app.data_cutoff_hkt.split(":"))
     return datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def _resolve_run_window(settings: "Settings", data_cutoff: datetime) -> _RunWindow:
+    """Resolve the brief date and evidence window from the actual run cutoff."""
+    hour, minute = (int(part) for part in settings.app.data_cutoff_hkt.split(":"))
+    cutoff_date = data_cutoff.date()
+    weekday = cutoff_date.weekday()
+    if weekday == 5:
+        brief_date = cutoff_date + timedelta(days=2)
+    elif weekday == 6:
+        brief_date = cutoff_date + timedelta(days=1)
+    else:
+        brief_date = cutoff_date
+
+    if weekday == 0:
+        start_date = cutoff_date - timedelta(days=3)
+    elif weekday == 5:
+        start_date = cutoff_date - timedelta(days=1)
+    elif weekday == 6:
+        start_date = cutoff_date - timedelta(days=2)
+    else:
+        start_date = cutoff_date - timedelta(days=1)
+
+    evidence_window_start = data_cutoff.replace(
+        year=start_date.year,
+        month=start_date.month,
+        day=start_date.day,
+        hour=hour,
+        minute=minute,
+        second=0,
+        microsecond=0,
+    )
+    return _RunWindow(
+        actual_cutoff_at=data_cutoff,
+        brief_date=brief_date,
+        calendar_date=brief_date,
+        evidence_window_start=evidence_window_start,
+        evidence_window_end=data_cutoff,
+    )
+
+
+def _brief_date_datetime(run_window: _RunWindow, tz: ZoneInfo) -> datetime:
+    """Represent the resolved brief date in the configured timezone for display."""
+    return datetime.combine(run_window.brief_date, datetime.min.time(), tzinfo=tz)
 
 
 def _chart_output_path(
@@ -572,6 +634,40 @@ def _save_run_metadata(
         json.dumps(run_metadata.model_dump(mode="json"), indent=2, sort_keys=True, default=str),
         encoding="utf-8",
     )
+
+
+def _publish_run_backups(
+    mode: RunMode,
+    settings: "Settings",
+    run_output_dir: Path,
+    output_paths: dict[str, str],
+) -> None:
+    """Publish dry/live run artifacts and refresh the stable latest rendered brief alias."""
+    if mode not in {RunMode.DRY_RUN, RunMode.LIVE}:
+        return
+
+    from app.render.chart_uploader import publish_latest_artifact_alias, publish_run_artifacts
+
+    publish_run_artifacts(run_output_dir, settings)
+
+    rendered_html = output_paths.get("brief_rendered_html")
+    if not rendered_html:
+        return
+
+    rendered_html_path = Path(rendered_html)
+    alias_key = _latest_rendered_brief_alias_key(settings, mode)
+    publish_latest_artifact_alias(rendered_html_path, alias_key, settings)
+
+
+def _latest_rendered_brief_alias_key(settings: "Settings", mode: RunMode) -> str:
+    """Return the stable R2 object key for the latest rendered brief alias."""
+    output_root = Path(settings.app.output_dir).name or "outputs"
+    mode_root = "dry-runs" if mode == RunMode.DRY_RUN else "runs"
+    alias_path = Path(output_root) / mode_root / "latest" / "brief_rendered.html"
+    object_prefix = settings.creds.cloudflare_r2_prefix or ""
+    if object_prefix:
+        alias_path = Path(object_prefix) / alias_path
+    return str(alias_path).replace("\\", "/")
 
 
 def _progress(progress: Callable[[str], None] | None, message: str) -> None:

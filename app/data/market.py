@@ -616,6 +616,8 @@ def _minimum_observation_date(as_of: datetime) -> date:
     as_of_date = as_of.date()
     if as_of_date.weekday() == 0:  # Monday: Friday close is current enough.
         return as_of_date - timedelta(days=3)
+    if as_of_date.weekday() == 6:  # Sunday: Friday close is also current enough.
+        return as_of_date - timedelta(days=2)
     return as_of_date - timedelta(days=1)
 
 
