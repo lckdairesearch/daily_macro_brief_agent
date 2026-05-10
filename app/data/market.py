@@ -625,12 +625,18 @@ def _compute_5d_change(rows: list[dict], change_unit: str) -> float | None:
 
 
 def _minimum_observation_date(as_of: datetime) -> date:
-    """Earliest daily observation allowed in the overnight dashboard."""
+    """Earliest daily observation allowed in the overnight dashboard.
+
+    Treasury yields (FRED/AV) have a 1-business-day publication lag, so Friday's
+    data is not available until Monday. On weekend runs we must accept Thursday.
+    """
     as_of_date = as_of.date()
     if as_of_date.weekday() == 0:  # Monday: Friday close is current enough.
         return as_of_date - timedelta(days=3)
-    if as_of_date.weekday() == 6:  # Sunday: Friday close is also current enough.
+    if as_of_date.weekday() == 5:  # Saturday: Friday close not yet published; accept Thursday.
         return as_of_date - timedelta(days=2)
+    if as_of_date.weekday() == 6:  # Sunday: Friday close not yet published; accept Thursday.
+        return as_of_date - timedelta(days=3)
     return as_of_date - timedelta(days=1)
 
 

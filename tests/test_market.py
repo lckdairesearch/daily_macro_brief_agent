@@ -756,6 +756,23 @@ def test_db_provider_wti_sunday_allows_friday_observation(db_client_mock):
     assert snaps[0].observation_date == "2026-05-08"
 
 
+def test_db_provider_wti_sunday_allows_thursday_observation(db_client_mock):
+    """Sunday run must accept Thursday data — Friday yields not published until Monday."""
+    entries = [
+        {"date": "2026-05-06", "close": 109.00, "volume": 10000},
+        {"date": "2026-05-07", "close": 110.00, "volume": 12000},  # Thursday
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+    sunday_as_of = datetime(2026, 5, 10, 7, 0, tzinfo=timezone.utc)
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], sunday_as_of)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-07"
+
+
 def test_db_provider_end_ts_rolled_back_for_sunday_as_of(db_client_mock):
     """end_ts must be Friday 22:00 UTC when as_of is Sunday — not Saturday (422 territory)."""
     store = MagicMock()
