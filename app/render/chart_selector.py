@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from itertools import combinations
 from math import sqrt
 from typing import TYPE_CHECKING
@@ -28,10 +28,11 @@ if TYPE_CHECKING:
     from app.synthesis.ranker import RankedBriefContext
 
 
-_WINDOW_OBS = {
-    ChartWindow.ONE_WEEK: 5,
-    ChartWindow.ONE_MONTH: 21,
+_WINDOW_DAYS = {
+    ChartWindow.ONE_WEEK: 7,
+    ChartWindow.ONE_MONTH: 30,
 }
+_CHART_FETCH_LOOKBACK_DAYS = 45
 _WINDOW_LABEL = {
     ChartWindow.ONE_DAY: "1-day",
     ChartWindow.ONE_WEEK: "1-week",
@@ -86,7 +87,7 @@ def select_chart_plan(
     instrument_ids = _candidate_universe_ids(snapshots)
     series_data = fetch_chart_series(
         instruments=instrument_ids,
-        lookback_days=30,
+        lookback_days=_CHART_FETCH_LOOKBACK_DAYS,
         as_of=as_of,
         settings=settings,
         sample_mode=sample_mode,
@@ -150,13 +151,13 @@ def build_chart_candidates(
 
     available_ids = [iid for iid in _candidate_universe_ids(snapshots) if iid in series_data]
     for window in (ChartWindow.ONE_WEEK, ChartWindow.ONE_MONTH):
-        min_obs = _WINDOW_OBS[window]
+        window_days = _WINDOW_DAYS[window]
         for left_id, right_id in combinations(available_ids, 2):
             left_rows = series_data.get(left_id, [])
             right_rows = series_data.get(right_id, [])
-            left_slice = _slice_window(left_rows, min_obs)
-            right_slice = _slice_window(right_rows, min_obs)
-            if len(left_slice) < min_obs or len(right_slice) < min_obs:
+            left_slice = _slice_window(left_rows, window_days)
+            right_slice = _slice_window(right_rows, window_days)
+            if len(left_slice) < 2 or len(right_slice) < 2:
                 continue
             candidate = _build_pair_candidate(
                 left=snapshot_by_id[left_id],
@@ -379,8 +380,12 @@ def _candidate_universe_ids(snapshots: list[MarketSnapshot]) -> list[str]:
     return ordered
 
 
-def _slice_window(rows: list[dict], count: int) -> list[dict]:
-    return rows[-count:] if len(rows) >= count else rows
+def _slice_window(rows: list[dict], calendar_days: int) -> list[dict]:
+    if not rows:
+        return []
+    last_date = date.fromisoformat(rows[-1]["date"])
+    start_date = last_date - timedelta(days=calendar_days - 1)
+    return [row for row in rows if date.fromisoformat(row["date"]) >= start_date]
 
 
 def _daily_returns(rows: list[dict]) -> list[float]:

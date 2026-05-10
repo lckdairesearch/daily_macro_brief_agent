@@ -34,6 +34,11 @@ Sample outputs are written under `outputs/samples/YYYY-MM-DD/<run_id>/` and stab
 - `outputs/samples/sample_brief.txt`
 - `outputs/samples/sample_chart.png`
 
+When Cloudflare R2 hosting is configured, `dry-run` and `live` runs also upload their full per-run folders under `outputs/dry-runs/...` and `outputs/runs/...`, plus refresh stable public latest-render links:
+
+- [Latest dry-run rendered brief](https://pub-8e3db3da8c4c4e36a23129f88de511b7.r2.dev/outputs/dry-runs/latest/brief_rendered.html)
+- [Latest live rendered brief](https://pub-8e3db3da8c4c4e36a23129f88de511b7.r2.dev/outputs/runs/latest/brief_rendered.html)
+
 ## Runtime Modes
 
 | Mode | Command | Behavior | Delivery |

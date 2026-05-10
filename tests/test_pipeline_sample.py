@@ -17,6 +17,11 @@ from app.models import (
     BriefDraft,
     BriefItem,
     BriefSection,
+    ChartBuildInfo,
+    ChartSelectionMethod,
+    ChartSpec,
+    ChartWindow,
+    DeliveryResult,
     DeliveryStatus,
     FreshnessStatus,
     LLMUsage,
@@ -39,6 +44,12 @@ from app.settings import Settings
 def isolated_settings(tmp_path):
     settings = Settings.load()
     settings.app.output_dir = str(tmp_path / "outputs")
+    settings.creds.cloudflare_r2_account_id = None
+    settings.creds.cloudflare_r2_access_key_id = None
+    settings.creds.cloudflare_r2_secret_access_key = None
+    settings.creds.cloudflare_r2_bucket = None
+    settings.creds.cloudflare_r2_public_base_url = None
+    settings.creds.cloudflare_r2_prefix = None
     return settings
 
 
@@ -308,6 +319,173 @@ def test_dry_run_pipeline_weekend_rolls_calendar_to_monday(mock_writer, isolated
     )
     render_context = build_render_context(draft, settings, vol_params={})
     assert render_context["header_line"] == "Monday, May 11, 2026 | Morning Brief"
+
+
+def test_sample_pipeline_keeps_r2_uploads_disabled(mock_writer, isolated_settings):
+    settings = isolated_settings
+
+    with patch("app.render.chart_uploader.publish_chart") as mock_chart_upload, \
+         patch("app.render.chart_uploader.publish_run_artifacts") as mock_run_upload, \
+         patch("app.render.chart_uploader.publish_latest_artifact_alias") as mock_alias_upload:
+        result = run_pipeline(RunMode.SAMPLE, settings)
+
+    assert result.success is True
+    mock_chart_upload.assert_not_called()
+    mock_run_upload.assert_not_called()
+    mock_alias_upload.assert_not_called()
+
+
+def test_pipeline_marks_non_one_day_chart_fallback_as_degraded(mock_writer, isolated_settings):
+    settings = isolated_settings
+
+    def _fake_build_chart(*args, output_path, **kwargs):
+        Path(output_path).write_bytes(b"png")
+        return (
+            ChartSpec(
+                title="Fallback chart",
+                caption="Fallback caption",
+                chart_type="bar",
+                data_source="dashboard",
+                file_path=output_path,
+                code_generated=False,
+                window=ChartWindow.ONE_WEEK,
+                instrument_ids=["US10Y", "MOVE"],
+                selection_reason="test",
+                selection_method=ChartSelectionMethod.HYBRID_LLM_SHORTLIST,
+            ),
+            ChartBuildInfo(
+                final_status="hardcoded_fallback",
+                fallback_reason="codegen_failed",
+                output_path=output_path,
+                requested_window=ChartWindow.ONE_WEEK,
+                requested_chart_type="line",
+                requested_instrument_ids=["US10Y", "MOVE"],
+                used_instrument_ids=["US10Y", "MOVE"],
+                series_instrument_ids=["US10Y", "MOVE"],
+                code_generated=False,
+            ),
+        )
+
+    with patch("app.render.charts.build_chart", side_effect=_fake_build_chart):
+        result = run_pipeline(RunMode.SAMPLE, settings)
+
+    build_chart_timing = next(t for t in result.run_metadata.timings if t["component"] == "Build chart")
+    assert build_chart_timing["status"] == "degraded"
+    assert any("Chart generation degraded to hardcoded fallback (codegen_failed)" == w for w in result.run_metadata.warnings)
+    assert "chart_build" in result.run_metadata.output_paths
+
+
+def test_pipeline_keeps_one_day_fallback_as_success(mock_writer, isolated_settings):
+    settings = isolated_settings
+
+    def _fake_build_chart(*args, output_path, **kwargs):
+        Path(output_path).write_bytes(b"png")
+        return (
+            ChartSpec(
+                title="One-day fallback",
+                caption="Fallback caption",
+                chart_type="bar",
+                data_source="dashboard",
+                file_path=output_path,
+                code_generated=False,
+                window=ChartWindow.ONE_DAY,
+                instrument_ids=["SPY", "VIX"],
+                selection_reason="test",
+                selection_method=ChartSelectionMethod.HYBRID_LLM_SHORTLIST,
+            ),
+            ChartBuildInfo(
+                final_status="hardcoded_fallback",
+                fallback_reason="one_day_window",
+                output_path=output_path,
+                requested_window=ChartWindow.ONE_DAY,
+                requested_chart_type="bar",
+                requested_instrument_ids=["SPY", "VIX"],
+                used_instrument_ids=["SPY", "VIX"],
+                series_instrument_ids=[],
+                code_generated=False,
+            ),
+        )
+
+    with patch("app.render.charts.build_chart", side_effect=_fake_build_chart):
+        result = run_pipeline(RunMode.SAMPLE, settings)
+
+    build_chart_timing = next(t for t in result.run_metadata.timings if t["component"] == "Build chart")
+    assert build_chart_timing["status"] == "success"
+    assert all("Chart generation degraded to hardcoded fallback" not in w for w in result.run_metadata.warnings)
+
+
+def test_dry_run_pipeline_publishes_run_artifacts_and_latest_alias(mock_writer, isolated_settings):
+    settings = isolated_settings
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    snapshot = MarketSnapshot(
+        as_of=override,
+        observation_date="2026-05-07",
+        instrument_id="SPY",
+        display_name="S&P 500 (proxy)",
+        asset_class="equity",
+        region="US",
+        last_price_or_level=500.0,
+        one_day_change=1.0,
+        one_day_change_unit="%",
+        source="test",
+        freshness_status=FreshnessStatus.FRESH,
+    )
+
+    with patch("app.pipeline.load_vol_params", return_value={}), \
+         patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]), \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
+         patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/outputs/dry-runs/2026-05-08/run/chart.png") as mock_chart_upload, \
+         patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/outputs/dry-runs/2026-05-08/run/brief.html"]) as mock_run_upload, \
+         patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/outputs/dry-runs/latest/brief_rendered.html") as mock_alias_upload:
+        result = run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+
+    assert result.success is True
+    assert result.run_metadata.delivery_status == DeliveryStatus.DISABLED
+    mock_chart_upload.assert_called_once()
+    mock_run_upload.assert_called_once()
+    mock_alias_upload.assert_called_once()
+    assert mock_alias_upload.call_args.args[1] == "outputs/dry-runs/latest/brief_rendered.html"
+
+
+def test_live_pipeline_publishes_run_artifacts_even_when_delivery_fails(mock_writer, isolated_settings):
+    settings = isolated_settings
+    settings.creds.enable_email_delivery = True
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    snapshot = MarketSnapshot(
+        as_of=override,
+        observation_date="2026-05-07",
+        instrument_id="SPY",
+        display_name="S&P 500 (proxy)",
+        asset_class="equity",
+        region="US",
+        last_price_or_level=500.0,
+        one_day_change=1.0,
+        one_day_change_unit="%",
+        source="test",
+        freshness_status=FreshnessStatus.FRESH,
+    )
+
+    class FailingProvider:
+        def send(self, subject, html_body, text_body, inline_images=None):
+            return DeliveryResult(success=False, error_message="boom")
+
+    with patch("app.pipeline.load_vol_params", return_value={}), \
+         patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]), \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
+         patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch("app.delivery.get_provider", return_value=FailingProvider()), \
+         patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/outputs/runs/2026-05-08/run/chart.png"), \
+         patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/outputs/runs/2026-05-08/run/brief.html"]) as mock_run_upload, \
+         patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/outputs/runs/latest/brief_rendered.html") as mock_alias_upload:
+        result = run_pipeline(RunMode.LIVE, settings, data_cutoff=override)
+
+    assert result.run_metadata.delivery_status == DeliveryStatus.FAILED
+    mock_run_upload.assert_called_once()
+    mock_alias_upload.assert_called_once()
+    assert "Email delivery failed: boom" in result.run_metadata.warnings
 
 
 def test_chart_output_path_sample_uses_tracked_artifact():

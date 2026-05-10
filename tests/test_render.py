@@ -537,18 +537,11 @@ def test_chart_codegen_prompt_includes_dual_axis_overlap_guidance():
     from app.llm.prompt_registry import clear_prompt_cache, load_prompt
     clear_prompt_cache()
     prompt = load_prompt("chart_codegen")
-    assert "Use dual-axis by default" in prompt.text
-    assert "average shared-date separation is already below 10%" in prompt.text
-    assert "shared dates" in prompt.text
-    assert "abs(yl - yr) < 0.04" in prompt.text
-    assert "never change the data values" in prompt.text
-    assert "adjust only `ax2` limits asymmetrically" in prompt.text
-    assert "at least `0.08` apart" in prompt.text
-    assert "padding reaches `15%`" in prompt.text
-    assert "np.median" in prompt.text
-    assert "`secondary_series_name` to a dashed line" in prompt.text
-    assert "This is a return condition, not a style preference" in prompt.text
-    assert "Before returning code, run your own final check" in prompt.text
+    assert "keep it simple" in prompt.text
+    assert "If the larger range is more than 5x the smaller range" in prompt.text
+    assert "Otherwise use a single left axis" in prompt.text
+    assert "Do not add custom overlap-detection loops" in prompt.text
+    assert "Keep the chart code straightforward and reliable" in prompt.text
 
 
 def test_chart_codegen_uses_chart_specific_llm_overrides(monkeypatch):

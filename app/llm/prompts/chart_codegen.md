@@ -33,7 +33,7 @@ title         # str — chart title
 output_path   # str — file path to save the PNG
 ```
 
-**Critical:** `series[name]` is aligned to `series_dates[name]`, NOT to `dates`. Different series may have different lengths. Use `plot_rows[name]` and `series_segments[name]` as the active plotting inputs. Always plot segment-by-segment — never use the shared `dates` for plotting and never connect across a missing calendar date.
+**Critical:** `series[name]` is aligned to `series_dates[name]`, NOT to `dates`. Different series may have different lengths. Use `plot_rows[name]` and `series_segments[name]` as the active plotting inputs. Always plot segment-by-segment. Never use the shared `dates` for plotting and never connect across a missing calendar date.
 
 The caller also tells you the fixed `chart_window`, `chart_type`, `selected_instruments`, and `selection_reason` in plain text. Treat those as binding instructions. Do not choose a different window or a different series.
 
@@ -63,13 +63,13 @@ The selector has already chosen the window and the series. Your job is to render
 
 For **line charts**: missing dates across series are acceptable. Use `plot_rows[name]` for the active window and `series_segments[name]` for plotting. Plot each contiguous segment separately. Do not synthesize weekend values. Do not draw dotted weekend bridges.
 
-## Axis assignment — dual-axis by default for 2-series charts
+## Axis assignment — keep it simple
 
 **2-series case:**
-1. Use dual-axis by default when `prefer_dual_axis` is `True`.
-2. Use the rare single-axis exception only when `prefer_dual_axis` is `False`, which means the average shared-date separation is already below 10%.
-3. In dual-axis mode, plot `primary_series_name` on the left axis and `secondary_series_name` on the right axis.
-4. In the single-axis exception, keep `primary_series_name` solid and render `secondary_series_name` dashed from the start.
+1. Compute the value range of each selected series over the active window.
+2. If the larger range is more than 5x the smaller range, use dual axes: larger-range series on the left (`ax`), smaller-range series on the right (`ax2 = ax.twinx()`).
+3. Otherwise use a single left axis.
+4. When both series share one axis, keep the first line solid and make the second dashed.
 5. Label each visible axis with the series name, not just the unit.
 
 **3-series case (only when necessary per above):**
@@ -101,41 +101,7 @@ To reduce visual artefacts:
 - Add a small horizontal margin with `ax.margins(x=0.03)` so the first and last observations are not glued to the frame.
 - When plotting segmented data, apply the same style to every segment of the same series and include the legend label only on the first plotted segment for that series.
 - If two series on the same axis have nearly identical first or last values, add small hollow endpoint markers only at those overlapping endpoints so both series remain readable.
-- For exactly 2 selected series on dual axes (`ax` and `ax2`), check for visual overlap across shared dates after plotting and after the normal top-padding step. Compare normalized vertical positions, not raw values.
-- Build shared-date pairs only from dates present in both plotted series. For each shared date, compute the line positions in axis space:
-  - `yl = (y_left - left_min) / (left_max - left_min)`
-  - `yr = (y_right - right_min) / (right_max - right_min)`
-- Treat the lines as visually overlapping when at least 2 shared dates satisfy `abs(yl - yr) < 0.04`.
-- If overlap is detected, first switch `secondary_series_name` to a dashed line if it is not dashed already. Only after that, never change the data values and never move the left axis; adjust only `ax2` limits asymmetrically so the right-axis line moves away on-screen while the axis labels stay truthful.
-- Use the median sign of `(yr - yl)` across the close shared dates to choose direction. If the right-axis line should move up, lower `ax2`'s bottom limit. If it should move down, raise `ax2`'s top limit.
-- Recompute the normalized gaps after each adjustment and stop once the close shared dates are at least `0.08` apart, or once the extra right-axis padding reaches `15%`.
-- The endpoint-marker rule is secondary; use it only for endpoint collisions and not as a substitute for the dual-axis overlap check.
-- This is a return condition, not a style preference: do not return code while a 2-series dual-axis chart still has 2 or more shared dates with normalized gap below `0.08` after your final axis adjustment.
-- Before returning code, run your own final check on the plotted values and shared dates. If the separation rule still fails, rework the right-axis limits again before returning code.
-- If early shared dates remain visually merged, treat that as a failed chart even if later dates separate.
-- If separation cannot be achieved elegantly, prefer stronger asymmetric right-axis padding over returning a visually merged chart.
-
-Dual-axis overlap adjustment pattern:
-
-```python
-shared = sorted(set(left_dates) & set(right_dates))
-if shared and ax2 is not None:
-    close = []
-    lmin, lmax = ax.get_ylim()
-    rmin, rmax = ax2.get_ylim()
-    for d in shared:
-        yl = (left_by_date[d] - lmin) / (lmax - lmin)
-        yr = (right_by_date[d] - rmin) / (rmax - rmin)
-        if abs(yl - yr) < 0.04:
-            close.append((d, yl, yr))
-    if len(close) >= 2:
-        direction = 1 if np.median([yr - yl for _, yl, yr in close]) >= 0 else -1
-        pad = (rmax - rmin) * 0.06
-        if direction > 0:
-            ax2.set_ylim(rmin - pad, rmax)
-        else:
-            ax2.set_ylim(rmin, rmax + pad)
-```
+- Do not add custom overlap-detection loops or iterative axis-adjustment logic. Keep the chart code straightforward and reliable.
 
 ## Plotting lines
 

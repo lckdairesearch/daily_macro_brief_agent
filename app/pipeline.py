@@ -683,15 +683,18 @@ def _publish_run_backups(
 
     from app.render.chart_uploader import publish_latest_artifact_alias, publish_run_artifacts
 
-    publish_run_artifacts(run_output_dir, settings)
+    try:
+        publish_run_artifacts(run_output_dir, settings)
 
-    rendered_html = output_paths.get("brief_rendered_html")
-    if not rendered_html:
-        return
+        rendered_html = output_paths.get("brief_rendered_html")
+        if not rendered_html:
+            return
 
-    rendered_html_path = Path(rendered_html)
-    alias_key = _latest_rendered_brief_alias_key(settings, mode)
-    publish_latest_artifact_alias(rendered_html_path, alias_key, settings)
+        rendered_html_path = Path(rendered_html)
+        alias_key = _latest_rendered_brief_alias_key(settings, mode)
+        publish_latest_artifact_alias(rendered_html_path, alias_key, settings)
+    except Exception as exc:
+        _log.warning("Run artifact backup failed: %s", exc)
 
 
 def _latest_rendered_brief_alias_key(settings: "Settings", mode: RunMode) -> str:
