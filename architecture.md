@@ -131,7 +131,7 @@ Current behavior:
 - Investing.com forecast is used as consensus when present
 - missing consensus is preserved as missing and flagged
 
-Consensus enrichment is not currently wired into the run path. Guardrail helpers exist in `app/data/calendar.py`, and `app/discovery/scouts/consensus.py` remains a stub.
+Consensus enrichment is not currently wired into the run path. Guardrail helpers exist in `app/data/calendar.py`; the scout module has not been implemented yet.
 
 ### Discovery Sources
 
@@ -199,7 +199,6 @@ Sample mode also refreshes stable aliases:
 These are the main implementation gaps that matter to future work:
 
 - consensus enrichment is designed but not active in the pipeline
-- the critic/repair prompt exists, but there is no second-pass repair stage in the current run path
 - some docs and support files historically drifted faster than the code, so future changes should treat code plus tests as implementation truth
 
 ## Source of Truth

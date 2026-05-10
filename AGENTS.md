@@ -7,7 +7,7 @@ This file applies to all coding agents (Codex, etc.) working in this repository.
 1. `spec.md` — product behavior, brief sections, acceptance criteria, non-goals.
 2. `architecture.md` — system shape, module boundaries, data contracts, provider design.
 3. `plan.md` — execution order only. Does not override spec or architecture.
-4. This file and `CLAUDE.md` / `GEMINI.md` point agents back to that hierarchy.
+4. This file and `CLAUDE.md` point agents back to that hierarchy.
 
 ## Coding principles
 

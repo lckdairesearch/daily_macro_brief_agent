@@ -11,7 +11,7 @@ It is intentionally stepwise. Each substep should be small enough for a single c
 1. `spec.md` defines product behavior and acceptance criteria.
 2. `architecture.md` defines the current system shape and module boundaries.
 3. `plan.md` defines execution order and agent-sized work units.
-4. `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` point contributors back to this hierarchy.
+4. `AGENTS.md` and `CLAUDE.md` point contributors back to this hierarchy.
 
 ## Planning Rules
 
