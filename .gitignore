@@ -46,3 +46,6 @@ build/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Local assets (cost analysis, scratch docs, etc.)
+assets/
