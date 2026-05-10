@@ -42,7 +42,7 @@
     {
       "as_of": "2026-05-08T06:45:00+08:00",
       "asset_class": "equity",
-      "display_name": "Euro Stoxx 50 (FEZ, proxy, USD-based)",
+      "display_name": "Euro Stoxx 50 (proxy, USD-based)",
       "five_day_change": 1.6518,
       "five_day_change_unit": "%",
       "freshness_status": "fresh",
