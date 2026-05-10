@@ -977,11 +977,11 @@ def test_calendar_title_is_todays_for_weekday_run():
     assert ctx["calendar_title"] == "Today's Calendar"
 
 
-def test_header_line_includes_weekend_suffix_for_saturday_run():
+def test_header_line_includes_weekend_suffix_for_sunday_run():
     from app.render.email import build_render_context
 
     settings = _make_settings()
-    # May 10 2026 is a Saturday
+    # May 10 2026 is a Sunday; heading should show the cutoff date, not brief_date (Monday)
     draft = _make_draft().model_copy(
         update={
             "run_metadata": {
@@ -992,7 +992,7 @@ def test_header_line_includes_weekend_suffix_for_saturday_run():
     )
     ctx = build_render_context(draft, settings)
     assert ctx["header_line"].endswith("(For Upcoming Monday)")
-    assert "Monday, May 11, 2026" in ctx["header_line"]
+    assert "Sunday, May 10, 2026" in ctx["header_line"]
 
 
 def test_header_line_has_no_suffix_for_weekday_run():

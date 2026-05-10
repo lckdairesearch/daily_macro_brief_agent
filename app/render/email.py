@@ -135,7 +135,7 @@ def build_render_context(
 ) -> dict[str, Any]:
     """Convert a BriefDraft into template-ready display fields."""
     metadata = draft.run_metadata or {}
-    header_dt = metadata.get("brief_date") or metadata.get("data_cutoff_at")
+    header_dt = metadata.get("data_cutoff_at") or metadata.get("brief_date")
     cutoff_raw = metadata.get("data_cutoff_at")
     is_weekend_run = False
     if cutoff_raw:
