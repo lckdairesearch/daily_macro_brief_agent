@@ -72,7 +72,7 @@ def _mock_write_brief(ranked_context, settings, run_date, mode=None):
         warnings=[],
     )
     usage = LLMUsage(model="mock", latency_seconds=0.0)
-    return draft, usage
+    return draft, [usage]
 
 
 @pytest.fixture(autouse=False)
@@ -131,9 +131,9 @@ def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(isolated_sett
     settings = isolated_settings
 
     def _mock_writer_with_warning(ranked_context, settings, run_date, mode=None):
-        draft, usage = _mock_write_brief(ranked_context, settings, run_date, mode)
+        draft, usages = _mock_write_brief(ranked_context, settings, run_date, mode)
         draft = draft.model_copy(update={"warnings": ["only 2 evidence cards available"]})
-        return draft, usage
+        return draft, usages
 
     with patch("app.synthesis.writer.write_brief", side_effect=_mock_writer_with_warning):
         result = run_pipeline(RunMode.SAMPLE, settings)

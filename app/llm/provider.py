@@ -27,6 +27,8 @@ class LLMConfig:
     temperature: float = 0.2
     max_tokens: int = 2000
     timeout_seconds: int = 60
+    reasoning_effort: str | None = None
+    verbosity: str | None = None
     fake_response: str | dict[str, Any] | None = None
 
 
@@ -61,9 +63,7 @@ class LLMClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
-            timeout=self.config.timeout_seconds,
+            **_completion_options(self.config),
         )
         return _extract_text(response)
 
@@ -92,9 +92,7 @@ class LLMClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
             ],
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
-            timeout=self.config.timeout_seconds,
+            **_completion_options(self.config),
             response_format={"type": "json_object"},
         )
         latency = time.perf_counter() - started
@@ -111,6 +109,29 @@ def _fake_response_text(fake_response: str | dict[str, Any]) -> str:
     if isinstance(fake_response, str):
         return fake_response
     return json.dumps(fake_response, ensure_ascii=False)
+
+
+def _completion_options(config: LLMConfig) -> dict[str, Any]:
+    options: dict[str, Any] = {
+        "max_tokens": config.max_tokens,
+        "timeout": config.timeout_seconds,
+    }
+    if _should_send_temperature(config):
+        options["temperature"] = config.temperature
+    if config.reasoning_effort is not None:
+        options["reasoning_effort"] = config.reasoning_effort
+    if config.verbosity is not None:
+        options["verbosity"] = config.verbosity
+    return options
+
+
+def _should_send_temperature(config: LLMConfig) -> bool:
+    model = config.model.lower()
+    # GPT-5 family currently rejects non-default temperatures in Chat Completions.
+    # Let the provider/model default stand unless the caller explicitly uses 1.0.
+    if "gpt-5" in model and config.temperature != 1:
+        return False
+    return True
 
 
 def _extract_text(response: Any) -> str:

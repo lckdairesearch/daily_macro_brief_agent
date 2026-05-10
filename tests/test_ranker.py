@@ -353,6 +353,39 @@ def test_three_things_limited_to_three():
     assert len(result.proposed_three_things) <= 3
 
 
+def test_three_things_soft_diversity_can_surface_second_bucket():
+    cards = [
+        _card("dur1", "Treasury supply bites", "Long-end yields face supply pressure", "Short Long-term US Duration", ["treasury", "fiscal dominance"], source_type=SourceType.RESEARCH, confidence=0.85),
+        _card("dur2", "Fed stays patient", "Policy still leaves the long end exposed", "Short Long-term US Duration", ["fed_policy"], source_type=SourceType.NEWS, confidence=0.7),
+        _card("met1", "Gold demand steady", "Reserve diversification keeps gold supported", "Long Metals Complex Gold Silver Copper", ["gold", "central bank demand"], source_type=SourceType.RESEARCH, confidence=0.72),
+    ]
+    result = rank(
+        market_snapshots=[],
+        calendar_events=[],
+        evidence_cards=cards,
+        themes=THEMES,
+        portfolio=PORTFOLIO,
+    )
+    assert result.proposed_three_things[0].id == "dur1"
+    assert result.proposed_three_things[1].id == "met1"
+
+
+def test_three_things_keeps_duplicate_bucket_when_raw_signal_is_clearer():
+    cards = [
+        _card("dur1", "Treasury supply bites", "Long-end yields face supply pressure", "Short Long-term US Duration", ["treasury", "fiscal dominance"], source_type=SourceType.RESEARCH, confidence=0.9, novelty_score=0.9),
+        _card("dur2", "Term premium reprices", "The long end keeps repricing on supply and inflation", "Short Long-term US Duration", ["treasury", "inflation"], source_type=SourceType.RESEARCH, confidence=0.88, novelty_score=0.85),
+        _card("met1", "Gold quiet", "Gold drifts sideways", "Long Metals Complex Gold Silver Copper", ["gold"], source_type=SourceType.SOCIAL, confidence=0.45, novelty_score=0.3),
+    ]
+    result = rank(
+        market_snapshots=[],
+        calendar_events=[],
+        evidence_cards=cards,
+        themes=THEMES,
+        portfolio=PORTFOLIO,
+    )
+    assert [card.id for card in result.proposed_three_things[:2]] == ["dur1", "dur2"]
+
+
 def test_theme_radar_respects_max_parameter():
     cards = [
         _card("fed1", "Fed signals patience", "Fed no rush to cut", "duration short", ["Fed", "FOMC", "monetary policy"]),

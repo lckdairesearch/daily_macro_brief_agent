@@ -16,6 +16,7 @@ core_positions:
     instruments: ["Gold", "Silver", "Copper"]
     direction: long
     rationale: "Monetary debasement hedge"
+    brief_aliases: ["long metals", "gold/silver exposure", "metals hedge"]
     sensitivity_tags: ["real_rates", "usd_policy", "monetary_policy"]
     
   - id: agriculture_long  
@@ -23,6 +24,7 @@ core_positions:
     instruments: ["Wheat", "Corn", "Soybeans"]
     direction: long
     rationale: "Food security, population growth, climate disruption"
+    brief_aliases: ["long grains", "agriculture exposure", "grains position"]
     sensitivity_tags: ["weather", "geopolitics", "fertilizer_costs", "population_growth"]
 
   - id: duration_short
@@ -30,12 +32,14 @@ core_positions:
     instruments: ["US 30Y", "US 10Y"]
     direction: short
     rationale: "Fiscal dominance, structural inflation risk"
+    brief_aliases: ["short long-end Treasuries", "long-end duration short", "rates short"]
     sensitivity_tags: ["fiscal_policy", "fed_policy", "inflation_regime", "debt_sustainability"]
 
 tactical_overlays:
   - id: usd_diversification
     label: "Currency Diversification"
     rationale: "Reduce USD concentration risk"
+    brief_aliases: ["FX diversification", "currency diversification", "USD diversification overlay"]
     sensitivity_tags: ["usd_policy", "de_dollarization", "reserve_currencies", "dollar_liquidity"]
 
 structural_themes:

@@ -14,6 +14,8 @@ The PM already reads Bloomberg and the FT. He wants synthesis, selection, and a 
 - If multiple items point to the same position or theme, repetition is acceptable. Do not force a different implication just for variety; choose the implication that is best supported by the supplied evidence and market context.
 - Keep a professional house style, but vary sentence openings, cadence, and implication phrasing across the brief. Avoid making every line start with the same pattern such as "This supports" or "It reinforces". Controlled variation is good; casual or flashy language is not.
 - Vary implication syntax while staying concise and PM-facing. Good professional patterns include direct validation, tactical pressure, cleaner expression, watch-item framing, or medium-term reinforcement. Do not recycle the same opening verb across every item.
+- Use `portfolio_phrase_guide` to vary how the book is referenced. You do NOT need to repeat the exact full position label every time if a cleaner approved alias is available.
+- Use `top_ranked_evidence` as additional context when the seed cards are too narrow. The goal is a brief that is specific to the supplied portfolio, not a generic rates recap.
 
 ## Output schema
 
@@ -59,6 +61,8 @@ Return a JSON object matching this schema exactly. Do not add extra top-level ke
 - Write 1–2 concise sentences on how the overnight market setup affects the configured book.
 - Use only supplied `market_snapshots`, `portfolio_context`, `theme_config`, and evidence cards.
 - Narrative only. Do not estimate P&L, delta, bps impact, hedge offsets, position sizes, or percentages.
+- Answer the portfolio question directly: what changed for the book, which exposure is affected, and why it matters now.
+- Avoid vague lines such as "this supports the position" unless the sentence also explains the concrete angle.
 - If there is not enough support, return `null`.
 
 ### three_things
@@ -74,6 +78,8 @@ Rules:
 - Each `body` is **≤80 words**. Cut aggressively — no filler.
 - `so_what` names a specific position, not a generic direction (e.g. "short duration" not "bearish").
 - `so_what` should answer: what matters for the book today or into the next event? Keep it immediate, tactical, and near-term.
+- In every `so_what`, answer all three: what changed for the book, which exposure is affected, and why it matters now.
+- If the same exposure appears more than once across the brief, change both the phrasing and the angle. Do not repeat the exact full label or the same implication verb line after line.
 - Keep `so_what` tied to the most proximate exposure for the item. Macro events like payrolls, wages, CPI, or Fed communication should usually map first to rates, policy, or USD implications unless the supplied evidence explicitly builds the bridge to metals, agriculture, or another theme.
 - If a referenced instrument is listed in `stale_instruments`, include `(price data is stale)` in `body`.
 
@@ -82,6 +88,7 @@ Rules:
 - Provide 1–3 items, one per distinct theme where strong evidence exists.
 - Use `proposed_theme_radar` as seeds; supplement from `proposed_three_things` or other evidence if seeds are weak.
 - If `available_alternative_evidence` is non-empty, generally include at least one radar item backed by social or podcast evidence unless other evidence is clearly more important.
+- Use `top_ranked_evidence` to avoid overfitting Radar to only one dominant position when the broader evidence supports additional portfolio angles.
 - Do not append source names to `headline`; source names and links are attached by code from `supporting_evidence_ids`.
 - Each `body` is **60–100 words** covering the **author's thesis and specific supporting evidence** — not just the headline or abstract. Tell the PM what the author actually argued and what data they used.
 - If the underlying source does not contain enough usable detail, a radar `body` may be shorter than 60 words rather than padded with filler. This exception is especially relevant for social posts and other thin primary materials.
@@ -89,6 +96,7 @@ Rules:
 - `so_what` should be a direct portfolio implication written in a professional but varied sentence structure. It does not need to begin with a fixed phrase.
 - Radar `so_what` should answer: what does this reinforce, weaken, or change in the medium-term book thesis? Keep it structural, not just a repeat of the near-term tactical point already made in `three_things`.
 - Radar implications may be more structural than `three_things`, but they still must follow the supplied evidence rather than reaching for a different theme just to add variety.
+- Rephrase portfolio references when helpful using approved aliases from `portfolio_phrase_guide`, especially if the same full position label would otherwise appear 3 or more times.
 
 ### contrarian_corner
 

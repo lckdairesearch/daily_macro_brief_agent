@@ -19,9 +19,21 @@ calendar:
 llm:
   provider: litellm
   scout_model: "openai/gpt-5.4"
-  synthesis_model: "openai/gpt-5.4"
+  synthesis_model: "openai/gpt-5.5"
+  chart_model: "openai/gpt-5.4"
   x_scout_model: "xai/grok-4-1-fast-reasoning"  # balanced fast reasoning x_search-capable Grok variant
   temperature: 0.2
+  synthesis_temperature: 0.1
+  synthesis_reasoning_effort: "medium"
+  synthesis_verbosity: "medium"
+  synthesis_timeout_seconds: 180
+  synthesis_review_enabled: true
+  synthesis_review_model: "openai/gpt-5.5"
+  synthesis_review_temperature: 0.0
+  synthesis_review_reasoning_effort: "high"
+  synthesis_review_verbosity: "low"
+  synthesis_review_timeout_seconds: 180
+  synthesis_context_card_count: 10
 
 scouts:
   news:

@@ -15,6 +15,7 @@ from app.llm.provider import LLMClient, LLMConfig, LLMResponseError
 from app.models import (
     BriefDraft,
     BriefItem,
+    BriefReviewOutput,
     BriefSection,
     BriefWriterOutput,
     FreshnessStatus,
@@ -167,11 +168,11 @@ def write_brief(
     settings: "Settings",
     run_date: datetime,
     mode: RunMode = RunMode.LIVE,
-) -> tuple[BriefDraft, "LLMUsage"]:
+) -> tuple[BriefDraft, list["LLMUsage"]]:
     """Call the LLM once and assemble a BriefDraft.
 
     In sample mode, uses a pre-baked fake response so no API key is needed.
-    Returns (draft, usage). Raises LLMResponseError if the model output
+    Returns (draft, usages). Raises LLMResponseError if the model output
     cannot be parsed into BriefWriterOutput.
     """
     if mode == RunMode.SAMPLE:
@@ -181,16 +182,28 @@ def write_brief(
             user_payload={},
             schema=BriefWriterOutput,
         )
-        return _assemble_draft(result.output, ranked_context), result.usage
+        return _assemble_draft(result.output, ranked_context), [result.usage]
 
     _validate_credentials(settings)
 
     prompt = load_prompt("brief_writer")
     llm_cfg = settings.sources.get("llm", {})
-    model = llm_cfg.get("synthesis_model", "openai/gpt-4o")
-    temperature = float(llm_cfg.get("temperature", 0.2))
+    model = llm_cfg.get("synthesis_model", "openai/gpt-5.5")
+    temperature = float(llm_cfg.get("synthesis_temperature", llm_cfg.get("temperature", 0.1)))
+    reasoning_effort = llm_cfg.get("synthesis_reasoning_effort")
+    verbosity = llm_cfg.get("synthesis_verbosity")
+    timeout_seconds = int(llm_cfg.get("synthesis_timeout_seconds", 180))
 
-    client = LLMClient(LLMConfig(model=model, temperature=temperature, max_tokens=8000))
+    client = LLMClient(
+        LLMConfig(
+            model=model,
+            temperature=temperature,
+            max_tokens=8000,
+            timeout_seconds=timeout_seconds,
+            reasoning_effort=reasoning_effort,
+            verbosity=verbosity,
+        )
+    )
     payload = _build_payload(ranked_context, settings, run_date)
 
     result = client.generate_structured(
@@ -200,7 +213,11 @@ def write_brief(
     )
 
     draft = _assemble_draft(result.output, ranked_context)
-    return draft, result.usage
+    usages = [result.usage]
+    reviewed_draft, review_usage = _review_brief(draft, ranked_context, settings, run_date, mode)
+    if review_usage is not None:
+        usages.append(review_usage)
+    return reviewed_draft, usages
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +229,8 @@ def _build_payload(
     settings: "Settings",
     run_date: datetime,
 ) -> dict[str, Any]:
+    llm_cfg = settings.sources.get("llm", {})
+    context_card_count = int(llm_cfg.get("synthesis_context_card_count", 10))
     stale_ids = [
         s.instrument_id for s in ctx.dashboard_rows
         if s.freshness_status == FreshnessStatus.STALE_CACHE
@@ -236,7 +255,11 @@ def _build_payload(
             _evidence_dict(ctx.proposed_contrarian_corner_seed)
             if ctx.proposed_contrarian_corner_seed else None
         ),
+        "top_ranked_evidence": [
+            _evidence_dict(c) for c in ctx.ranked_evidence_cards[:context_card_count]
+        ],
         "portfolio_context": settings.portfolio,
+        "portfolio_phrase_guide": _portfolio_phrase_guide(settings.portfolio),
         "theme_config": settings.themes.get("themes", []),
         "stale_instruments": stale_ids,
     }
@@ -277,6 +300,111 @@ def _assemble_draft(
         radar_items=radar_items,
         contrarian_corner=contrarian,
         warnings=list(writer_out.warnings),
+    )
+
+
+def _review_brief(
+    draft: BriefDraft,
+    ctx: RankedBriefContext,
+    settings: "Settings",
+    run_date: datetime,
+    mode: RunMode,
+) -> tuple[BriefDraft, "LLMUsage" | None]:
+    if mode == RunMode.SAMPLE:
+        return draft, None
+
+    llm_cfg = settings.sources.get("llm", {})
+    if not bool(llm_cfg.get("synthesis_review_enabled", True)):
+        return draft, None
+
+    prompt = load_prompt("brief_reviewer")
+    model = llm_cfg.get("synthesis_review_model") or llm_cfg.get("synthesis_model", "openai/gpt-5.5")
+    temperature = float(llm_cfg.get("synthesis_review_temperature", 0.0))
+    reasoning_effort = llm_cfg.get("synthesis_review_reasoning_effort", "high")
+    verbosity = llm_cfg.get("synthesis_review_verbosity", "low")
+    timeout_seconds = int(llm_cfg.get("synthesis_review_timeout_seconds", llm_cfg.get("synthesis_timeout_seconds", 180)))
+
+    client = LLMClient(
+        LLMConfig(
+            model=model,
+            temperature=temperature,
+            max_tokens=4000,
+            timeout_seconds=timeout_seconds,
+            reasoning_effort=reasoning_effort,
+            verbosity=verbosity,
+        )
+    )
+
+    try:
+        result = client.generate_structured(
+            system_prompt=prompt.text,
+            user_payload=_build_review_payload(draft, ctx, settings, run_date),
+            schema=BriefReviewOutput,
+        )
+        reviewed = _apply_review(draft, result.output)
+    except LLMResponseError:
+        draft.warnings.append("brief reviewer failed; using first-pass writer output")
+        return draft, None
+    if result.output.warnings:
+        reviewed.warnings.extend(
+            warning for warning in result.output.warnings if warning not in reviewed.warnings
+        )
+    return reviewed, result.usage
+
+
+def _build_review_payload(
+    draft: BriefDraft,
+    ctx: RankedBriefContext,
+    settings: "Settings",
+    run_date: datetime,
+) -> dict[str, Any]:
+    llm_cfg = settings.sources.get("llm", {})
+    context_card_count = int(llm_cfg.get("synthesis_context_card_count", 10))
+    return {
+        "run_date": run_date.strftime("%Y-%m-%d"),
+        "original_draft": {
+            "book_impact": draft.book_impact,
+            "three_things": [_review_item_dict(item) for item in draft.three_things],
+            "radar_items": [_review_item_dict(item) for item in draft.radar_items],
+            "contrarian_corner": _review_item_dict(draft.contrarian_corner),
+        },
+        "top_ranked_evidence": [
+            _evidence_dict(c) for c in ctx.ranked_evidence_cards[:context_card_count]
+        ],
+        "portfolio_context": settings.portfolio,
+        "portfolio_phrase_guide": _portfolio_phrase_guide(settings.portfolio),
+        "repetition_summary": _repetition_summary(draft, settings.portfolio),
+    }
+
+
+def _apply_review(draft: BriefDraft, review: BriefReviewOutput) -> BriefDraft:
+    if len(review.three_things_so_what) not in (0, len(draft.three_things)):
+        raise LLMResponseError("Brief reviewer returned mismatched three_things_so_what length")
+    if len(review.radar_items_so_what) not in (0, len(draft.radar_items)):
+        raise LLMResponseError("Brief reviewer returned mismatched radar_items_so_what length")
+
+    updated_three_things = [
+        item.model_copy(update={"so_what": review.three_things_so_what[idx] or item.so_what})
+        if review.three_things_so_what else item
+        for idx, item in enumerate(draft.three_things)
+    ]
+    updated_radar_items = [
+        item.model_copy(update={"so_what": review.radar_items_so_what[idx] or item.so_what})
+        if review.radar_items_so_what else item
+        for idx, item in enumerate(draft.radar_items)
+    ]
+    updated_contrarian = draft.contrarian_corner
+    if draft.contrarian_corner is not None and review.contrarian_corner_so_what is not None:
+        updated_contrarian = draft.contrarian_corner.model_copy(
+            update={"so_what": review.contrarian_corner_so_what}
+        )
+    return draft.model_copy(
+        update={
+            "book_impact": review.book_impact if review.book_impact is not None else draft.book_impact,
+            "three_things": updated_three_things,
+            "radar_items": updated_radar_items,
+            "contrarian_corner": updated_contrarian,
+        }
     )
 
 
@@ -345,6 +473,81 @@ def _validate_credentials(settings: "Settings") -> None:
             "OPENAI_API_KEY is required for brief synthesis (including sample mode). "
             "Add it to your .env file."
         )
+
+
+def _portfolio_phrase_guide(portfolio: dict[str, Any]) -> list[dict[str, Any]]:
+    positions = portfolio.get("core_positions", []) + portfolio.get("tactical_overlays", [])
+    guide: list[dict[str, Any]] = []
+    for position in positions:
+        guide.append(
+            {
+                "id": position.get("id"),
+                "label": position.get("label"),
+                "rationale": position.get("rationale"),
+                "direction": position.get("direction"),
+                "instruments": position.get("instruments", []),
+                "sensitivity_tags": position.get("sensitivity_tags", []),
+                "brief_aliases": position.get("brief_aliases", []),
+            }
+        )
+    return guide
+
+
+def _review_item_dict(item: BriefItem | None) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    return {
+        "headline": item.headline,
+        "body": item.body,
+        "so_what": item.so_what,
+        "supporting_market_ids": item.supporting_market_ids,
+        "supporting_evidence_ids": item.supporting_evidence_ids,
+        "source_name": item.source_name,
+        "source_url": item.source_url,
+        "topic_label": item.topic_label,
+    }
+
+
+def _repetition_summary(draft: BriefDraft, portfolio: dict[str, Any]) -> dict[str, Any]:
+    positions = portfolio.get("core_positions", []) + portfolio.get("tactical_overlays", [])
+    text_blocks = [draft.book_impact or ""]
+    text_blocks.extend(item.so_what or "" for item in draft.three_things)
+    text_blocks.extend(item.so_what or "" for item in draft.radar_items)
+    if draft.contrarian_corner and draft.contrarian_corner.so_what:
+        text_blocks.append(draft.contrarian_corner.so_what)
+    joined = " ".join(text_blocks).lower()
+
+    position_mentions: list[dict[str, Any]] = []
+    for position in positions:
+        aliases = [str(position.get("label", "")).strip()]
+        aliases.extend(
+            str(alias).strip()
+            for alias in position.get("brief_aliases", [])
+            if str(alias).strip()
+        )
+        position_id = str(position.get("id", "")).replace("_", " ").strip()
+        if position_id:
+            aliases.append(position_id)
+        aliases = [alias for alias in aliases if alias]
+        count = sum(joined.count(alias.lower()) for alias in aliases)
+        position_mentions.append(
+            {
+                "id": position.get("id"),
+                "label": position.get("label"),
+                "aliases": aliases,
+                "mention_count": count,
+            }
+        )
+
+    return {
+        "position_mentions": position_mentions,
+        "book_impact": draft.book_impact,
+        "three_things_so_what": [item.so_what for item in draft.three_things],
+        "radar_items_so_what": [item.so_what for item in draft.radar_items],
+        "contrarian_corner_so_what": (
+            draft.contrarian_corner.so_what if draft.contrarian_corner else None
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

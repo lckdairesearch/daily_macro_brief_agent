@@ -36,6 +36,7 @@ _W_FRESHNESS = 0.10
 
 # Bonus for corroborating a threshold-flagged market move
 _CROSS_ASSET_BONUS = 0.10
+_THREE_THINGS_DUPLICATE_BUCKET_PENALTY = 0.08
 
 _THREE_THINGS_COUNT = 3
 _DEFAULT_MAX_THEME_RADAR = 3
@@ -175,6 +176,90 @@ def _score_card(
         + _W_FRESHNESS * _freshness_score(card, now)
         + _cross_asset_bonus(card, snapshots)
     )
+
+
+def _position_bucket_tokens(position: dict) -> list[str]:
+    tokens: list[str] = []
+    for key in ("id", "label", "rationale"):
+        value = position.get(key)
+        if isinstance(value, str) and value.strip():
+            tokens.append(value.lower())
+    for key in ("brief_aliases", "instruments", "sensitivity_tags"):
+        values = position.get(key, [])
+        if isinstance(values, list):
+            tokens.extend(str(value).lower() for value in values if str(value).strip())
+    return tokens
+
+
+def _primary_portfolio_bucket(card: EvidenceCard, portfolio: dict) -> str | None:
+    text = " ".join([
+        card.title,
+        card.thesis,
+        card.evidence,
+        card.portfolio_relevance,
+        " ".join(card.tags),
+    ]).lower()
+    positions = portfolio.get("core_positions", []) + portfolio.get("tactical_overlays", [])
+    best_bucket: str | None = None
+    best_score = 0
+    for position in positions:
+        position_id = str(position.get("id", "")).strip()
+        if not position_id:
+            continue
+        score = 0
+        for token in _position_bucket_tokens(position):
+            if not token:
+                continue
+            normalized = token.replace("_", " ")
+            if normalized in text or token in text:
+                score += max(len(normalized.split()), 1)
+        if score > best_score:
+            best_bucket = position_id
+            best_score = score
+    return best_bucket
+
+
+def _select_three_things(
+    ranked_cards: list[EvidenceCard],
+    scores: dict[str, float],
+    portfolio: dict,
+) -> list[EvidenceCard]:
+    if not ranked_cards:
+        return []
+
+    selected: list[EvidenceCard] = []
+    used_buckets: set[str] = set()
+    remaining = list(ranked_cards)
+
+    while remaining and len(selected) < _THREE_THINGS_COUNT:
+        best_card: EvidenceCard | None = None
+        best_adjusted_score = float("-inf")
+        best_raw_score = float("-inf")
+
+        for card in remaining:
+            raw_score = scores[card.id]
+            bucket = _primary_portfolio_bucket(card, portfolio)
+            adjusted_score = raw_score
+            if bucket is not None and bucket in used_buckets:
+                adjusted_score -= _THREE_THINGS_DUPLICATE_BUCKET_PENALTY
+            if (
+                adjusted_score > best_adjusted_score
+                or (adjusted_score == best_adjusted_score and raw_score > best_raw_score)
+            ):
+                best_card = card
+                best_adjusted_score = adjusted_score
+                best_raw_score = raw_score
+
+        if best_card is None:
+            break
+
+        selected.append(best_card)
+        bucket = _primary_portfolio_bucket(best_card, portfolio)
+        if bucket is not None:
+            used_buckets.add(bucket)
+        remaining = [card for card in remaining if card.id != best_card.id]
+
+    return selected
 
 
 # ---------------------------------------------------------------------------
@@ -367,8 +452,8 @@ def rank(
 
     ranked_cards = sorted(evidence_cards, key=lambda c: scores[c.id], reverse=True)
 
-    # Three things: top 3 overall.
-    three_things = ranked_cards[:_THREE_THINGS_COUNT]
+    # Three things: top cards overall, with a soft duplicate-bucket penalty.
+    three_things = _select_three_things(ranked_cards, scores, portfolio)
     three_things_ids = {c.id for c in three_things}
 
     # Theme radar: best card per theme, up to max_theme_radar distinct themes.

@@ -172,8 +172,8 @@ def run_pipeline(
     from app.llm.provider import LLMResponseError
     from app.synthesis.writer import write_brief
     try:
-        brief_draft, llm_usage = write_brief(ranked_context, settings, data_cutoff, mode)
-        llm_usages.append(llm_usage)
+        brief_draft, brief_llm_usages = write_brief(ranked_context, settings, data_cutoff, mode)
+        llm_usages.extend(brief_llm_usages)
         for warning in brief_draft.warnings:
             if warning not in warnings:
                 warnings.append(warning)

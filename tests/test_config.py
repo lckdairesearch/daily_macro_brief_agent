@@ -37,6 +37,7 @@ def test_portfolio_yaml_loads():
     assert len(positions) > 0
     for pos in positions:
         assert "id" in pos
+        assert "brief_aliases" in pos
         assert "sensitivity_tags" in pos
 
 
@@ -61,7 +62,12 @@ def test_sources_yaml_loads():
     assert "delivery" in raw
     assert raw["llm"]["provider"] == "litellm"
     assert raw["llm"]["scout_model"] == "openai/gpt-5.4"
-    assert raw["llm"]["synthesis_model"] == "openai/gpt-5.4"
+    assert raw["llm"]["synthesis_model"] == "openai/gpt-5.5"
+    assert raw["llm"]["chart_model"] == "openai/gpt-5.4"
+    assert raw["llm"]["synthesis_review_model"] == "openai/gpt-5.5"
+    assert raw["llm"]["synthesis_timeout_seconds"] == 180
+    assert raw["llm"]["synthesis_review_timeout_seconds"] == 180
+    assert raw["llm"]["synthesis_context_card_count"] == 10
     assert raw["llm"]["x_scout_model"] == "xai/grok-4-1-fast-reasoning"
 
 
@@ -126,6 +132,17 @@ def test_settings_validate_live_mode_reports_missing():
         llm_x_scout_model=None,
         llm_synthesis_model=None,
         llm_temperature=None,
+        llm_synthesis_temperature=None,
+        llm_synthesis_reasoning_effort=None,
+        llm_synthesis_verbosity=None,
+        llm_synthesis_timeout_seconds=None,
+        llm_synthesis_review_enabled=None,
+        llm_synthesis_review_model=None,
+        llm_synthesis_review_temperature=None,
+        llm_synthesis_review_reasoning_effort=None,
+        llm_synthesis_review_verbosity=None,
+        llm_synthesis_review_timeout_seconds=None,
+        llm_synthesis_context_card_count=None,
     )
     settings = Settings(app, creds, {}, {}, {}, {})
     errors = settings.validate_for_mode(RunMode.LIVE)
@@ -148,6 +165,17 @@ def test_settings_validate_live_email_enabled_reports_postmark():
         llm_x_scout_model=None,
         llm_synthesis_model=None,
         llm_temperature=None,
+        llm_synthesis_temperature=None,
+        llm_synthesis_reasoning_effort=None,
+        llm_synthesis_verbosity=None,
+        llm_synthesis_timeout_seconds=None,
+        llm_synthesis_review_enabled=None,
+        llm_synthesis_review_model=None,
+        llm_synthesis_review_temperature=None,
+        llm_synthesis_review_reasoning_effort=None,
+        llm_synthesis_review_verbosity=None,
+        llm_synthesis_review_timeout_seconds=None,
+        llm_synthesis_context_card_count=None,
     )
     settings = Settings(app, creds, {}, {}, {}, {})
     errors = settings.validate_for_mode(RunMode.LIVE)
@@ -174,12 +202,34 @@ def test_settings_applies_llm_env_overrides_to_sources():
         llm_x_scout_model="xai/grok-4",
         llm_synthesis_model="openai/gpt-5.5",
         llm_temperature=0.1,
+        llm_synthesis_temperature=0.05,
+        llm_synthesis_reasoning_effort="high",
+        llm_synthesis_verbosity="low",
+        llm_synthesis_timeout_seconds=240,
+        llm_synthesis_review_enabled=True,
+        llm_synthesis_review_model="openai/gpt-5.5",
+        llm_synthesis_review_temperature=0.0,
+        llm_synthesis_review_reasoning_effort="xhigh",
+        llm_synthesis_review_verbosity="medium",
+        llm_synthesis_review_timeout_seconds=300,
+        llm_synthesis_context_card_count=12,
     )
     settings = Settings(app, creds, {}, {}, {"llm": {}}, {})
     assert settings.sources["llm"]["scout_model"] == "openai/gpt-5.5"
     assert settings.sources["llm"]["x_scout_model"] == "xai/grok-4"
     assert settings.sources["llm"]["synthesis_model"] == "openai/gpt-5.5"
     assert settings.sources["llm"]["temperature"] == 0.1
+    assert settings.sources["llm"]["synthesis_temperature"] == 0.05
+    assert settings.sources["llm"]["synthesis_reasoning_effort"] == "high"
+    assert settings.sources["llm"]["synthesis_verbosity"] == "low"
+    assert settings.sources["llm"]["synthesis_timeout_seconds"] == 240
+    assert settings.sources["llm"]["synthesis_review_enabled"] is True
+    assert settings.sources["llm"]["synthesis_review_model"] == "openai/gpt-5.5"
+    assert settings.sources["llm"]["synthesis_review_temperature"] == 0.0
+    assert settings.sources["llm"]["synthesis_review_reasoning_effort"] == "xhigh"
+    assert settings.sources["llm"]["synthesis_review_verbosity"] == "medium"
+    assert settings.sources["llm"]["synthesis_review_timeout_seconds"] == 300
+    assert settings.sources["llm"]["synthesis_context_card_count"] == 12
 
 
 def test_settings_accepts_cloudflare_r2_credentials():

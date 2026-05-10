@@ -30,6 +30,15 @@ def _settings_without_credentials() -> Settings:
         llm_x_scout_model=None,
         llm_synthesis_model=None,
         llm_temperature=None,
+        llm_synthesis_temperature=None,
+        llm_synthesis_reasoning_effort=None,
+        llm_synthesis_verbosity=None,
+        llm_synthesis_review_enabled=None,
+        llm_synthesis_review_model=None,
+        llm_synthesis_review_temperature=None,
+        llm_synthesis_review_reasoning_effort=None,
+        llm_synthesis_review_verbosity=None,
+        llm_synthesis_context_card_count=None,
         alpha_vantage_api_key=None,
         databento_api_key=None,
         fred_api_key=None,
@@ -110,10 +119,11 @@ def test_sample_writer_uses_fake_response_without_openai_key(monkeypatch):
     settings = _settings_without_credentials()
     ranked_context, data_cutoff = _sample_ranked_context(settings)
 
-    draft, usage = write_brief(ranked_context, settings, data_cutoff, RunMode.SAMPLE)
+    draft, usages = write_brief(ranked_context, settings, data_cutoff, RunMode.SAMPLE)
 
     assert calls == 0
-    assert usage.model == "fake/sample"
+    assert len(usages) == 1
+    assert usages[0].model == "fake/sample"
     assert validate_brief(draft).is_valid
 
 

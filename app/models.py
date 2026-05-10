@@ -201,6 +201,20 @@ class BriefWriterOutput(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class BriefReviewOutput(BaseModel):
+    """LLM output from the second-pass reviewer.
+
+    The reviewer is only allowed to revise book_impact and so_what fields, while
+    preserving section selection, bodies, and supporting metadata from the writer.
+    """
+
+    book_impact: str | None = None
+    three_things_so_what: list[str | None] = Field(default_factory=list)
+    radar_items_so_what: list[str | None] = Field(default_factory=list)
+    contrarian_corner_so_what: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ChartPlan(BaseModel):
     """Selected chart plan before rendering."""
 

@@ -19,6 +19,7 @@ class TinyAnswer(BaseModel):
 
 EXPECTED_PROMPTS = [
     "brief_writer",
+    "brief_reviewer",
     "chart_codegen",
     "critic",
     "scouts/news_search",
@@ -37,7 +38,8 @@ def test_prompt_registry_loads_all_prompts():
         assert prompt.name == name
         assert prompt.path.name.endswith(".md")
         assert any(phrase in prompt.text for phrase in ("Do not invent", "do not invent", "Never invent", "never invent", "do not fabricate", "fabricate"))
-        assert "source" in prompt.text.lower()
+        if not name.startswith("chart_"):
+            assert "source" in prompt.text.lower()
 
 
 def test_prompt_registry_rejects_path_traversal():
@@ -54,6 +56,8 @@ def test_provider_returns_structured_output_from_mocked_litellm(monkeypatch):
     def fake_completion(**kwargs):
         assert kwargs["model"] == "openai/test-model"
         assert kwargs["response_format"] == {"type": "json_object"}
+        assert kwargs["reasoning_effort"] == "high"
+        assert kwargs["verbosity"] == "low"
         assert kwargs["messages"][0]["content"] == "Use only supplied evidence."
         assert '"topic": "rates"' in kwargs["messages"][1]["content"]
         return SimpleNamespace(
@@ -64,7 +68,7 @@ def test_provider_returns_structured_output_from_mocked_litellm(monkeypatch):
         )
 
     monkeypatch.setattr(provider.litellm_compat, "completion", fake_completion)
-    client = LLMClient(LLMConfig(model="openai/test-model"))
+    client = LLMClient(LLMConfig(model="openai/test-model", reasoning_effort="high", verbosity="low"))
 
     result = client.generate_structured(
         system_prompt="Use only supplied evidence.",
@@ -98,6 +102,57 @@ def test_provider_fake_response_avoids_litellm(monkeypatch):
 
     assert result.output.headline == "Fixture-backed sample"
     assert result.usage.model == "fake/test"
+
+
+def test_provider_passes_reasoning_controls_for_text_calls(monkeypatch):
+    def fake_completion(**kwargs):
+        assert kwargs["reasoning_effort"] == "medium"
+        assert kwargs["verbosity"] == "high"
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+        )
+
+    monkeypatch.setattr(provider.litellm_compat, "completion", fake_completion)
+    client = LLMClient(
+        LLMConfig(
+            model="openai/test-model",
+            reasoning_effort="medium",
+            verbosity="high",
+        )
+    )
+
+    result = client.generate_text(system_prompt="system", user_message="user")
+
+    assert result == "ok"
+
+
+def test_provider_omits_non_default_temperature_for_gpt5(monkeypatch):
+    def fake_completion(**kwargs):
+        assert "temperature" not in kwargs
+        return SimpleNamespace(
+            model="openai/gpt-5.5",
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"headline":"Rates","score":0.8}'))],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            _hidden_params={"response_cost": 0.001},
+        )
+
+    monkeypatch.setattr(provider.litellm_compat, "completion", fake_completion)
+    client = LLMClient(
+        LLMConfig(
+            model="openai/gpt-5.5",
+            temperature=0.1,
+            reasoning_effort="high",
+            verbosity="low",
+        )
+    )
+
+    result = client.generate_structured(
+        system_prompt="Use only supplied evidence.",
+        user_payload={"topic": "rates"},
+        schema=TinyAnswer,
+    )
+
+    assert result.output.headline == "Rates"
 
 
 @pytest.mark.parametrize(

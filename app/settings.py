@@ -60,6 +60,17 @@ class Credentials(BaseSettings):
     llm_synthesis_model: str | None = None
     llm_chart_model: str | None = None
     llm_temperature: float | None = None
+    llm_synthesis_temperature: float | None = None
+    llm_synthesis_reasoning_effort: str | None = None
+    llm_synthesis_verbosity: str | None = None
+    llm_synthesis_timeout_seconds: int | None = None
+    llm_synthesis_review_enabled: bool | None = None
+    llm_synthesis_review_model: str | None = None
+    llm_synthesis_review_temperature: float | None = None
+    llm_synthesis_review_reasoning_effort: str | None = None
+    llm_synthesis_review_verbosity: str | None = None
+    llm_synthesis_review_timeout_seconds: int | None = None
+    llm_synthesis_context_card_count: int | None = None
 
     # Market data — required for live/dry-run
     alpha_vantage_api_key: str | None = None
@@ -124,6 +135,28 @@ class Settings:
             llm["chart_model"] = creds.llm_chart_model
         if creds.llm_temperature is not None:
             llm["temperature"] = creds.llm_temperature
+        if creds.llm_synthesis_temperature is not None:
+            llm["synthesis_temperature"] = creds.llm_synthesis_temperature
+        if creds.llm_synthesis_reasoning_effort:
+            llm["synthesis_reasoning_effort"] = creds.llm_synthesis_reasoning_effort
+        if creds.llm_synthesis_verbosity:
+            llm["synthesis_verbosity"] = creds.llm_synthesis_verbosity
+        if creds.llm_synthesis_timeout_seconds is not None:
+            llm["synthesis_timeout_seconds"] = creds.llm_synthesis_timeout_seconds
+        if creds.llm_synthesis_review_enabled is not None:
+            llm["synthesis_review_enabled"] = creds.llm_synthesis_review_enabled
+        if creds.llm_synthesis_review_model:
+            llm["synthesis_review_model"] = creds.llm_synthesis_review_model
+        if creds.llm_synthesis_review_temperature is not None:
+            llm["synthesis_review_temperature"] = creds.llm_synthesis_review_temperature
+        if creds.llm_synthesis_review_reasoning_effort:
+            llm["synthesis_review_reasoning_effort"] = creds.llm_synthesis_review_reasoning_effort
+        if creds.llm_synthesis_review_verbosity:
+            llm["synthesis_review_verbosity"] = creds.llm_synthesis_review_verbosity
+        if creds.llm_synthesis_review_timeout_seconds is not None:
+            llm["synthesis_review_timeout_seconds"] = creds.llm_synthesis_review_timeout_seconds
+        if creds.llm_synthesis_context_card_count is not None:
+            llm["synthesis_context_card_count"] = creds.llm_synthesis_context_card_count
 
         # Env var overrides for deployment-specific fields
         if creds.cache_dir:
