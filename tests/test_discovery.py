@@ -15,6 +15,7 @@ from app.discovery.orchestrator import build_scouts, run_discovery
 from app.discovery.scouts.base import (
     DiscoveryContext,
     FixtureDiscoveryScout,
+    ScoutRunResult,
     _EvidenceCandidateList,
     to_evidence_cards,
     web_search_and_structure,
@@ -24,7 +25,7 @@ from app.discovery.scouts.news import NewsScout
 from app.discovery.scouts.podcast import PodcastScout
 from app.discovery.scouts.research import ResearchScout
 from app.discovery.scouts.x import XScout
-from app.models import EvidenceCard, RunMode, SourceType
+from app.models import EvidenceCard, LLMUsage, RunMode, SourceType
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -121,7 +122,7 @@ def test_discovery_context_fields():
 def test_fixture_scout_returns_evidence_cards():
     scout = FixtureDiscoveryScout()
     ctx = _make_context(RunMode.SAMPLE)
-    cards = scout.run(ctx)
+    cards = scout.run(ctx).cards
     assert len(cards) > 0
     for card in cards:
         assert isinstance(card, EvidenceCard)
@@ -132,7 +133,7 @@ def test_fixture_scout_returns_evidence_cards():
 def test_fixture_scout_cards_validate():
     scout = FixtureDiscoveryScout()
     ctx = _make_context(RunMode.SAMPLE)
-    cards = scout.run(ctx)
+    cards = scout.run(ctx).cards
     for card in cards:
         dumped = card.model_dump(mode="json")
         restored = EvidenceCard.model_validate(dumped)
@@ -156,7 +157,7 @@ class _FailingScout:
     name = "failing"
     optional = True
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
         raise RuntimeError("simulated scout failure")
 
 
@@ -164,8 +165,8 @@ class _SucceedingScout:
     name = "succeeding"
     optional = True
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
-        return [
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
+        return ScoutRunResult(cards=[
             EvidenceCard(
                 id="ev_test01",
                 title="Test",
@@ -179,16 +180,28 @@ class _SucceedingScout:
                 portfolio_relevance="Portfolio",
                 confidence=0.9,
             )
-        ]
+        ])
+
+
+class _UsageScout(_SucceedingScout):
+    name = "usage"
+
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
+        base = super().run(context)
+        return ScoutRunResult(
+            cards=base.cards,
+            llm_usage=[LLMUsage(model="openai/test-model", latency_seconds=0.1, stage="scout:test")],
+        )
 
 
 def test_orchestrator_continues_after_optional_scout_failure():
     ctx = _make_context()
     failed: list[str] = []
-    cards = run_discovery([_FailingScout(), _SucceedingScout()], ctx, failed)
+    cards, llm_usage = run_discovery([_FailingScout(), _SucceedingScout()], ctx, failed)
     assert "failing" in failed
     assert len(cards) == 1
     assert cards[0].id == "ev_test01"
+    assert llm_usage == []
 
 
 def test_orchestrator_records_scout_timings_for_success_and_failure():
@@ -196,9 +209,10 @@ def test_orchestrator_records_scout_timings_for_success_and_failure():
     failed: list[str] = []
     timings: list[dict] = []
 
-    cards = run_discovery([_FailingScout(), _SucceedingScout()], ctx, failed, timings)
+    cards, llm_usage = run_discovery([_FailingScout(), _SucceedingScout()], ctx, failed, timings)
 
     assert len(cards) == 1
+    assert llm_usage == []
     assert timings[0]["component"] == "scout:failing"
     assert timings[0]["status"] == "failed"
     assert timings[1]["component"] == "scout:succeeding"
@@ -224,9 +238,19 @@ def test_orchestrator_raises_for_required_scout_failure():
 def test_orchestrator_collects_all_cards():
     ctx = _make_context()
     failed: list[str] = []
-    cards = run_discovery([_SucceedingScout(), _SucceedingScout()], ctx, failed)
+    cards, llm_usage = run_discovery([_SucceedingScout(), _SucceedingScout()], ctx, failed)
     assert len(cards) == 2
+    assert llm_usage == []
     assert not failed
+
+
+def test_orchestrator_collects_llm_usage():
+    ctx = _make_context()
+    failed: list[str] = []
+    cards, llm_usage = run_discovery([_UsageScout()], ctx, failed)
+    assert len(cards) == 1
+    assert len(llm_usage) == 1
+    assert llm_usage[0].stage == "scout:test"
 
 
 # ---------------------------------------------------------------------------
@@ -280,17 +304,19 @@ def test_build_scouts_live_mode_builds_enabled_scouts():
 def test_news_scout_returns_cards(mock_openai_cls):
     mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(2))
     scout = NewsScout(model="openai/gpt-5.4", temperature=0.2, api_key="sk-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    result = scout.run(_make_context(RunMode.LIVE))
+    cards = result.cards
     assert len(cards) == 2
     assert all(c.source_type == SourceType.NEWS for c in cards)
     assert all(c.url.startswith("https://") for c in cards)
+    assert result.llm_usage[0].stage == "scout:web_search"
 
 
 @patch("app.discovery.scouts.base.OpenAI")
 def test_news_scout_handles_empty_response(mock_openai_cls):
     mock_openai_cls.return_value = _mock_openai_responses_client('{"cards": []}')
     scout = NewsScout(model="openai/gpt-5.4", temperature=0.2, api_key="sk-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
     assert cards == []
 
 
@@ -303,7 +329,7 @@ def test_news_scout_handles_empty_response(mock_openai_cls):
 def test_central_bank_scout_returns_cards(mock_openai_cls):
     mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(1))
     scout = CentralBankScout(model="openai/gpt-5.4", temperature=0.2, api_key="sk-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
     assert len(cards) == 1
     assert cards[0].source_type == SourceType.CENTRAL_BANK
 
@@ -317,7 +343,7 @@ def test_central_bank_scout_returns_cards(mock_openai_cls):
 def test_research_scout_returns_cards(mock_openai_cls):
     mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(3))
     scout = ResearchScout(model="openai/gpt-5.4", temperature=0.2, api_key="sk-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
     assert len(cards) == 3
     assert all(c.source_type == SourceType.RESEARCH for c in cards)
 
@@ -348,7 +374,7 @@ def test_x_scout_returns_social_cards(mock_client_cls):
     ]})
     mock_client_cls.return_value = _mock_xai_chat(cards_json)
     scout = XScout(model="grok-4", api_key="xai-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
     mock_client_cls.assert_called_once()
     assert mock_client_cls.call_args.kwargs["timeout"] == 180
     assert len(cards) == 1
@@ -392,7 +418,7 @@ def test_x_scout_filters_hallucinated_urls(mock_client_cls):
     ]})
     mock_client_cls.return_value = _mock_xai_chat(cards_json)
     scout = XScout(model="grok-4", api_key="xai-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
     # Empty title → filtered out
     assert cards == []
 
@@ -408,7 +434,7 @@ def test_x_scout_handles_markdown_json(mock_client_cls):
     wrapped = "Some preamble\n```json\n" + inner + "\n```\n"
     mock_client_cls.return_value = _mock_xai_chat(wrapped)
     scout = XScout(model="grok-4", api_key="xai-test")
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
     assert len(cards) == 1
 
 
@@ -498,10 +524,12 @@ def test_podcast_scout_full_flow(mock_post, mock_completion, mock_openai_cls):
     mock_openai_cls.return_value = _mock_openai_responses_client(_candidate_json(1))
 
     scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
-    cards = scout.run(_make_context(RunMode.LIVE))
+    result = scout.run(_make_context(RunMode.LIVE))
+    cards = result.cards
 
     assert len(cards) == 2
     assert all(c.source_type == SourceType.PODCAST for c in cards)
+    assert any(u.stage == "scout:podcast_filter" for u in result.llm_usage)
 
 
 @patch("app.discovery.scouts.podcast.OpenAI")
@@ -518,7 +546,7 @@ def test_podcast_scout_respects_relevant_episode_limit(mock_post, mock_completio
         max_freeflow_queries=1,
         max_relevant_episodes=3,
     )
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert len(cards) == 3
 
@@ -578,7 +606,7 @@ def test_podcast_scout_filters_stale_episodes(mock_post):
 def test_podcast_scout_handles_empty_search(mock_post, mock_completion, mock_openai_cls):
     mock_post.return_value = _taddy_search_response([])
     scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert cards == []
     mock_completion.assert_not_called()
@@ -594,7 +622,7 @@ def test_podcast_scout_handles_no_relevant_episodes(mock_post, mock_completion, 
     mock_completion.return_value = _mock_litellm_response('{"relevant_indices": []}')
 
     scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert cards == []
     mock_openai_cls.assert_not_called()
@@ -610,7 +638,7 @@ def test_podcast_scout_skips_failed_episode_extraction(mock_post, mock_completio
     mock_openai_cls.return_value.responses.create.side_effect = RuntimeError("LLM timeout")
 
     scout = _make_scout(freeflow_search_terms=["global macro"], max_freeflow_queries=1)
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert cards == []  # failed extraction skipped; run does not crash
 
@@ -640,7 +668,7 @@ def test_podcast_scout_uses_transcript_when_available(mock_get, mock_post, mock_
         max_freeflow_queries=1,
         use_transcripts=True,
     )
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert len(cards) == 1
     assert mock_completion.call_count == 2  # filter + extraction (no OpenAI web search)
@@ -664,7 +692,7 @@ def test_podcast_scout_falls_back_to_web_search_when_no_transcript(
         max_freeflow_queries=1,
         use_transcripts=True,
     )
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert len(cards) == 1
     mock_openai_cls.assert_called_once()  # web search path was used
@@ -699,7 +727,7 @@ def test_podcast_scout_uses_long_timeout_for_transcript_extraction(
         max_freeflow_queries=1,
         use_transcripts=True,
     )
-    cards = scout.run(_make_context(RunMode.LIVE))
+    cards = scout.run(_make_context(RunMode.LIVE)).cards
 
     assert len(cards) == 1
     assert mock_completion.call_count == 2

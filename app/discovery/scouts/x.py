@@ -16,6 +16,7 @@ from app.discovery.scouts.base import (
     DEFAULT_SCOUT_TIMEOUT_SECONDS,
     _parse_or_structure,
     build_market_context,
+    ScoutRunResult,
     to_evidence_cards,
 )
 from app.llm.prompt_registry import load_prompt
@@ -51,7 +52,7 @@ class XScout:
         self.api_key = api_key
         self.temperature = temperature
 
-    def run(self, context: DiscoveryContext) -> list[EvidenceCard]:
+    def run(self, context: DiscoveryContext) -> ScoutRunResult:
         system_prompt = load_prompt("scouts/x_narrative_search").text
         market_context = build_market_context(context)
         payload: dict[str, Any] = {
@@ -100,7 +101,7 @@ class XScout:
 
         client_cls = _load_client()
         if client_cls is None:
-            return []
+            return ScoutRunResult(cards=[])
         user_msg = xai_user or (lambda text: text)
         search_tool = x_search or (lambda **_: None)
 
@@ -117,17 +118,17 @@ class XScout:
             result = chat.sample()
         except _rpc_error_type() as exc:
             logger.warning("XScout: xAI x_search request failed: %s", exc)
-            return []
+            return ScoutRunResult(cards=[])
 
         text: str = result.content or ""
         # Cleanup structuring falls back to LiteLLM — must use prefixed model name.
-        candidates = _parse_or_structure(text, model=self.model, api_key=self.api_key)
+        parsed = _parse_or_structure(text, model=self.model, api_key=self.api_key)
         cards = to_evidence_cards(
-            candidates,
+            parsed.candidates,
             SourceType.SOCIAL,
             retrieved_at=context.evidence_window_end.astimezone(timezone.utc),
         )
-        return _filter_verified(cards)
+        return ScoutRunResult(cards=_filter_verified(cards), llm_usage=parsed.llm_usage)
 
 
 def _filter_verified(cards: list[EvidenceCard]) -> list[EvidenceCard]:

@@ -107,8 +107,18 @@ def test_provider_passes_reasoning_controls_for_text_calls(monkeypatch):
     def fake_completion(**kwargs):
         assert kwargs["reasoning_effort"] == "medium"
         assert kwargs["verbosity"] == "high"
+        assert kwargs["max_tokens"] == 2000
         return SimpleNamespace(
+            model="openai/test-model",
             choices=[SimpleNamespace(message=SimpleNamespace(content="ok"))],
+            usage=SimpleNamespace(
+                prompt_tokens=12,
+                completion_tokens=3,
+                total_tokens=15,
+                prompt_tokens_details=SimpleNamespace(cached_tokens=4),
+                completion_tokens_details=SimpleNamespace(reasoning_tokens=2),
+            ),
+            _hidden_params={"response_cost": 0.002},
         )
 
     monkeypatch.setattr(provider.litellm_compat, "completion", fake_completion)
@@ -120,9 +130,13 @@ def test_provider_passes_reasoning_controls_for_text_calls(monkeypatch):
         )
     )
 
-    result = client.generate_text(system_prompt="system", user_message="user")
+    result = client.generate_text(system_prompt="system", user_message="user", stage="chart:codegen")
 
-    assert result == "ok"
+    assert result.text == "ok"
+    assert result.usage.stage == "chart:codegen"
+    assert result.usage.cached_prompt_tokens == 4
+    assert result.usage.reasoning_tokens == 2
+    assert result.usage.estimated_cost_usd == 0.002
 
 
 def test_provider_omits_non_default_temperature_for_gpt5(monkeypatch):
@@ -149,9 +163,11 @@ def test_provider_omits_non_default_temperature_for_gpt5(monkeypatch):
         system_prompt="Use only supplied evidence.",
         user_payload={"topic": "rates"},
         schema=TinyAnswer,
+        stage="synthesis:writer",
     )
 
     assert result.output.headline == "Rates"
+    assert result.usage.stage == "synthesis:writer"
 
 
 @pytest.mark.parametrize(

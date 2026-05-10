@@ -41,6 +41,14 @@ class LLMResult(Generic[T]):
     raw_text: str
 
 
+@dataclass(frozen=True)
+class LLMTextResult:
+    """Free-form model output plus metadata."""
+
+    text: str
+    usage: LLMUsage
+
+
 class LLMClient:
     """Small project wrapper around LiteLLM."""
 
@@ -52,10 +60,16 @@ class LLMClient:
         *,
         system_prompt: str,
         user_message: str,
-    ) -> str:
+        stage: str | None = None,
+    ) -> LLMTextResult:
         """Generate free-form text (e.g. Python code). No schema validation."""
+        started = time.perf_counter()
         if self.config.fake_response is not None:
-            return _fake_response_text(self.config.fake_response)
+            latency = time.perf_counter() - started
+            return LLMTextResult(
+                text=_fake_response_text(self.config.fake_response),
+                usage=LLMUsage(model=self.config.model, latency_seconds=latency, stage=stage),
+            )
 
         response = litellm_compat.completion(
             model=self.config.model,
@@ -65,7 +79,16 @@ class LLMClient:
             ],
             **_completion_options(self.config),
         )
-        return _extract_text(response)
+        latency = time.perf_counter() - started
+        return LLMTextResult(
+            text=_extract_text(response),
+            usage=usage_from_response(
+                response,
+                fallback_model=self.config.model,
+                latency_seconds=latency,
+                stage=stage,
+            ),
+        )
 
     def generate_structured(
         self,
@@ -73,6 +96,7 @@ class LLMClient:
         system_prompt: str,
         user_payload: dict[str, Any],
         schema: type[T],
+        stage: str | None = None,
     ) -> LLMResult[T]:
         """Generate JSON and validate it against a Pydantic model."""
         started = time.perf_counter()
@@ -82,7 +106,7 @@ class LLMClient:
             latency = time.perf_counter() - started
             return LLMResult(
                 output=_parse_structured(raw_text, schema),
-                usage=LLMUsage(model=self.config.model, latency_seconds=latency),
+                usage=LLMUsage(model=self.config.model, latency_seconds=latency, stage=stage),
                 raw_text=raw_text,
             )
 
@@ -100,7 +124,12 @@ class LLMClient:
         raw_text = _extract_text(response)
         return LLMResult(
             output=_parse_structured(raw_text, schema),
-            usage=_usage_from_response(response, self.config.model, latency),
+            usage=usage_from_response(
+                response,
+                fallback_model=self.config.model,
+                latency_seconds=latency,
+                stage=stage,
+            ),
             raw_text=raw_text,
         )
 
@@ -160,14 +189,132 @@ def _parse_structured(raw_text: str, schema: type[T]) -> T:
             raise LLMResponseError(f"LLM response did not match schema {schema.__name__}") from exc
 
 
-def _usage_from_response(response: Any, fallback_model: str, latency_seconds: float) -> LLMUsage:
+def usage_from_response(
+    response: Any,
+    *,
+    fallback_model: str,
+    latency_seconds: float,
+    stage: str | None = None,
+) -> LLMUsage:
     usage_obj = getattr(response, "usage", None)
-    cost = getattr(response, "_hidden_params", {}).get("response_cost") if response else None
+    hidden_params = getattr(response, "_hidden_params", {}) if response else {}
+    cost = None
+    if isinstance(hidden_params, dict):
+        cost = _coerce_float(hidden_params.get("response_cost"))
+    prompt_tokens = _usage_value(usage_obj, "prompt_tokens", "input_tokens")
+    completion_tokens = _usage_value(usage_obj, "completion_tokens", "output_tokens")
+    total_tokens = _usage_value(usage_obj, "total_tokens")
+    if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
+        total_tokens = prompt_tokens + completion_tokens
+
+    prompt_details = _usage_details(usage_obj, "prompt_tokens_details", "input_tokens_details")
+    completion_details = _usage_details(
+        usage_obj,
+        "completion_tokens_details",
+        "output_tokens_details",
+        "output_token_details",
+    )
     return LLMUsage(
-        model=getattr(response, "model", fallback_model),
+        model=_response_model(response, fallback_model),
         latency_seconds=latency_seconds,
-        prompt_tokens=getattr(usage_obj, "prompt_tokens", None),
-        completion_tokens=getattr(usage_obj, "completion_tokens", None),
-        total_tokens=getattr(usage_obj, "total_tokens", None),
+        stage=stage,
+        prompt_tokens=prompt_tokens,
+        cached_prompt_tokens=_detail_value(prompt_details, "cached_tokens", "cached_token_count"),
+        completion_tokens=completion_tokens,
+        reasoning_tokens=_detail_value(
+            completion_details,
+            "reasoning_tokens",
+            "reasoning_token_count",
+        ),
+        total_tokens=total_tokens,
+        tool_calls_count=_tool_calls_count(response),
         estimated_cost_usd=cost,
     )
+
+
+def _usage_value(usage_obj: Any, *names: str) -> int | None:
+    for name in names:
+        if usage_obj is None:
+            return None
+        value = None
+        if isinstance(usage_obj, dict):
+            value = usage_obj.get(name)
+        else:
+            value = getattr(usage_obj, name, None)
+        coerced = _coerce_int(value)
+        if coerced is not None:
+            return coerced
+    return None
+
+
+def _usage_details(usage_obj: Any, *names: str) -> Any:
+    for name in names:
+        if usage_obj is None:
+            return None
+        if isinstance(usage_obj, dict) and usage_obj.get(name) is not None:
+            return usage_obj[name]
+        value = getattr(usage_obj, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _detail_value(details: Any, *names: str) -> int | None:
+    for name in names:
+        if details is None:
+            return None
+        value = None
+        if isinstance(details, dict):
+            value = details.get(name)
+        else:
+            value = getattr(details, name, None)
+        coerced = _coerce_int(value)
+        if coerced is not None:
+            return coerced
+    return None
+
+
+def _tool_calls_count(response: Any) -> int | None:
+    output = getattr(response, "output", None)
+    if isinstance(output, list):
+        count = 0
+        for item in output:
+            item_type = getattr(item, "type", None)
+            if item_type == "tool_call":
+                count += 1
+            content = getattr(item, "content", None)
+            if isinstance(content, list):
+                count += sum(1 for entry in content if getattr(entry, "type", None) == "tool_call")
+        return count or None
+    return None
+
+
+def _response_model(response: Any, fallback_model: str) -> str:
+    model = getattr(response, "model", None)
+    return model if isinstance(model, str) and model else fallback_model
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None

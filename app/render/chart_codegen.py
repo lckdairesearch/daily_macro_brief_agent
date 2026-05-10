@@ -20,7 +20,7 @@ import yaml
 
 from app.llm.prompt_registry import load_prompt
 from app.llm.provider import LLMClient, LLMConfig
-from app.models import BriefDraft, ChartPlan
+from app.models import BriefDraft, ChartPlan, LLMUsage
 from app.render.chart_windowing import slice_rows_by_calendar_window, split_contiguous_segments
 
 if TYPE_CHECKING:
@@ -206,8 +206,8 @@ def generate_chart_code(
     output_path: str,
     settings: "Settings",
     error_context: str = "",
-) -> str:
-    """Call LLM to generate matplotlib visualization code. Returns full executable Python."""
+) -> tuple[str, LLMUsage]:
+    """Call LLM to generate matplotlib visualization code. Returns code plus usage."""
     window_days = 7 if chart_plan.window.value == "1w" else 30
     preamble = build_data_preamble(
         chart_plan.title,
@@ -221,11 +221,15 @@ def generate_chart_code(
     )
     prompt = load_prompt("chart_codegen")
     llm_cfg = settings.sources.get("llm", {})
-    model = llm_cfg.get("chart_model") or llm_cfg.get("synthesis_model", "openai/gpt-4o")
+    model = (
+        llm_cfg.get("chart_codegen_model")
+        or llm_cfg.get("chart_model")
+        or llm_cfg.get("synthesis_model", "openai/gpt-4o")
+    )
     reasoning_effort = llm_cfg.get("chart_reasoning_effort", llm_cfg.get("synthesis_reasoning_effort"))
     verbosity = llm_cfg.get("chart_verbosity", llm_cfg.get("synthesis_verbosity"))
     timeout_seconds = int(llm_cfg.get("chart_timeout_seconds", llm_cfg.get("synthesis_timeout_seconds", 180)))
-    max_tokens = int(llm_cfg.get("chart_max_tokens", 3000))
+    max_tokens = int(llm_cfg.get("chart_codegen_max_tokens", llm_cfg.get("chart_max_tokens", 3000)))
 
     user_msg = (
         "The following variables are already defined before your code — "
@@ -263,8 +267,12 @@ def generate_chart_code(
             verbosity=verbosity,
         )
     )
-    raw = client.generate_text(system_prompt=prompt.text, user_message=user_msg)
-    return preamble + "\n" + _remove_label_slicing(_strip_fences(raw))
+    result = client.generate_text(
+        system_prompt=prompt.text,
+        user_message=user_msg,
+        stage="chart:codegen",
+    )
+    return preamble + "\n" + _remove_label_slicing(_strip_fences(result.text)), result.usage
 
 
 def _remove_label_slicing(code: str) -> str:

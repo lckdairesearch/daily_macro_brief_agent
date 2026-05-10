@@ -149,7 +149,10 @@ def run_pipeline(
         evidence_window_end=run_window.evidence_window_end,
         mode=mode,
     )
-    evidence_cards = run_discovery(scouts, discovery_context, failed_sources, timings)
+    evidence_cards, discovery_llm_usages = run_discovery(
+        scouts, discovery_context, failed_sources, timings
+    )
+    llm_usages.extend(discovery_llm_usages)
     _record_timing(timings, "Discover evidence", _step_started)
 
     # --- Step 6: Deduplicate evidence ---
@@ -206,6 +209,7 @@ def run_pipeline(
             timezone=settings.app.timezone,
             llm_provider=llm_provider,
             llm_model=llm_model,
+            cost_by_stage=_cost_by_stage(llm_usages),
             warnings=warnings,
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
@@ -236,6 +240,7 @@ def run_pipeline(
             llm_provider=llm_provider,
             llm_model=llm_model,
             token_usage=llm_usages,
+            cost_by_stage=_cost_by_stage(llm_usages),
             warnings=warnings,
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
@@ -287,7 +292,7 @@ def run_pipeline(
     chart_build_info: dict | None = None
     chart_status = "success"
     try:
-        chart_spec, built_chart_info = build_chart(
+        chart_spec, built_chart_info, chart_codegen_usages = build_chart(
             draft=brief_draft,
             chart_plan=chart_plan,
             settings=settings,
@@ -295,6 +300,7 @@ def run_pipeline(
             sample_mode=(mode == RunMode.SAMPLE),
             as_of=data_cutoff,
         )
+        llm_usages.extend(chart_codegen_usages)
         chart_build_info = built_chart_info.model_dump(mode="json")
         _save_json_artifact(
             run_output_dir / "chart_build.json",
@@ -366,6 +372,7 @@ def run_pipeline(
             llm_provider=llm_provider,
             llm_model=llm_model,
             token_usage=llm_usages,
+            cost_by_stage=_cost_by_stage(llm_usages),
             warnings=warnings,
             failed_sources=failed_sources,
             delivery_status=DeliveryStatus.DISABLED,
@@ -443,6 +450,7 @@ def run_pipeline(
         llm_provider=llm_provider,
         llm_model=llm_model,
         token_usage=llm_usages,
+        cost_by_stage=_cost_by_stage(llm_usages),
         estimated_cost_usd=sum(
             u.estimated_cost_usd for u in llm_usages if u.estimated_cost_usd
         ) or None,
@@ -726,6 +734,16 @@ def _record_timing(
             "seconds": round(perf_counter() - started_at, 3),
         }
     )
+
+
+def _cost_by_stage(llm_usages: list[LLMUsage]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for usage in llm_usages:
+        if usage.estimated_cost_usd is None:
+            continue
+        stage = usage.stage or "unknown"
+        totals[stage] = round(totals.get(stage, 0.0) + usage.estimated_cost_usd, 10)
+    return totals
 
 
 def _load_fixture_calendar() -> list[CalendarEvent]:

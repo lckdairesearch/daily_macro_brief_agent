@@ -214,8 +214,13 @@ def _select_with_llm(
 ) -> tuple[ChartPlan, LLMUsage | None]:
     prompt = load_prompt("chart_selector")
     llm_cfg = settings.sources.get("llm", {})
-    model = llm_cfg.get("chart_model") or llm_cfg.get("synthesis_model", "openai/gpt-4o")
-    client = LLMClient(LLMConfig(model=model, temperature=0.1, max_tokens=1200))
+    model = (
+        llm_cfg.get("chart_selector_model")
+        or llm_cfg.get("chart_model")
+        or llm_cfg.get("synthesis_model", "openai/gpt-4o")
+    )
+    max_tokens = int(llm_cfg.get("chart_selector_max_tokens", 1200))
+    client = LLMClient(LLMConfig(model=model, temperature=0.1, max_tokens=max_tokens))
     payload = {
         "portfolio_context": settings.portfolio,
         "three_things": [
@@ -233,6 +238,7 @@ def _select_with_llm(
             system_prompt=prompt.text,
             user_payload=payload,
             schema=ChartSelectorOutput,
+            stage="chart:selector",
         )
     except Exception:
         return _plan_from_candidate(shortlist[0], ChartSelectionMethod.DETERMINISTIC_FALLBACK), None

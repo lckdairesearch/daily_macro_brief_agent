@@ -543,7 +543,7 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
     chart_plan = _make_chart_plan()
     output = str(tmp_path / "chart.png")
 
-    spec, build_info = build_chart(
+    spec, build_info, _usages = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -569,7 +569,7 @@ def test_build_chart_prefers_chart_plan_caption(tmp_path, monkeypatch):
     chart_plan = _make_chart_plan(caption="This caption comes from the selected chart plan and should win.")
     output = str(tmp_path / "chart.png")
 
-    spec, _build_info = build_chart(
+    spec, _build_info, _usages = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -601,7 +601,7 @@ def test_build_chart_uses_reference_fixture_for_deterministic_pair_render(tmp_pa
     )
     monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should not be used for standard pair line charts")))
 
-    spec, build_info = build_chart(
+    spec, build_info, _usages = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -636,7 +636,7 @@ def test_build_chart_supports_explicit_rebased_render_family(tmp_path, monkeypat
     monkeypatch.setattr("app.render.charts.fetch_chart_series", lambda **kwargs: series_data)
     monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should not be used for standard pair line charts")))
 
-    spec, build_info = build_chart(
+    spec, build_info, _usages = build_chart(
         draft,
         chart_plan=_make_chart_plan(
             instrument_ids=["US10Y", "COPPER"],
@@ -659,7 +659,10 @@ def test_build_chart_supports_explicit_rebased_render_family(tmp_path, monkeypat
 def test_build_chart_uses_codegen_for_nonstandard_multi_series_case(tmp_path, monkeypatch):
     from app.render.charts import build_chart
 
-    monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: "placeholder")
+    monkeypatch.setattr(
+        "app.render.charts.generate_chart_code",
+        lambda **kwargs: ("placeholder", SimpleNamespace(stage="chart:codegen")),
+    )
     monkeypatch.setattr(
         "app.render.charts.execute_chart_code",
         lambda code, output_path: Path(output_path).write_bytes(b"png"),
@@ -670,7 +673,7 @@ def test_build_chart_uses_codegen_for_nonstandard_multi_series_case(tmp_path, mo
     chart_plan = _make_chart_plan(instrument_ids=["VIX", "MOVE", "US10Y"])
     output = str(tmp_path / "chart.png")
 
-    spec, build_info = build_chart(
+    spec, build_info, usages = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -683,6 +686,7 @@ def test_build_chart_uses_codegen_for_nonstandard_multi_series_case(tmp_path, mo
     assert build_info.final_status == "generated_code"
     assert build_info.code_generated is True
     assert build_info.attempts[-1].status == "success"
+    assert usages
 
 
 def test_build_chart_falls_back_when_codegen_fails_for_nonstandard_case(tmp_path, monkeypatch):
@@ -698,7 +702,7 @@ def test_build_chart_falls_back_when_codegen_fails_for_nonstandard_case(tmp_path
     chart_plan = _make_chart_plan(instrument_ids=["VIX", "MOVE", "US10Y"])
     output = str(tmp_path / "fallback.png")
 
-    spec, build_info = build_chart(
+    spec, build_info, _usages = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -854,17 +858,21 @@ def test_chart_codegen_uses_chart_specific_llm_overrides(monkeypatch):
         def __init__(self, config):
             captured["config"] = config
 
-        def generate_text(self, *, system_prompt, user_message):
-            return "plt.tight_layout(pad=1.5)\nplt.savefig(output_path, dpi=150, bbox_inches=\"tight\", transparent=True)"
+        def generate_text(self, *, system_prompt, user_message, stage=None):
+            captured["stage"] = stage
+            return SimpleNamespace(
+                text="plt.tight_layout(pad=1.5)\nplt.savefig(output_path, dpi=150, bbox_inches=\"tight\", transparent=True)",
+                usage=SimpleNamespace(stage=stage),
+            )
 
     monkeypatch.setattr("app.render.chart_codegen.LLMClient", FakeClient)
 
     settings = _make_settings()
-    settings.sources["llm"]["chart_model"] = "openai/gpt-5.5"
+    settings.sources["llm"]["chart_codegen_model"] = "openai/gpt-5.5"
     settings.sources["llm"]["chart_reasoning_effort"] = "high"
     settings.sources["llm"]["chart_verbosity"] = "medium"
     settings.sources["llm"]["chart_timeout_seconds"] = 300
-    settings.sources["llm"]["chart_max_tokens"] = 5000
+    settings.sources["llm"]["chart_codegen_max_tokens"] = 5000
 
     generate_chart_code(
         chart_plan=_make_chart_plan(),
@@ -882,6 +890,7 @@ def test_chart_codegen_uses_chart_specific_llm_overrides(monkeypatch):
     assert captured["config"].verbosity == "medium"
     assert captured["config"].timeout_seconds == 300
     assert captured["config"].max_tokens == 5000
+    assert captured["stage"] == "chart:codegen"
 
 
 def test_chart_selector_prompt_exists_and_restricts_choice_to_shortlist():
@@ -911,7 +920,7 @@ def test_chart_selector_falls_back_when_llm_selection_errors(monkeypatch):
             sample_mode=True,
         )
 
-    def fake_generate_structured(self, *, system_prompt, user_payload, schema):
+    def fake_generate_structured(self, *, system_prompt, user_payload, schema, stage=None):
         raise RuntimeError("insufficient_quota")
 
     monkeypatch.setattr("app.render.chart_selector.fetch_chart_series", fake_fetch_chart_series)

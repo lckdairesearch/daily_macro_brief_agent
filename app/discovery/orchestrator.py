@@ -10,7 +10,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 
 from app.discovery.scouts.base import DiscoveryContext, FixtureDiscoveryScout, Scout
-from app.models import EvidenceCard, RunMode
+from app.models import EvidenceCard, LLMUsage, RunMode
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -23,25 +23,27 @@ def run_discovery(
     context: DiscoveryContext,
     failed_sources: list[str],
     timings: list[dict] | None = None,
-) -> list[EvidenceCard]:
+) -> tuple[list[EvidenceCard], list[LLMUsage]]:
     """Run each scout; swallow failures for optional scouts and record them."""
     all_cards: list[EvidenceCard] = []
+    llm_usage: list[LLMUsage] = []
     for scout in scouts:
         started = perf_counter()
         try:
-            cards = scout.run(context)
+            result = scout.run(context)
             elapsed = perf_counter() - started
-            all_cards.extend(cards)
+            all_cards.extend(result.cards)
+            llm_usage.extend(result.llm_usage)
             if timings is not None:
                 timings.append(
                     {
                         "component": f"scout:{scout.name}",
                         "status": "success",
                         "seconds": round(elapsed, 3),
-                        "cards": len(cards),
+                        "cards": len(result.cards),
                     }
                 )
-            logger.info("Scout '%s' returned %d card(s)", scout.name, len(cards))
+            logger.info("Scout '%s' returned %d card(s)", scout.name, len(result.cards))
         except Exception as exc:
             elapsed = perf_counter() - started
             if scout.optional:
@@ -69,7 +71,7 @@ def run_discovery(
                         }
                     )
                 raise RuntimeError(f"Required scout '{scout.name}' failed: {exc}") from exc
-    return all_cards
+    return all_cards, llm_usage
 
 
 def build_scouts(settings: "Settings", mode: RunMode) -> list[Scout]:
