@@ -200,7 +200,7 @@
         </div>
         {% endfor %}
 
-        <div class="section-header">Today's Calendar</div>
+        <div class="section-header">{{ calendar_title }}</div>
         <table class="calendar-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
             <tbody>
                 {% for left, right in calendar_event_rows %}

@@ -93,7 +93,7 @@ def render_text(context: dict[str, Any]) -> str:
             lines.append(item["so_what"])
         lines.append("")
 
-    lines.append("TODAY'S CALENDAR")
+    lines.append(context.get("calendar_title", "Today's Calendar").upper())
     for event in context["calendar_events"]:
         lines.append(
             f"{event['time_hkt']} {event['country_or_region']} - {event['event_name']} "
@@ -149,8 +149,11 @@ def build_render_context(
     dashboard_snapshots = _select_dashboard_snapshots(draft.overnight_dashboard, settings)
     label_map = _build_display_label_map(settings)
 
+    calendar_title = "Monday's Calendar" if is_weekend_run else "Today's Calendar"
+
     return {
         "header_line": header_line,
+        "calendar_title": calendar_title,
         "warnings": _dedupe(list(metadata.get("warnings", []))),
         "book_impact": _normalize_display_text(draft.book_impact, label_map),
         "dashboard_rows": [

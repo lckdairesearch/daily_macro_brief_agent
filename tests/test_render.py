@@ -936,6 +936,38 @@ def test_chart_selector_falls_back_when_llm_selection_errors(monkeypatch):
 # Email render context
 # ---------------------------------------------------------------------------
 
+def test_calendar_title_is_mondays_for_weekend_run():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "run_metadata": {
+                "brief_date": "2026-05-11T00:00:00+08:00",
+                "data_cutoff_at": "2026-05-10T06:45:00+08:00",  # Sunday
+            }
+        }
+    )
+    ctx = build_render_context(draft, settings)
+    assert ctx["calendar_title"] == "Monday's Calendar"
+
+
+def test_calendar_title_is_todays_for_weekday_run():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "run_metadata": {
+                "brief_date": "2026-05-08T00:00:00+08:00",
+                "data_cutoff_at": "2026-05-08T06:45:00+08:00",  # Friday
+            }
+        }
+    )
+    ctx = build_render_context(draft, settings)
+    assert ctx["calendar_title"] == "Today's Calendar"
+
+
 def test_header_line_includes_weekend_suffix_for_saturday_run():
     from app.render.email import build_render_context
 
