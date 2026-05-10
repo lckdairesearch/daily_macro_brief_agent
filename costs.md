@@ -2,19 +2,19 @@
 
 ## Daily Run Cost Summary
 
-| Service | Role | Existing data subscription | With Alpha Vantage ($50/mo) |
+| Service | Role | Daily | Monthly |
 |---|---|---|---|
-| OpenAI GPT-5.x (Azure) | Scouts, synthesis, chart selection | $22–44/mo | $22–44/mo |
-| Market data | Equities, FX, commodities, yields, BTC | $0 (absorbed) | $50/mo (flat) |
-| XAI Grok | X/Twitter social media scout | ~$0.50/mo | ~$0.50/mo |
-| Databento | Futures bars (Bund, Copper, WTI, Brent) | ~$0.50/mo | ~$0.50/mo |
+| OpenAI GPT-5.x (Azure) | Scouts, synthesis, chart selection | $1.00–2.00 | $22–44 |
+| Alpha Vantage (personal) | Equities, FX, commodities, yields, BTC | ~$2.27 | $50 (flat) |
+| XAI Grok | X/Twitter social media scout | ~$0.02 | ~$0.50 |
+| Databento | Futures bars (Bund, Copper, WTI, Brent) | ~$0.02 | ~$0.50 |
 | FRED | HY OAS spread | $0 | $0 |
 | Taddy | Podcast discovery | $0 | $0 (free tier) |
 | Postmark | Email delivery | $0 | $0 (free tier) |
 | Cloudflare R2 | Chart hosting + artifact storage | $0 | $0 (free tier) |
 | GitHub Actions | CI/CD | $0 | $0 (free tier) |
-| **Total — daily** | | **~$1.05–2.10** | **~$3.30–4.30** |
-| **Total — monthly** | | **~$23–45** | **~$73–95** |
+| **Total** | *(existing market data subscription)* | **~$1.05–2.10** | **~$23–45** |
+| **Total** | *(with Alpha Vantage)* | **~$3.30–4.30** | **~$73–95** |
 
 ## Key Notes
 
