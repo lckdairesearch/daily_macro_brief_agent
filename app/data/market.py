@@ -542,45 +542,57 @@ _LIVE_LOOKBACK_DAYS = 10  # calendar days; enough to capture 2 trading days acro
 # Instrument metadata tables — canonical instrument_id is the dict key.
 
 _AV_INSTRUMENT_META: dict[str, dict] = {
-    "SPY":    {"function": "TIME_SERIES_DAILY",      "symbol": "SPY",    "display_name": "S&P 500 (proxy)",                        "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%"},
-    "QQQ":    {"function": "TIME_SERIES_DAILY",      "symbol": "QQQ",    "display_name": "Nasdaq 100 (proxy)",                     "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%"},
-    "FEZ":    {"function": "TIME_SERIES_DAILY",      "symbol": "FEZ",    "display_name": "Euro Stoxx 50 (FEZ, proxy, USD-based)",  "asset_class": AssetClass.EQUITY,    "region": "EU",     "change_unit": "%"},
-    "UUP":    {"function": "TIME_SERIES_DAILY",      "symbol": "UUP",    "display_name": "DXY (proxy)",         "asset_class": AssetClass.FX,        "region": "US",     "change_unit": "%"},
-    "USDJPY": {"function": "FX_DAILY",               "symbol": "USDJPY", "display_name": "USD/JPY",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%",   "extra": {"from_symbol": "USD", "to_symbol": "JPY"}},
-    "EURUSD": {"function": "FX_DAILY",               "symbol": "EURUSD", "display_name": "EUR/USD",             "asset_class": AssetClass.FX,        "region": "EU",     "change_unit": "%",   "extra": {"from_symbol": "EUR", "to_symbol": "USD"}},
-    "USDCNH": {"function": "FX_DAILY",               "symbol": "USDCNH", "display_name": "USD/CNH",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%",   "extra": {"from_symbol": "USD", "to_symbol": "CNH"}},
-    "GOLD":   {"function": "GOLD_SILVER_HISTORY",     "symbol": "GOLD",   "display_name": "Gold (spot)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
-    "SILVER": {"function": "GOLD_SILVER_HISTORY",     "symbol": "SILVER", "display_name": "Silver (spot)",       "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%"},
-    "BTC":    {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "BTC",    "display_name": "Bitcoin",             "asset_class": AssetClass.CRYPTO,    "region": "Global", "change_unit": "%"},
-    "US2Y":   {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 2Y Yield",         "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "extra": {"maturity": "2year"}},
-    "US10Y":  {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 10Y Yield",        "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "extra": {"maturity": "10year"}},
+    "SPY":    {"function": "TIME_SERIES_DAILY",      "symbol": "SPY",    "display_name": "S&P 500 (proxy)",                        "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%", "level_unit_label": "USD", "is_proxy": True},
+    "QQQ":    {"function": "TIME_SERIES_DAILY",      "symbol": "QQQ",    "display_name": "Nasdaq 100 (proxy)",                     "asset_class": AssetClass.EQUITY,    "region": "US",     "change_unit": "%", "level_unit_label": "USD", "is_proxy": True},
+    "FEZ":    {"function": "TIME_SERIES_DAILY",      "symbol": "FEZ",    "display_name": "Euro Stoxx 50 (proxy, USD-based)",  "asset_class": AssetClass.EQUITY,    "region": "EU",     "change_unit": "%", "level_unit_label": "USD", "is_proxy": True},
+    "UUP":    {"function": "TIME_SERIES_DAILY",      "symbol": "UUP",    "display_name": "DXY (proxy)",         "asset_class": AssetClass.FX,        "region": "US",     "change_unit": "%", "level_unit_label": "index", "is_proxy": True},
+    "USDJPY": {"function": "FX_DAILY",               "symbol": "USDJPY", "display_name": "USD/JPY",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%", "level_unit_label": "JPY per USD", "is_proxy": False, "extra": {"from_symbol": "USD", "to_symbol": "JPY"}},
+    "EURUSD": {"function": "FX_DAILY",               "symbol": "EURUSD", "display_name": "EUR/USD",             "asset_class": AssetClass.FX,        "region": "EU",     "change_unit": "%", "level_unit_label": "USD per EUR", "is_proxy": False, "extra": {"from_symbol": "EUR", "to_symbol": "USD"}},
+    "USDCNH": {"function": "FX_DAILY",               "symbol": "USDCNH", "display_name": "USD/CNH",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%", "level_unit_label": "CNH per USD", "is_proxy": False, "extra": {"from_symbol": "USD", "to_symbol": "CNH"}},
+    "GOLD":   {"function": "GOLD_SILVER_HISTORY",     "symbol": "GOLD",   "display_name": "Gold (spot)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False},
+    "SILVER": {"function": "GOLD_SILVER_HISTORY",     "symbol": "SILVER", "display_name": "Silver (spot)",       "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False},
+    "BTC":    {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "BTC",    "display_name": "Bitcoin",             "asset_class": AssetClass.CRYPTO,    "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False},
+    "US2Y":   {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 2Y Yield",         "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "extra": {"maturity": "2year"}},
+    "US10Y":  {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 10Y Yield",        "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "extra": {"maturity": "10year"}},
 }
 
 _DB_INSTRUMENT_META: dict[str, dict] = {
-    "DE10Y":  {"dataset": "XEUR.EOBI",  "symbol": "FGBL.c.0", "display_name": "German 10Y Bund",                 "asset_class": AssetClass.RATES,     "region": "EU",     "change_unit": "bps", "price_to_yield": True},
+    "DE10Y":  {"dataset": "XEUR.EOBI",  "symbol": "FGBL.c.0", "display_name": "German 10Y Bund",                 "asset_class": AssetClass.RATES,     "region": "EU",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "price_to_yield": True},
     # AV COPPER returns monthly data only; AV WTI/BRENT lag by up to 1 week.
     # Use exchange front-month futures via Databento instead.
     # V1 note: roll artifacts (price jump at contract expiry) not yet detected; easy V2 add.
-    "COPPER": {"dataset": "GLBX.MDP3",   "symbol": "HG.c.0",  "display_name": "Copper (front-month)",           "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
-    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI (front-month)",    "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
-    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent (front-month)", "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%",   "price_to_yield": False},
+    "COPPER": {"dataset": "GLBX.MDP3",   "symbol": "HG.c.0",  "display_name": "Copper (front-month)",           "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False},
+    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI (front-month)",    "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False},
+    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent (front-month)", "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False},
 }
 
 _FRED_INSTRUMENT_META: dict[str, dict] = {
     # BAMLH0A0HYM2 is reported by FRED in percent (3.30 = 330 bps).
     # level_multiplier converts the raw value to the display unit (bps).
-    "HY_OAS": {"series_id": "BAMLH0A0HYM2", "display_name": "ICE BofA US High Yield OAS", "asset_class": AssetClass.CREDIT, "region": "US", "change_unit": "bps", "level_multiplier": 100},
+    "HY_OAS": {"series_id": "BAMLH0A0HYM2", "display_name": "ICE BofA US High Yield OAS", "asset_class": AssetClass.CREDIT, "region": "US", "change_unit": "bps", "level_unit_label": "bps", "is_proxy": False, "level_multiplier": 100},
 }
 
 _YF_INSTRUMENT_META: dict[str, dict] = {
-    "VIX":  {"symbol": "^VIX",  "display_name": "VIX",       "asset_class": AssetClass.VOLATILITY, "region": "US", "change_unit": "%"},
-    "MOVE": {"symbol": "^MOVE", "display_name": "MOVE Index", "asset_class": AssetClass.VOLATILITY, "region": "US", "change_unit": "%"},
+    "VIX":  {"symbol": "^VIX",  "display_name": "VIX",       "asset_class": AssetClass.VOLATILITY, "region": "US", "change_unit": "%", "level_unit_label": "index", "is_proxy": False},
+    "MOVE": {"symbol": "^MOVE", "display_name": "MOVE Index", "asset_class": AssetClass.VOLATILITY, "region": "US", "change_unit": "%", "level_unit_label": "index", "is_proxy": False},
 }
 
 AV_INSTRUMENTS       = list(_AV_INSTRUMENT_META)
 DB_INSTRUMENTS       = list(_DB_INSTRUMENT_META)
 FRED_INSTRUMENTS     = list(_FRED_INSTRUMENT_META)
 YFINANCE_INSTRUMENTS = list(_YF_INSTRUMENT_META)
+
+INSTRUMENT_META: dict[str, dict] = {
+    **_AV_INSTRUMENT_META,
+    **_DB_INSTRUMENT_META,
+    **_FRED_INSTRUMENT_META,
+    **_YF_INSTRUMENT_META,
+}
+
+
+def get_instrument_meta(instrument_id: str) -> dict[str, Any] | None:
+    """Return canonical metadata for a chartable instrument id."""
+    return INSTRUMENT_META.get(instrument_id)
 
 
 def _compute_1d_change(rows: list[dict], change_unit: str) -> tuple[float, float]:

@@ -8,7 +8,7 @@ from pathlib import Path
 from statistics import mean
 from typing import TYPE_CHECKING
 
-from app.data.market import fetch_chart_series
+from app.data.market import fetch_chart_series, get_instrument_meta
 from app.models import (
     AssetClass,
     BriefDraft,
@@ -274,13 +274,14 @@ def _effective_caption(caption: str, render_family: str) -> str:
     return f"{caption.rstrip('.')} {disclosure}"
 
 
-def _axis_unit_label(asset_class: AssetClass, unit_kind: str) -> str:
+def _axis_unit_label(instrument_id: str, asset_class: AssetClass, unit_kind: str) -> str:
+    meta = get_instrument_meta(instrument_id) or {}
+    if meta.get("level_unit_label"):
+        return str(meta["level_unit_label"])
     if asset_class == AssetClass.RATES:
         return "%"
     if asset_class == AssetClass.CREDIT:
         return "bps"
-    if asset_class in {AssetClass.EQUITY, AssetClass.COMMODITY, AssetClass.CRYPTO}:
-        return "$"
     if asset_class == AssetClass.FX:
         return "rate"
     if asset_class == AssetClass.VOLATILITY:
@@ -438,8 +439,8 @@ def _render_deterministic_pair_line_chart(
 
     left_unit = units.get(left_id, "price")
     right_unit = units.get(right_id, "price")
-    left_axis_unit = _axis_unit_label(AssetClass(asset_classes.get(left_id, AssetClass.EQUITY.value)), left_unit)
-    right_axis_unit = _axis_unit_label(AssetClass(asset_classes.get(right_id, AssetClass.EQUITY.value)), right_unit)
+    left_axis_unit = _axis_unit_label(left_id, AssetClass(asset_classes.get(left_id, AssetClass.EQUITY.value)), left_unit)
+    right_axis_unit = _axis_unit_label(right_id, AssetClass(asset_classes.get(right_id, AssetClass.EQUITY.value)), right_unit)
     ax.tick_params(axis="y", colors=_LINE_COLORS[0])
     if render_family != _REBASED:
         ax.set_ylabel(f"{left_name} ({left_axis_unit})", color=_LINE_COLORS[0], fontsize=9)

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.data.market import FixtureChartSeriesProvider, fetch_chart_series
+from app.data.market import FixtureChartSeriesProvider, fetch_chart_series, get_instrument_meta
 from app.models import (
     AssetClass,
     BriefDraft,
@@ -377,10 +377,25 @@ def test_axis_policy_for_mixed_units_uses_dual_axis():
 
 
 def test_axis_unit_label_prefers_display_units_over_generic_price():
-    assert _axis_unit_label(AssetClass.RATES, "yield") == "%"
-    assert _axis_unit_label(AssetClass.CREDIT, "spread") == "bps"
-    assert _axis_unit_label(AssetClass.COMMODITY, "price") == "$"
-    assert _axis_unit_label(AssetClass.FX, "price") == "rate"
+    assert _axis_unit_label("US10Y", AssetClass.RATES, "yield") == "%"
+    assert _axis_unit_label("HY_OAS", AssetClass.CREDIT, "spread") == "bps"
+    assert _axis_unit_label("COPPER", AssetClass.COMMODITY, "price") == "USD"
+    assert _axis_unit_label("USDJPY", AssetClass.FX, "price") == "JPY per USD"
+
+
+def test_fixed_instrument_catalog_has_level_units_for_chartable_assets():
+    for instrument_id in ("SPY", "QQQ", "FEZ", "UUP", "USDJPY", "EURUSD", "USDCNH", "US10Y", "DE10Y", "COPPER", "HY_OAS", "VIX"):
+        meta = get_instrument_meta(instrument_id)
+        assert meta is not None
+        assert meta["level_unit_label"]
+
+
+def test_fixed_instrument_catalog_marks_proxy_instruments():
+    assert get_instrument_meta("SPY")["is_proxy"] is True
+    assert get_instrument_meta("QQQ")["is_proxy"] is True
+    assert get_instrument_meta("FEZ")["is_proxy"] is True
+    assert get_instrument_meta("UUP")["is_proxy"] is True
+    assert get_instrument_meta("US10Y")["is_proxy"] is False
 
 
 def test_axis_policy_allows_single_axis_for_close_same_unit_pair():
@@ -775,6 +790,37 @@ def test_chart_selector_builds_raw_and_rebased_variants_for_mixed_unit_pair():
         "pair_line_dual_axis_raw",
         "pair_line_rebased",
     }
+
+
+def test_chart_selector_prefers_rebased_for_proxy_pairs():
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("SPY", "S&P 500 (proxy)", AssetClass.EQUITY, -1.2, flagged=True),
+                _snapshot("QQQ", "Nasdaq 100 (proxy)", AssetClass.EQUITY, -1.1, flagged=True),
+            ],
+            "three_things": [
+                BriefItem(
+                    section=BriefSection.THREE_THINGS,
+                    headline="Proxy risk tone",
+                    body="Test",
+                    supporting_market_ids=["SPY", "QQQ"],
+                )
+            ],
+        }
+    )
+    series_data = fetch_chart_series(["SPY", "QQQ"], lookback_days=30, as_of=_AS_OF, sample_mode=True)
+    candidates = build_chart_candidates(
+        snapshots=draft.overnight_dashboard,
+        series_data=series_data,
+        brief_draft=draft,
+        portfolio={"core_positions": [], "tactical_overlays": [], "macro_sensitivities": []},
+    )
+
+    proxy_candidates = [candidate for candidate in candidates if candidate.instrument_ids == ["SPY", "QQQ"]]
+    by_family = {candidate.render_family: candidate.score for candidate in proxy_candidates}
+
+    assert by_family["pair_line_rebased"] >= by_family["pair_line_single_axis_raw"]
 
 
 def test_chart_codegen_prompt_uses_transparent_background_with_faint_line_grid():

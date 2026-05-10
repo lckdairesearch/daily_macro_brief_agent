@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from app.data.market import fetch_chart_series
+from app.data.market import fetch_chart_series, get_instrument_meta
 from app.llm.prompt_registry import load_prompt
 from app.llm.provider import LLMClient, LLMConfig
 from app.models import (
@@ -565,6 +565,17 @@ def _pair_render_families(
     right: MarketSnapshot,
     family: str,
 ) -> list[tuple[str, float]]:
+    left_meta = get_instrument_meta(left.instrument_id) or {}
+    right_meta = get_instrument_meta(right.instrument_id) or {}
+    if left_meta.get("is_proxy") or right_meta.get("is_proxy"):
+        render_families = [("pair_line_rebased", 0.03)]
+        if left.asset_class != right.asset_class:
+            render_families.append(("pair_line_dual_axis_raw", 0.0))
+        elif left.asset_class in {AssetClass.RATES, AssetClass.CREDIT, AssetClass.VOLATILITY}:
+            render_families.append(("pair_line_dual_axis_raw", 0.0))
+        else:
+            render_families.append(("pair_line_single_axis_raw", -0.01))
+        return render_families
     if left.asset_class != right.asset_class:
         render_families = [("pair_line_dual_axis_raw", 0.02)]
         if family in {"divergence", "opposite_direction", "sharp_reversal"}:
