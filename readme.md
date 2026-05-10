@@ -242,7 +242,6 @@ Dry-run and live runs publish their full directory to R2 and refresh a no-cache 
 - Consensus enrichment is designed in `architecture.md` but not yet wired into the pipeline
 - Investing.com calendar is a prototype dependency, not a licensed feed
 - The critic/repair second-pass prompt exists but is not active
-- Sample and dry-run never send email — this is intentional, not a gap
 
 ---
 
