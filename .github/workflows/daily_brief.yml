@@ -16,14 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-          cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -e '.'
+        run: uv sync --no-dev
 
       - name: Run brief (live mode)
         env:
@@ -43,7 +42,7 @@ jobs:
           CLOUDFLARE_R2_SECRET_ACCESS_KEY:   ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
           CLOUDFLARE_R2_BUCKET:              ${{ secrets.CLOUDFLARE_R2_BUCKET }}
           CLOUDFLARE_R2_PUBLIC_BASE_URL:     ${{ secrets.CLOUDFLARE_R2_PUBLIC_BASE_URL }}
-        run: python -m app.main --mode live
+        run: uv run python -m app.main --mode live
 
       - name: Upload output artifacts
         if: always()
