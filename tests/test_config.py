@@ -183,6 +183,40 @@ def test_settings_validate_live_email_enabled_reports_postmark():
     assert "recipients.yaml" in errors
 
 
+def test_settings_validate_dry_run_email_enabled_reports_maintainer_postmark():
+    """validate_for_mode(DRY_RUN) reports maintainer and Postmark keys when delivery is enabled."""
+    app = AppConfig()
+    creds = Credentials.model_construct(
+        openai_api_key="sk-test",
+        alpha_vantage_api_key="av-test",
+        enable_email_delivery=True,
+        postmark_api_key=None,
+        postmark_from_email=None,
+        postmark_maintainer_email=None,
+        llm_scout_model=None,
+        llm_x_scout_model=None,
+        llm_synthesis_model=None,
+        llm_temperature=None,
+        llm_synthesis_temperature=None,
+        llm_synthesis_reasoning_effort=None,
+        llm_synthesis_verbosity=None,
+        llm_synthesis_timeout_seconds=None,
+        llm_synthesis_review_enabled=None,
+        llm_synthesis_review_model=None,
+        llm_synthesis_review_temperature=None,
+        llm_synthesis_review_reasoning_effort=None,
+        llm_synthesis_review_verbosity=None,
+        llm_synthesis_review_timeout_seconds=None,
+        llm_synthesis_context_card_count=None,
+    )
+    settings = Settings(app, creds, {}, {}, {}, {})
+    errors = settings.validate_for_mode(RunMode.DRY_RUN)
+    assert "POSTMARK_API_KEY" in errors
+    assert "POSTMARK_FROM_EMAIL" in errors
+    assert "POSTMARK_MAINTAINER_EMAIL" in errors
+    assert "recipients.yaml" not in errors
+
+
 def test_settings_load_resolves_all_yaml():
     """Settings.load() loads all five YAML files into the expected attributes."""
     settings = Settings.load()

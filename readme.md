@@ -46,7 +46,7 @@ The pipeline runs in five phases:
 | Mode | Command | Data | Email | Refreshes brief links above | R2 publish |
 |---|---|---|---|---|---|
 | Sample | `make run-sample` | Fixtures only, no credentials | Never | No | No |
-| Dry-run | `make dry-run` | Live APIs + cache | Never | [Yes](https://pub-8e3db3da8c4c4e36a23129f88de511b7.r2.dev/outputs/dry-runs/latest/brief_rendered.html) | Yes |
+| Dry-run | `make dry-run` | Live APIs + cache | When `ENABLE_EMAIL_DELIVERY=true` to `POSTMARK_MAINTAINER_EMAIL` only | [Yes](https://pub-8e3db3da8c4c4e36a23129f88de511b7.r2.dev/outputs/dry-runs/latest/brief_rendered.html) | Yes |
 | Live | `make run-live` | Live APIs | When `ENABLE_EMAIL_DELIVERY=true` | [Yes](https://pub-8e3db3da8c4c4e36a23129f88de511b7.r2.dev/outputs/runs/latest/brief_rendered.html) | Yes |
 
 Sample mode is the default. It is deterministic, credential-free, and always safe to run.
@@ -115,10 +115,10 @@ TADDY_USER_ID=                     # Podcast episode discovery (taddy.org)
 TADDY_API_KEY=
 GEMINI_API_KEY=                    # Podcast/YouTube fallback transcription
 
-# Email delivery (required for live)
+# Email delivery (required for live, and for dry-run if explicitly enabled)
 POSTMARK_API_KEY=
 POSTMARK_FROM_EMAIL=               # Verified sender address in Postmark
-POSTMARK_MAINTAINER_EMAIL=         # Test/maintainer recipient
+POSTMARK_MAINTAINER_EMAIL=         # Test/maintainer recipient for dry-run delivery
 
 # Delivery gate — off by default
 # Set to true only in live mode with confirmed production recipients
@@ -163,7 +163,7 @@ Production email recipients live in `app/config/recipients.yaml`, not in `.env`.
 # No credentials required — uses fixture data, deterministic output
 make run-sample
 
-# Live APIs, no email — good for testing the full pipeline
+# Live APIs, no production email; optionally sends only to POSTMARK_MAINTAINER_EMAIL
 make dry-run
 
 # Dry-run with a specific historical data cutoff
@@ -197,7 +197,7 @@ The GitHub Actions workflow (`.github/workflows/daily_brief.yml`) runs at **07:1
 | `make lint` | ruff check + mypy type checking |
 | `make format` | ruff format |
 | `make run-sample` | Run in sample mode (fixture data, no credentials) |
-| `make dry-run` | Run with live data, no delivery |
+| `make dry-run` | Run with live data, optional maintainer-only delivery |
 | `make run-live` | Run the full pipeline with optional delivery |
 | `make update-vol-params` | Refresh `vol_params.yaml` from live data (run monthly) |
 

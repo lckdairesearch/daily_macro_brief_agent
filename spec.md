@@ -49,7 +49,7 @@ Operating schedule:
 Runtime modes:
 
 - `sample`: fixture-backed, deterministic, no credentials required, no email delivery
-- `dry-run`: live/cached data path without delivery
+- `dry-run`: live/cached data path with optional maintainer-only delivery when `ENABLE_EMAIL_DELIVERY=true`
 - `live`: live/cached data path with delivery only when `ENABLE_EMAIL_DELIVERY=true`
 
 ## Brief Structure

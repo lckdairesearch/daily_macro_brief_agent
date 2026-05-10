@@ -7,12 +7,13 @@ import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from app.llm import provider
+from app.delivery import PostmarkDeliveryProvider
 from app.models import (
     BriefDraft,
     BriefItem,
@@ -461,3 +462,43 @@ def test_live_pipeline_publishes_run_artifacts_even_when_delivery_fails(mock_wri
     assert "Email delivery failed: boom" in result.run_metadata.warnings
     mock_run_upload.assert_called_once()
     mock_alias_upload.assert_called_once()
+
+
+def test_dry_run_pipeline_delivery_enabled_sends_to_maintainer_only(mock_writer, isolated_settings):
+    isolated_settings.creds.enable_email_delivery = True
+    isolated_settings.creds.postmark_api_key = "pm-key"
+    isolated_settings.creds.postmark_from_email = "brief@test.com"
+    isolated_settings.creds.postmark_maintainer_email = "maintainer@test.com"
+    isolated_settings.recipients = ["prod@test.com"]
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(isolated_settings.app.timezone))
+    snapshot = MarketSnapshot(
+        as_of=override,
+        observation_date="2026-05-07",
+        instrument_id="SPY",
+        display_name="S&P 500 (proxy)",
+        asset_class="equity",
+        region="US",
+        last_price_or_level=500.0,
+        one_day_change=1.0,
+        one_day_change_unit="%",
+        source="test",
+        freshness_status=FreshnessStatus.FRESH,
+    )
+
+    with patch("app.pipeline.load_vol_params", return_value={}), \
+         patch("app.pipeline.fetch_live_market_with_cache", return_value=[snapshot]), \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
+         patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
+         patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
+         patch(
+             "app.delivery.get_provider",
+             return_value=PostmarkDeliveryProvider(
+                 isolated_settings,
+                 recipient_override=isolated_settings.creds.postmark_maintainer_email,
+             ),
+         ), \
+         patch("requests.post", return_value=MagicMock(json=lambda: {"MessageID": "msg-123"}, raise_for_status=lambda: None)) as mock_post:
+        result = run_pipeline(RunMode.DRY_RUN, isolated_settings, data_cutoff=override)
+
+    assert result.run_metadata.delivery_status == DeliveryStatus.SUCCESS
+    assert mock_post.call_args.kwargs["json"]["To"] == "maintainer@test.com"

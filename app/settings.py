@@ -193,14 +193,17 @@ class Settings:
         if not self.creds.alpha_vantage_api_key:
             missing.append("ALPHA_VANTAGE_API_KEY")
 
-        if mode == RunMode.LIVE and self.creds.enable_email_delivery:
+        if mode in {RunMode.DRY_RUN, RunMode.LIVE} and self.creds.enable_email_delivery:
             for name, val in [
                 ("POSTMARK_API_KEY", self.creds.postmark_api_key),
                 ("POSTMARK_FROM_EMAIL", self.creds.postmark_from_email),
             ]:
                 if not val:
                     missing.append(name)
-            if not self.recipients:
+            if mode == RunMode.DRY_RUN:
+                if not self.creds.postmark_maintainer_email:
+                    missing.append("POSTMARK_MAINTAINER_EMAIL")
+            elif not self.recipients:
                 missing.append("recipients.yaml")
 
         return missing

@@ -158,12 +158,24 @@ class TestGetProvider:
         provider = get_provider(RunMode.SAMPLE, _settings(postmark_to_email="pm@test.com"))
         assert isinstance(provider, NoopDeliveryProvider)
 
-    def test_dry_run_with_creds_returns_noop(self):
-        assert isinstance(get_provider(RunMode.DRY_RUN, _settings()), NoopDeliveryProvider)
+    def test_dry_run_delivery_disabled_returns_noop(self):
+        assert isinstance(get_provider(RunMode.DRY_RUN, _settings(enable_email_delivery=False)), NoopDeliveryProvider)
 
-    def test_dry_run_never_sends_even_with_production_list(self):
-        provider = get_provider(RunMode.DRY_RUN, _settings(postmark_to_email="pm@test.com"))
-        assert isinstance(provider, NoopDeliveryProvider)
+    def test_dry_run_delivery_enabled_returns_postmark(self):
+        assert isinstance(get_provider(RunMode.DRY_RUN, _settings(enable_email_delivery=True)), PostmarkDeliveryProvider)
+
+    def test_dry_run_delivery_uses_maintainer_override(self):
+        provider = get_provider(
+            RunMode.DRY_RUN,
+            _settings(
+                postmark_maintainer_email="maintainer@test.com",
+                postmark_to_email="prod1@test.com,prod2@test.com",
+                enable_email_delivery=True,
+            ),
+        )
+        with patch("requests.post", return_value=_ok_response()) as mock_post:
+            provider.send("Morning Macro Brief", "H", "T")
+        assert mock_post.call_args.kwargs["json"]["To"] == "maintainer@test.com"
 
     def test_live_delivery_disabled_returns_noop(self):
         assert isinstance(get_provider(RunMode.LIVE, _settings(enable_email_delivery=False)), NoopDeliveryProvider)
