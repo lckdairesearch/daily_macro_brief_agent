@@ -6,7 +6,7 @@
 
 **X scout — XAI Grok.** Grok's native `x_search` tool is the only LLM interface with direct X/Twitter search capability, making it the best option for surfacing real-time social media signal on macro themes. If the XAI API is unavailable in a given region, the X scout is skipped automatically and the pipeline continues — there is no hard dependency on it.
 
-**Data sources.** Alpha Vantage covers equities, FX, commodities, yields, and crypto within the free tier (≤25 calls/day). Databento is used only where futures precision matters (Bund yield, copper). Investing.com calendar and yfinance are acknowledged as unofficial or undocumented endpoints — acceptable for a prototype, flagged as reliability risks for production.
+**Data sources.** Alpha Vantage was chosen for its accuracy, familiarity, and Nasdaq-backed reliability — the personal plan ($50/mo) removes free-tier rate limits. That said, the market data layer is provider-agnostic: if the firm already subscribes to Bloomberg, Refinitiv, or another service, the module can be adapted to use existing credentials, reducing incremental cost to near zero. Databento is used only where futures precision matters (Bund yield, copper). Investing.com calendar and yfinance are acknowledged as unofficial or undocumented endpoints — acceptable for a prototype, flagged as reliability risks for production.
 
 **LLM as synthesis tool, not fact source.** Market numbers, calendar events, and consensus values come exclusively from APIs. The LLM receives typed, structured inputs and is never asked to recall or generate market data. A deterministic validator runs after every write and gates live delivery on critical failures.
 
