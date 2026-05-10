@@ -11,7 +11,6 @@ import os
 import subprocess
 import sys
 import tempfile
-from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +21,7 @@ import yaml
 from app.llm.prompt_registry import load_prompt
 from app.llm.provider import LLMClient, LLMConfig
 from app.models import BriefDraft, ChartPlan
+from app.render.chart_windowing import slice_rows_by_calendar_window, split_contiguous_segments
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -80,28 +80,6 @@ def _load_templates() -> list[dict]:
     return raw.get("templates", [])
 
 
-def _slice_rows_by_calendar_window(rows: list[dict], window_days: int) -> list[dict]:
-    if not rows:
-        return []
-    last_day = date.fromisoformat(rows[-1]["date"])
-    start_day = last_day - timedelta(days=window_days - 1)
-    return [row for row in rows if date.fromisoformat(row["date"]) >= start_day]
-
-
-def _segment_rows(rows: list[dict]) -> list[list[dict]]:
-    if not rows:
-        return []
-    segments: list[list[dict]] = [[rows[0]]]
-    previous_day = date.fromisoformat(rows[0]["date"])
-    for row in rows[1:]:
-        current_day = date.fromisoformat(row["date"])
-        if (current_day - previous_day).days > 1:
-            segments.append([])
-        segments[-1].append(row)
-        previous_day = current_day
-    return segments
-
-
 def _compute_avg_shared_gap_ratio(plot_rows: dict[str, list[dict]], names: list[str]) -> float | None:
     if len(names) != 2:
         return None
@@ -133,9 +111,9 @@ def _build_plotting_context(
 
     for iid, rows in series_data.items():
         name = display_names.get(iid, iid)
-        clipped = _slice_rows_by_calendar_window(rows, window_days)
+        clipped = slice_rows_by_calendar_window(rows, window_days)
         plot_rows[name] = clipped
-        series_segments[name] = _segment_rows(clipped)
+        series_segments[name] = split_contiguous_segments(clipped)
 
     avg_shared_gap_ratio = _compute_avg_shared_gap_ratio(plot_rows, names)
     primary_series_name: str | None = None

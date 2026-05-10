@@ -225,6 +225,7 @@ class ChartPlan(BaseModel):
     caption: str
     selection_reason: str
     candidate_family: str
+    render_family: str | None = None
     linked_three_things_index: int | None = None
     selection_method: ChartSelectionMethod
 
@@ -243,6 +244,7 @@ class ChartSpec(BaseModel):
     instrument_ids: list[str] = Field(default_factory=list)
     selection_reason: str | None = None
     selection_method: ChartSelectionMethod | None = None
+    render_family: str | None = None
     linked_three_things_index: int | None = None
 
 

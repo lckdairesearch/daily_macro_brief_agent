@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,10 +30,19 @@ from app.render.chart_codegen import (
     execute_chart_code,
     select_instruments,
 )
+from app.render.chart_windowing import (
+    build_window_ticks,
+    clip_rows_to_window,
+    resolve_shared_window,
+    slice_rows_by_calendar_window,
+    split_contiguous_segments,
+)
 from app.render.chart_selector import build_chart_candidates, select_chart_plan, shortlist_chart_candidates
-from app.render.charts import _hardcoded_fallback
+from app.render.charts import _axis_policy_for_pair, _axis_unit_label, _hardcoded_fallback
 
 _AS_OF = datetime(2026, 5, 9, 6, 45, tzinfo=timezone.utc)
+_REFERENCE_RUN_DIR = Path("outputs/dry-runs/2026-05-08/20260510_113122")
+_REFERENCE_SERIES_FIXTURE = Path("tests/fixtures/chart_series_reference_20260510_113122_us10y_copper.json")
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +120,7 @@ def _make_chart_plan(
     instrument_ids: list[str] | None = None,
     title: str = "VIX / MOVE stress comparison",
     caption: str = "Volatility spike signals stress",
+    render_family: str | None = None,
 ) -> ChartPlan:
     return ChartPlan(
         window=window,
@@ -120,9 +130,18 @@ def _make_chart_plan(
         caption=caption,
         selection_reason="Linked to the lead risk-off theme.",
         candidate_family="divergence",
+        render_family=render_family,
         linked_three_things_index=0,
         selection_method=ChartSelectionMethod.DETERMINISTIC_FALLBACK,
     )
+
+
+def _load_reference_chart_plan() -> dict:
+    return json.loads((_REFERENCE_RUN_DIR / "chart_plan.json").read_text(encoding="utf-8"))
+
+
+def _load_reference_series_fixture() -> dict[str, list[dict]]:
+    return json.loads(_REFERENCE_SERIES_FIXTURE.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +239,69 @@ def test_build_data_preamble_contains_all_variables():
     assert "out.png" in preamble
 
 
+def test_reference_run_fixture_matches_selected_chart_plan():
+    chart_plan = _load_reference_chart_plan()
+
+    assert chart_plan["window"] == "1w"
+    assert chart_plan["chart_type"] == "line"
+    assert chart_plan["instrument_ids"] == ["US10Y", "COPPER"]
+    assert chart_plan["title"] == "Copper rallies as 10Y yields rise"
+
+
+def test_calendar_window_uses_observation_dates_not_arrival_order():
+    rows = [
+        {"date": "2026-05-07", "close": 4.41},
+        {"date": "2026-05-01", "close": 4.39},
+        {"date": "2026-05-06", "close": 4.36},
+        {"date": "2026-05-04", "close": 4.45},
+        {"date": "2026-05-05", "close": 4.43},
+    ]
+
+    clipped = slice_rows_by_calendar_window(rows, calendar_days=7)
+
+    assert [row["date"] for row in clipped] == [
+        "2026-05-01",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-05-06",
+        "2026-05-07",
+    ]
+
+
+def test_reference_fixture_clips_to_exact_one_week_calendar_span():
+    series_data = _load_reference_series_fixture()
+
+    clipped = slice_rows_by_calendar_window(series_data["US10Y"], calendar_days=7)
+
+    assert [row["date"] for row in clipped] == [
+        "2026-05-01",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-05-06",
+        "2026-05-07",
+    ]
+
+
+def test_shared_window_anchors_to_latest_observation_across_selected_pair():
+    series_data = {
+        "US10Y": [
+            {"date": "2026-04-30", "close": 4.39},
+            {"date": "2026-05-07", "close": 4.41},
+        ],
+        "COPPER": [
+            {"date": "2026-04-29", "close": 5.92},
+            {"date": "2026-05-06", "close": 6.08},
+        ],
+    }
+
+    window_start, window_end = resolve_shared_window(series_data, calendar_days=30)
+    clipped = clip_rows_to_window(series_data["COPPER"], window_start, window_end)
+
+    assert window_start.isoformat() == "2026-04-08"
+    assert window_end.isoformat() == "2026-05-07"
+    assert [row["date"] for row in clipped] == ["2026-04-29", "2026-05-06"]
+
+
 def test_plotting_context_splits_weekday_gap_into_two_segments():
     series_data = {
         "US10Y": [
@@ -238,32 +320,71 @@ def test_plotting_context_splits_weekday_gap_into_two_segments():
     ]
 
 
-def test_plotting_context_prefers_dual_axis_for_visibly_separated_pair():
-    series_data = {
-        "US10Y": [
-            {"date": "2026-05-01", "close": 4.39},
-            {"date": "2026-05-02", "close": 4.40},
-            {"date": "2026-05-03", "close": 4.41},
+def test_segment_rows_preserves_calendar_gap_between_business_days():
+    rows = [
+        {"date": "2026-05-01", "close": 4.39},
+        {"date": "2026-05-04", "close": 4.45},
+        {"date": "2026-05-05", "close": 4.43},
+    ]
+
+    segments = split_contiguous_segments(rows)
+
+    assert segments == [
+        [{"date": "2026-05-01", "close": 4.39}],
+        [
+            {"date": "2026-05-04", "close": 4.45},
+            {"date": "2026-05-05", "close": 4.43},
         ],
-        "COPPER": [
-            {"date": "2026-05-01", "close": 5.92},
-            {"date": "2026-05-02", "close": 5.88},
-            {"date": "2026-05-03", "close": 5.84},
-        ],
+    ]
+
+
+def test_month_window_ticks_use_mondays_and_optional_first_day():
+    ticks = build_window_ticks(date(2026, 4, 8), date(2026, 5, 7), daily=False)
+
+    assert [tick.isoformat() for tick in ticks] == [
+        "2026-04-08",
+        "2026-04-13",
+        "2026-04-20",
+        "2026-04-27",
+        "2026-05-04",
+    ]
+
+
+def test_month_window_ticks_skip_first_day_when_monday_is_next_day():
+    ticks = build_window_ticks(date(2026, 4, 12), date(2026, 5, 12), daily=False)
+
+    assert [tick.isoformat() for tick in ticks][:2] == [
+        "2026-04-13",
+        "2026-04-20",
+    ]
+
+
+def test_axis_policy_for_mixed_units_uses_dual_axis():
+    series_data = _load_reference_series_fixture()
+    plot_rows = {
+        "US10Y": slice_rows_by_calendar_window(series_data["US10Y"], calendar_days=7),
+        "COPPER": slice_rows_by_calendar_window(series_data["COPPER"], calendar_days=7),
     }
-    display_names = {"US10Y": "US 10Y Yield", "COPPER": "Copper (front-month)"}
 
-    ctx = _build_plotting_context(series_data, display_names, window_days=7)
+    policy = _axis_policy_for_pair(
+        plot_rows,
+        units={"US10Y": "yield", "COPPER": "price"},
+        instrument_ids=["US10Y", "COPPER"],
+    )
 
-    assert ctx["prefer_dual_axis"] is True
-    assert ctx["avg_shared_gap_ratio"] is not None
-    assert ctx["avg_shared_gap_ratio"] >= 0.10
-    assert ctx["primary_series_name"] in {"US 10Y Yield", "Copper (front-month)"}
-    assert ctx["secondary_series_name"] in {"US 10Y Yield", "Copper (front-month)"}
+    assert policy["prefer_dual_axis"] is True
+    assert policy["reason"] == "different_units"
 
 
-def test_plotting_context_allows_single_axis_for_very_close_pair():
-    series_data = {
+def test_axis_unit_label_prefers_display_units_over_generic_price():
+    assert _axis_unit_label(AssetClass.RATES, "yield") == "%"
+    assert _axis_unit_label(AssetClass.CREDIT, "spread") == "bps"
+    assert _axis_unit_label(AssetClass.COMMODITY, "price") == "$"
+    assert _axis_unit_label(AssetClass.FX, "price") == "rate"
+
+
+def test_axis_policy_allows_single_axis_for_close_same_unit_pair():
+    plot_rows = {
         "LEFT": [
             {"date": "2026-05-01", "close": 100.0},
             {"date": "2026-05-02", "close": 101.0},
@@ -275,13 +396,37 @@ def test_plotting_context_allows_single_axis_for_very_close_pair():
             {"date": "2026-05-03", "close": 102.05},
         ],
     }
-    display_names = {"LEFT": "Left", "RIGHT": "Right"}
 
-    ctx = _build_plotting_context(series_data, display_names, window_days=7)
+    policy = _axis_policy_for_pair(
+        plot_rows,
+        units={"LEFT": "price", "RIGHT": "price"},
+        instrument_ids=["LEFT", "RIGHT"],
+    )
 
-    assert ctx["avg_shared_gap_ratio"] is not None
-    assert ctx["avg_shared_gap_ratio"] < 0.10
-    assert ctx["prefer_dual_axis"] is False
+    assert policy["prefer_dual_axis"] is False
+
+
+def test_axis_policy_uses_dual_axis_when_same_unit_pair_is_visually_squashed():
+    plot_rows = {
+        "LEFT": [
+            {"date": "2026-05-01", "close": 50.0},
+            {"date": "2026-05-02", "close": 51.0},
+            {"date": "2026-05-03", "close": 52.0},
+        ],
+        "RIGHT": [
+            {"date": "2026-05-01", "close": 100.0},
+            {"date": "2026-05-02", "close": 100.2},
+            {"date": "2026-05-03", "close": 100.4},
+        ],
+    }
+
+    policy = _axis_policy_for_pair(
+        plot_rows,
+        units={"LEFT": "price", "RIGHT": "price"},
+        instrument_ids=["LEFT", "RIGHT"],
+    )
+
+    assert policy["prefer_dual_axis"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +499,7 @@ def test_hardcoded_fallback_uses_draft_caption(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# build_chart (with mocked LLM)
+# build_chart
 # ---------------------------------------------------------------------------
 
 def _make_fake_viz_code(output_path_var: str = "output_path") -> str:
@@ -375,22 +520,8 @@ plt.close()
 
 
 def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
-    from types import SimpleNamespace
-
-    import app.llm.provider as provider_mod
     from app.render.charts import build_chart
-
-    viz_code = _make_fake_viz_code()
-
-    def _fake_completion(**kwargs):
-        return SimpleNamespace(
-            model="openai/gpt-4o",
-            choices=[SimpleNamespace(message=SimpleNamespace(content=viz_code))],
-            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=100, total_tokens=110),
-            _hidden_params={},
-        )
-
-    monkeypatch.setattr(provider_mod.litellm_compat, "completion", _fake_completion)
+    monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should not be used for standard pair line charts")))
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
@@ -407,29 +538,16 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
     )
     assert Path(output).exists()
     assert spec.file_path == output
-    assert spec.code_generated is True
-    assert build_info.final_status == "generated_code"
-    assert build_info.code_generated is True
-    assert build_info.attempts[-1].status == "success"
+    assert spec.code_generated is False
+    assert build_info.final_status == "deterministic_render"
+    assert build_info.code_generated is False
+    assert spec.render_family == "pair_line_single_axis_raw"
+    assert build_info.attempts == []
 
 
 def test_build_chart_prefers_chart_plan_caption(tmp_path, monkeypatch):
-    from types import SimpleNamespace
-
-    import app.llm.provider as provider_mod
     from app.render.charts import build_chart
-
-    viz_code = _make_fake_viz_code()
-
-    def _fake_completion(**kwargs):
-        return SimpleNamespace(
-            model="openai/gpt-4o",
-            choices=[SimpleNamespace(message=SimpleNamespace(content=viz_code))],
-            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=100, total_tokens=110),
-            _hidden_params={},
-        )
-
-    monkeypatch.setattr(provider_mod.litellm_compat, "completion", _fake_completion)
+    monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should not be used for standard pair line charts")))
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
@@ -447,18 +565,122 @@ def test_build_chart_prefers_chart_plan_caption(tmp_path, monkeypatch):
     assert spec.caption == chart_plan.caption
 
 
-def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
-    import app.llm.provider as provider_mod
+def test_build_chart_uses_reference_fixture_for_deterministic_pair_render(tmp_path, monkeypatch):
     from app.render.charts import build_chart
 
-    def _bad_completion(**kwargs):
-        raise RuntimeError("LLM unavailable")
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+                _snapshot("COPPER", "Copper (front-month)", AssetClass.COMMODITY, 1.2, flagged=True),
+            ]
+        }
+    )
+    chart_plan = ChartPlan.model_validate(_load_reference_chart_plan())
+    series_data = _load_reference_series_fixture()
+    output = str(tmp_path / "reference_chart.png")
+    monkeypatch.setattr(
+        "app.render.charts.fetch_chart_series",
+        lambda **kwargs: series_data,
+    )
+    monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should not be used for standard pair line charts")))
 
-    monkeypatch.setattr(provider_mod.litellm_compat, "completion", _bad_completion)
+    spec, build_info = build_chart(
+        draft,
+        chart_plan=chart_plan,
+        settings=settings,
+        output_path=output,
+        sample_mode=True,
+        as_of=_AS_OF,
+    )
+
+    assert Path(output).exists()
+    assert Path(output).stat().st_size > 0
+    assert spec.instrument_ids == ["US10Y", "COPPER"]
+    assert spec.code_generated is False
+    assert spec.render_family == "pair_line_dual_axis_raw"
+    assert build_info.final_status == "deterministic_render"
+    assert build_info.series_instrument_ids == ["US10Y", "COPPER"]
+
+
+def test_build_chart_supports_explicit_rebased_render_family(tmp_path, monkeypatch):
+    from app.render.charts import build_chart
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+                _snapshot("COPPER", "Copper (front-month)", AssetClass.COMMODITY, 1.2, flagged=True),
+            ]
+        }
+    )
+    series_data = _load_reference_series_fixture()
+    output = str(tmp_path / "rebased_chart.png")
+    monkeypatch.setattr("app.render.charts.fetch_chart_series", lambda **kwargs: series_data)
+    monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM path should not be used for standard pair line charts")))
+
+    spec, build_info = build_chart(
+        draft,
+        chart_plan=_make_chart_plan(
+            instrument_ids=["US10Y", "COPPER"],
+            render_family="pair_line_rebased",
+            title="Copper vs 10Y, rebased",
+            caption="Both series are indexed to 100 on the first shared observation date.",
+        ),
+        settings=settings,
+        output_path=output,
+        sample_mode=True,
+        as_of=_AS_OF,
+    )
+
+    assert Path(output).exists()
+    assert Path(output).stat().st_size > 0
+    assert spec.render_family == "pair_line_rebased"
+    assert build_info.final_status == "deterministic_render"
+
+
+def test_build_chart_uses_codegen_for_nonstandard_multi_series_case(tmp_path, monkeypatch):
+    from app.render.charts import build_chart
+
+    monkeypatch.setattr("app.render.charts.generate_chart_code", lambda **kwargs: "placeholder")
+    monkeypatch.setattr(
+        "app.render.charts.execute_chart_code",
+        lambda code, output_path: Path(output_path).write_bytes(b"png"),
+    )
 
     settings = _make_settings()
     draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
-    chart_plan = _make_chart_plan()
+    chart_plan = _make_chart_plan(instrument_ids=["VIX", "MOVE", "US10Y"])
+    output = str(tmp_path / "chart.png")
+
+    spec, build_info = build_chart(
+        draft,
+        chart_plan=chart_plan,
+        settings=settings,
+        output_path=output,
+        sample_mode=True,
+        as_of=_AS_OF,
+    )
+    assert Path(output).exists()
+    assert spec.code_generated is True
+    assert build_info.final_status == "generated_code"
+    assert build_info.code_generated is True
+    assert build_info.attempts[-1].status == "success"
+
+
+def test_build_chart_falls_back_when_codegen_fails_for_nonstandard_case(tmp_path, monkeypatch):
+    from app.render.charts import build_chart
+
+    def _bad_generate_chart_code(**kwargs):
+        raise RuntimeError("LLM unavailable")
+
+    monkeypatch.setattr("app.render.charts.generate_chart_code", _bad_generate_chart_code)
+
+    settings = _make_settings()
+    draft = _make_draft(supporting_market_ids=["VIX", "MOVE"])
+    chart_plan = _make_chart_plan(instrument_ids=["VIX", "MOVE", "US10Y"])
     output = str(tmp_path / "fallback.png")
 
     spec, build_info = build_chart(
@@ -520,6 +742,39 @@ def test_chart_selector_candidates_include_daily_and_reinforcing_pair():
     shortlist = shortlist_chart_candidates(candidates)
     assert any(candidate.window == ChartWindow.ONE_DAY for candidate in shortlist)
     assert any(candidate.linked_three_things_index == 0 for candidate in shortlist if candidate.window != ChartWindow.ONE_DAY)
+
+
+def test_chart_selector_builds_raw_and_rebased_variants_for_mixed_unit_pair():
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True),
+                _snapshot("COPPER", "Copper (front-month)", AssetClass.COMMODITY, 1.2, flagged=True),
+            ],
+            "three_things": [
+                BriefItem(
+                    section=BriefSection.THREE_THINGS,
+                    headline="Metals lead",
+                    body="Test",
+                    supporting_market_ids=["US10Y", "COPPER"],
+                )
+            ],
+        }
+    )
+    series_data = _load_reference_series_fixture()
+    candidates = build_chart_candidates(
+        snapshots=draft.overnight_dashboard,
+        series_data=series_data,
+        brief_draft=draft,
+        portfolio={"core_positions": [], "tactical_overlays": [], "macro_sensitivities": []},
+    )
+
+    pair_candidates = [candidate for candidate in candidates if candidate.instrument_ids == ["US10Y", "COPPER"]]
+
+    assert {candidate.render_family for candidate in pair_candidates} >= {
+        "pair_line_dual_axis_raw",
+        "pair_line_rebased",
+    }
 
 
 def test_chart_codegen_prompt_uses_transparent_background_with_faint_line_grid():
@@ -589,6 +844,7 @@ def test_chart_selector_prompt_exists_and_restricts_choice_to_shortlist():
     prompt = load_prompt("chart_selector")
     assert "Pick exactly one candidate from the supplied shortlist" in prompt.text
     assert "`candidate_id` must match one of the supplied `chart_candidates`" in prompt.text
+    assert "render families" in prompt.text
 
 
 def test_chart_selector_falls_back_when_llm_selection_errors(monkeypatch):
@@ -627,6 +883,7 @@ def test_chart_selector_falls_back_when_llm_selection_errors(monkeypatch):
     assert len(shortlist) > 1
     assert plan.selection_method == ChartSelectionMethod.DETERMINISTIC_FALLBACK
     assert plan.title == shortlist[0].title
+    assert plan.render_family == shortlist[0].render_family
 
 
 # ---------------------------------------------------------------------------

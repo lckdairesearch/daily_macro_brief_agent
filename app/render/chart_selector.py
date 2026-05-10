@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from itertools import combinations
 from math import sqrt
 from typing import TYPE_CHECKING
@@ -21,6 +21,7 @@ from app.models import (
     LLMUsage,
     MarketSnapshot,
 )
+from app.render.chart_windowing import clip_rows_to_window, resolve_shared_window, slice_rows_by_calendar_window
 
 if TYPE_CHECKING:
     from app.models import BriefDraft
@@ -50,6 +51,7 @@ class ChartCandidate(BaseModel):
     title: str
     caption: str
     candidate_family: str
+    render_family: str | None = None
     linked_three_things_index: int | None = None
     score: float
     pattern_strength: float
@@ -155,11 +157,18 @@ def build_chart_candidates(
         for left_id, right_id in combinations(available_ids, 2):
             left_rows = series_data.get(left_id, [])
             right_rows = series_data.get(right_id, [])
-            left_slice = _slice_window(left_rows, window_days)
-            right_slice = _slice_window(right_rows, window_days)
+            try:
+                window_start, window_end = resolve_shared_window(
+                    {left_id: left_rows, right_id: right_rows},
+                    window_days,
+                )
+            except ValueError:
+                continue
+            left_slice = clip_rows_to_window(left_rows, window_start, window_end)
+            right_slice = clip_rows_to_window(right_rows, window_start, window_end)
             if len(left_slice) < 2 or len(right_slice) < 2:
                 continue
-            candidate = _build_pair_candidate(
+            candidates.extend(_build_pair_candidate(
                 left=snapshot_by_id[left_id],
                 right=snapshot_by_id[right_id],
                 left_rows=left_slice,
@@ -167,8 +176,7 @@ def build_chart_candidates(
                 window=window,
                 portfolio_hints=portfolio_hints,
                 brief_support=brief_support,
-            )
-            candidates.append(candidate)
+            ))
 
     candidates.sort(key=lambda cand: cand.score, reverse=True)
     return candidates
@@ -242,6 +250,7 @@ def _select_with_llm(
         caption=(result.output.caption or selected.caption)[:180],
         selection_reason=result.output.selection_reason or selected.selection_reason,
         candidate_family=selected.candidate_family,
+        render_family=selected.render_family,
         linked_three_things_index=selected.linked_three_things_index,
         selection_method=ChartSelectionMethod.HYBRID_LLM_SHORTLIST,
     ), result.usage
@@ -256,6 +265,7 @@ def _plan_from_candidate(candidate: ChartCandidate, method: ChartSelectionMethod
         caption=candidate.caption,
         selection_reason=candidate.selection_reason,
         candidate_family=candidate.candidate_family,
+        render_family=candidate.render_family,
         linked_three_things_index=candidate.linked_three_things_index,
         selection_method=method,
     )
@@ -289,6 +299,7 @@ def _build_one_day_candidate(
         title="Cross-asset daily moves",
         caption="One-day moves across the key assets shaping today’s macro tape.",
         candidate_family="daily_snapshot",
+        render_family="daily_snapshot_bar",
         linked_three_things_index=linked_idx,
         score=score,
         pattern_strength=pattern_strength,
@@ -308,7 +319,7 @@ def _build_pair_candidate(
     window: ChartWindow,
     portfolio_hints: PortfolioHints,
     brief_support: dict[str, int],
-) -> ChartCandidate:
+) -> list[ChartCandidate]:
     left_returns = _daily_returns(left_rows)
     right_returns = _daily_returns(right_rows)
     left_total = _pct_change(left_rows)
@@ -347,26 +358,31 @@ def _build_pair_candidate(
         + 0.15 * visual_clarity
     )
     linked_idx = _best_linked_index([left.instrument_id, right.instrument_id], brief_support)
+    render_families = _pair_render_families(left, right, family)
     title = _pair_title(left.display_name, right.display_name, family, window)
-    caption = _pair_caption(left.display_name, right.display_name, family, window)
     reason = _pair_reason(left.display_name, right.display_name, family, window, portfolio_relevance, brief_linkage)
-
-    return ChartCandidate(
-        candidate_id=f"{window.value}_{left.instrument_id}_{right.instrument_id}",
-        window=window,
-        chart_type="line",
-        instrument_ids=[left.instrument_id, right.instrument_id],
-        title=title,
-        caption=caption,
-        candidate_family=family,
-        linked_three_things_index=linked_idx,
-        score=score,
-        pattern_strength=pattern_strength,
-        portfolio_relevance=portfolio_relevance,
-        brief_linkage=brief_linkage,
-        visual_clarity=visual_clarity,
-        selection_reason=reason,
-    )
+    candidates: list[ChartCandidate] = []
+    for render_family, score_delta in render_families:
+        candidates.append(
+            ChartCandidate(
+                candidate_id=f"{window.value}_{left.instrument_id}_{right.instrument_id}_{render_family}",
+                window=window,
+                chart_type="line",
+                instrument_ids=[left.instrument_id, right.instrument_id],
+                title=title,
+                caption=_pair_caption(left.display_name, right.display_name, family, window, render_family),
+                candidate_family=family,
+                render_family=render_family,
+                linked_three_things_index=linked_idx,
+                score=min(score + score_delta, 1.0),
+                pattern_strength=pattern_strength,
+                portfolio_relevance=portfolio_relevance,
+                brief_linkage=brief_linkage,
+                visual_clarity=visual_clarity,
+                selection_reason=reason,
+            )
+        )
+    return candidates
 
 
 def _candidate_universe_ids(snapshots: list[MarketSnapshot]) -> list[str]:
@@ -381,11 +397,7 @@ def _candidate_universe_ids(snapshots: list[MarketSnapshot]) -> list[str]:
 
 
 def _slice_window(rows: list[dict], calendar_days: int) -> list[dict]:
-    if not rows:
-        return []
-    last_date = date.fromisoformat(rows[-1]["date"])
-    start_date = last_date - timedelta(days=calendar_days - 1)
-    return [row for row in rows if date.fromisoformat(row["date"]) >= start_date]
+    return slice_rows_by_calendar_window(rows, calendar_days)
 
 
 def _daily_returns(rows: list[dict]) -> list[float]:
@@ -548,6 +560,21 @@ def _visual_clarity(left: MarketSnapshot, right: MarketSnapshot, family: str) ->
     return min(score, 1.0)
 
 
+def _pair_render_families(
+    left: MarketSnapshot,
+    right: MarketSnapshot,
+    family: str,
+) -> list[tuple[str, float]]:
+    if left.asset_class != right.asset_class:
+        render_families = [("pair_line_dual_axis_raw", 0.02)]
+        if family in {"divergence", "opposite_direction", "sharp_reversal"}:
+            render_families.append(("pair_line_rebased", 0.0))
+        return render_families
+    if left.asset_class in {AssetClass.RATES, AssetClass.CREDIT, AssetClass.VOLATILITY}:
+        return [("pair_line_dual_axis_raw", 0.0)]
+    return [("pair_line_single_axis_raw", 0.0)]
+
+
 def _pair_title(left_name: str, right_name: str, family: str, window: ChartWindow) -> str:
     family_labels = {
         "sharp_reversal": "reversal",
@@ -559,16 +586,25 @@ def _pair_title(left_name: str, right_name: str, family: str, window: ChartWindo
     return f"{left_name} vs {right_name} {_WINDOW_LABEL[window]} {family_labels.get(family, 'trend')}"
 
 
-def _pair_caption(left_name: str, right_name: str, family: str, window: ChartWindow) -> str:
+def _pair_caption(
+    left_name: str,
+    right_name: str,
+    family: str,
+    window: ChartWindow,
+    render_family: str,
+) -> str:
+    suffix = ""
+    if render_family == "pair_line_rebased":
+        suffix = " Both series are indexed to 100 on the first shared observation date."
     if family == "sharp_reversal":
-        return f"{_WINDOW_LABEL[window]} view of a developing reversal between {left_name} and {right_name}."
+        return f"{_WINDOW_LABEL[window]} view of a developing reversal between {left_name} and {right_name}.{suffix}"
     if family == "opposite_direction":
-        return f"{_WINDOW_LABEL[window]} push-pull between {left_name} and {right_name}."
+        return f"{_WINDOW_LABEL[window]} push-pull between {left_name} and {right_name}.{suffix}"
     if family == "co_move":
-        return f"{_WINDOW_LABEL[window]} co-move showing how {left_name} and {right_name} are trading together."
+        return f"{_WINDOW_LABEL[window]} co-move showing how {left_name} and {right_name} are trading together.{suffix}"
     if family == "divergence":
-        return f"{_WINDOW_LABEL[window]} divergence between {left_name} and {right_name}."
-    return f"{_WINDOW_LABEL[window]} trend comparison for {left_name} and {right_name}."
+        return f"{_WINDOW_LABEL[window]} divergence between {left_name} and {right_name}.{suffix}"
+    return f"{_WINDOW_LABEL[window]} trend comparison for {left_name} and {right_name}.{suffix}"
 
 
 def _pair_reason(

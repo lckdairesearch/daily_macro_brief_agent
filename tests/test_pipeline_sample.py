@@ -215,7 +215,7 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolate
     assert all("id" in card for card in cards)
 
     chart_build = json.loads(chart_build_path.read_text(encoding="utf-8"))
-    assert chart_build["final_status"] in {"generated_code", "hardcoded_fallback"}
+    assert chart_build["final_status"] in {"deterministic_render", "generated_code", "hardcoded_fallback"}
     assert "requested_instrument_ids" in chart_build
     assert "used_instrument_ids" in chart_build
     assert "attempts" in chart_build
