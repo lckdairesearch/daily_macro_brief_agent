@@ -85,14 +85,6 @@ def render_text(context: dict[str, Any]) -> str:
         lines.append(f"{row['asset']}: {row['last']} | {row['change']} | 5D {row['trend_arrow']}")
     lines.append("")
 
-    lines.append("THE 3 THINGS")
-    for i, item in enumerate(context["three_things"], start=1):
-        lines.append(f"{i}. {item['headline']}")
-        lines.append(item["body"])
-        if item["so_what"]:
-            lines.append(item["so_what"])
-        lines.append("")
-
     lines.append(context.get("calendar_title", "Today's Calendar").upper())
     for event in context["calendar_events"]:
         lines.append(
@@ -104,6 +96,14 @@ def render_text(context: dict[str, Any]) -> str:
     chart = context.get("chart")
     if chart:
         lines.extend(["ONE CHART WORTH SEEING", chart["caption"], chart["file_path"], ""])
+
+    lines.append("THE 3 THINGS")
+    for i, item in enumerate(context["three_things"], start=1):
+        lines.append(f"{i}. {item['headline']}")
+        lines.append(item["body"])
+        if item["so_what"]:
+            lines.append(item["so_what"])
+        lines.append("")
 
     lines.append("THEME RADAR")
     for item in context["radar_items"]:

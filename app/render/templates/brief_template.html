@@ -189,17 +189,6 @@
         </table>
         <p class="source-note">* Bold indicates move &gt; 1 standard deviation. 5D trend arrows are computed from 5D move versus sqrt(5) daily volatility.</p>
 
-        <div class="section-header">The 3 Things</div>
-        {% for item in three_things %}
-        <div class="thing-item">
-            <div class="thing-title">{{ loop.index }}. {{ item.headline }}</div>
-            <p class="thing-body">{{ item.body }}</p>
-            {% if item.so_what %}
-            <span class="so-what-tag">{{ item.so_what }}</span>
-            {% endif %}
-        </div>
-        {% endfor %}
-
         <div class="section-header">{{ calendar_title }}</div>
         <table class="calendar-table" role="presentation" cellpadding="0" cellspacing="0" border="0">
             <tbody>
@@ -236,6 +225,17 @@
         </div>
         {% endif %}
 
+        <div class="section-header">The 3 Things</div>
+        {% for item in three_things %}
+        <div class="thing-item">
+            <div class="thing-title">{{ loop.index }}. {{ item.headline }}</div>
+            <p class="thing-body">{{ item.body }}</p>
+            {% if item.so_what %}
+            <span class="so-what-tag">{{ item.so_what }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+
         <div class="section-header">Theme Radar</div>
         {% for item in radar_items %}
         <div class="radar-item">
@@ -269,7 +269,7 @@
         {% endif %}
 
 <div class="meta-text" style="padding: 40px 0; text-align: center;">
-            Macro Brief Agent | For Internal Use Only
+            Leonard Dai | Not for Public Circulation
         </div>
     </div>
 </body>
