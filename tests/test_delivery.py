@@ -23,7 +23,7 @@ def _settings(
     s.creds.postmark_api_key = postmark_api_key
     s.creds.postmark_from_email = postmark_from_email
     s.creds.postmark_maintainer_email = postmark_maintainer_email
-    s.creds.postmark_to_email = postmark_to_email
+    s.recipients = [e.strip() for e in (postmark_to_email or "").split(",") if e.strip()]
     s.creds.enable_email_delivery = enable_email_delivery
     return s
 
@@ -198,14 +198,22 @@ def _live_postmark_enabled() -> bool:
 
 
 def _postmark_creds_available() -> bool:
-    """Check env vars OR the local .env file (pydantic-settings loads it but os.environ doesn't)."""
-    if os.getenv("POSTMARK_API_KEY") and os.getenv("POSTMARK_TO_EMAIL"):
-        return True
+    """Check that POSTMARK_API_KEY is set and recipients.yaml has at least one address."""
+    api_key = os.getenv("POSTMARK_API_KEY")
+    if not api_key:
+        try:
+            from dotenv import dotenv_values
+            api_key = dotenv_values().get("POSTMARK_API_KEY")
+        except ImportError:
+            pass
+    if not api_key:
+        return False
     try:
-        from dotenv import dotenv_values
-        env = dotenv_values()
-        return bool(env.get("POSTMARK_API_KEY") and env.get("POSTMARK_TO_EMAIL"))
-    except ImportError:
+        import yaml
+        from app.settings import CONFIG_DIR
+        data = yaml.safe_load((CONFIG_DIR / "recipients.yaml").read_text()) or {}
+        return bool(data.get("to"))
+    except Exception:
         return False
 
 
@@ -213,7 +221,7 @@ def _postmark_creds_available() -> bool:
     not (_live_postmark_enabled() and _postmark_creds_available()),
     reason=(
         "Live Postmark test disabled. Set RUN_LIVE_POSTMARK_TEST=true with "
-        "POSTMARK_API_KEY and POSTMARK_TO_EMAIL to send a real test email."
+        "POSTMARK_API_KEY set and recipients listed in app/config/recipients.yaml."
     ),
 )
 def test_postmark_live_send():

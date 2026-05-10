@@ -44,7 +44,6 @@ class PostmarkDeliveryProvider:
         inline_images: list[dict[str, Any]] | None = None,
     ) -> DeliveryResult:
         api_key = self._settings.creds.postmark_api_key
-        to_email = self._recipient_override or self._settings.creds.postmark_to_email
         from_email = self._settings.creds.postmark_from_email
 
         if not api_key:
@@ -52,7 +51,10 @@ class PostmarkDeliveryProvider:
         if not from_email:
             return DeliveryResult(success=False, error_message="POSTMARK_FROM_EMAIL not set")
 
-        recipients = [e.strip() for e in (to_email or "").split(",") if e.strip()]
+        if self._recipient_override:
+            recipients = [e.strip() for e in self._recipient_override.split(",") if e.strip()]
+        else:
+            recipients = self._settings.recipients
         if not recipients:
             return DeliveryResult(success=False, error_message="Postmark recipient not set or empty")
 

@@ -160,7 +160,6 @@ def test_settings_validate_live_email_enabled_reports_postmark():
         postmark_api_key=None,
         postmark_from_email=None,
         postmark_maintainer_email=None,
-        postmark_to_email=None,
         llm_scout_model=None,
         llm_x_scout_model=None,
         llm_synthesis_model=None,
@@ -181,7 +180,7 @@ def test_settings_validate_live_email_enabled_reports_postmark():
     errors = settings.validate_for_mode(RunMode.LIVE)
     assert "POSTMARK_API_KEY" in errors
     assert "POSTMARK_FROM_EMAIL" in errors
-    assert "POSTMARK_TO_EMAIL" in errors
+    assert "recipients.yaml" in errors
 
 
 def test_settings_load_resolves_all_yaml():

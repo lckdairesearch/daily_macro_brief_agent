@@ -86,7 +86,6 @@ class Credentials(BaseSettings):
     postmark_api_key: str | None = None
     postmark_from_email: str | None = None
     postmark_maintainer_email: str | None = None
-    postmark_to_email: str | None = None
     enable_email_delivery: bool = False
 
     # Cloudflare R2 chart hosting
@@ -114,6 +113,7 @@ class Settings:
         themes: dict[str, Any],
         sources: dict[str, Any],
         chart_templates: dict[str, Any],
+        recipients: dict[str, Any] | None = None,
         config_dir: Path = CONFIG_DIR,
     ) -> None:
         self.app = app
@@ -122,6 +122,7 @@ class Settings:
         self.themes = themes
         self.sources = sources
         self.chart_templates = chart_templates
+        self.recipients: list[str] = (recipients or {}).get("to", [])
         self.config_dir = config_dir
 
         llm = self.sources.setdefault("llm", {})
@@ -173,7 +174,8 @@ class Settings:
         themes = _load_yaml(config_dir / "themes.yaml")
         sources = _load_yaml(config_dir / "sources.yaml")
         chart_templates = _load_yaml(config_dir / "chart_templates.yaml")
-        return cls(app, creds, portfolio, themes, sources, chart_templates, config_dir)
+        recipients = _load_yaml(config_dir / "recipients.yaml")
+        return cls(app, creds, portfolio, themes, sources, chart_templates, recipients, config_dir)
 
     def validate_for_mode(self, mode: RunMode) -> list[str]:
         """Return names of missing required secrets for the given mode.
@@ -195,9 +197,10 @@ class Settings:
             for name, val in [
                 ("POSTMARK_API_KEY", self.creds.postmark_api_key),
                 ("POSTMARK_FROM_EMAIL", self.creds.postmark_from_email),
-                ("POSTMARK_TO_EMAIL", self.creds.postmark_to_email),
             ]:
                 if not val:
                     missing.append(name)
+            if not self.recipients:
+                missing.append("recipients.yaml")
 
         return missing
