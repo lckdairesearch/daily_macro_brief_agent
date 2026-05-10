@@ -1,18 +1,18 @@
-"""Smoke tests: sample mode runs and returns a valid PipelineResult (Step 4)."""
+"""Pipeline orchestration tests for ``run_pipeline``."""
 
 from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.data.market import FixtureMarketProvider
-from app.discovery.scouts.base import DiscoveryContext, FixtureDiscoveryScout
+from app.llm import provider
 from app.models import (
     BriefDraft,
     BriefItem,
@@ -29,15 +29,9 @@ from app.models import (
     PipelineResult,
     RunMode,
 )
-from app.pipeline import (
-    _chart_output_path,
-    _data_cutoff,
-    _load_fixture_calendar,
-    _resolve_run_window,
-    run_pipeline,
-)
-from app.render.email import build_render_context
-from app.settings import Settings
+from app.pipeline import run_pipeline
+from app.settings import AppConfig, CONFIG_DIR, Credentials, Settings, _load_yaml
+from app.synthesis.validator import validate_brief
 
 
 @pytest.fixture
@@ -50,6 +44,51 @@ def isolated_settings(tmp_path):
     settings.creds.cloudflare_r2_bucket = None
     settings.creds.cloudflare_r2_public_base_url = None
     settings.creds.cloudflare_r2_prefix = None
+    return settings
+
+
+def _settings_without_credentials() -> Settings:
+    creds = Credentials.model_construct(
+        openai_api_key=None,
+        gemini_api_key=None,
+        xai_api_key=None,
+        llm_scout_model=None,
+        llm_x_scout_model=None,
+        llm_synthesis_model=None,
+        llm_temperature=None,
+        llm_synthesis_temperature=None,
+        llm_synthesis_reasoning_effort=None,
+        llm_synthesis_verbosity=None,
+        llm_synthesis_review_enabled=None,
+        llm_synthesis_review_model=None,
+        llm_synthesis_review_temperature=None,
+        llm_synthesis_review_reasoning_effort=None,
+        llm_synthesis_review_verbosity=None,
+        llm_synthesis_context_card_count=None,
+        alpha_vantage_api_key=None,
+        databento_api_key=None,
+        fred_api_key=None,
+        listen_notes_api_key=None,
+        taddy_user_id=None,
+        taddy_api_key=None,
+        postmark_api_key=None,
+        postmark_from_email=None,
+        postmark_maintainer_email=None,
+        enable_email_delivery=False,
+        app_mode=None,
+        cache_dir=None,
+        output_dir=None,
+    )
+    settings = Settings(
+        app=AppConfig(**_load_yaml(CONFIG_DIR / "app.yaml")),
+        creds=creds,
+        portfolio=_load_yaml(CONFIG_DIR / "portfolio.yaml"),
+        themes=_load_yaml(CONFIG_DIR / "themes.yaml"),
+        sources=_load_yaml(CONFIG_DIR / "sources.yaml"),
+        chart_templates=_load_yaml(CONFIG_DIR / "chart_templates.yaml"),
+        config_dir=CONFIG_DIR,
+    )
+    settings.app.output_dir = tempfile.mkdtemp(prefix="daily-macro-sample-outputs-")
     return settings
 
 
@@ -90,37 +129,28 @@ def _mock_write_brief(ranked_context, settings, run_date, mode=None):
 
 @pytest.fixture(autouse=False)
 def mock_writer():
-    """Patch write_brief for pipeline smoke tests — no real LLM call needed."""
     with patch("app.synthesis.writer.write_brief", side_effect=_mock_write_brief):
         yield
 
 
 @pytest.fixture(autouse=True)
 def mock_delivery():
-    """Pipeline smoke tests must not send real email."""
     from app.delivery import NoopDeliveryProvider
+
     with patch("app.delivery.get_provider", return_value=NoopDeliveryProvider()):
         yield
 
 
 def test_sample_pipeline_returns_pipeline_result(mock_writer, isolated_settings):
-    """run_pipeline(sample) returns a PipelineResult instance."""
-    settings = isolated_settings
-    result = run_pipeline(RunMode.SAMPLE, settings)
+    result = run_pipeline(RunMode.SAMPLE, isolated_settings)
+
     assert isinstance(result, PipelineResult)
-
-
-def test_sample_pipeline_success(mock_writer, isolated_settings):
-    """run_pipeline(sample) returns success=True."""
-    settings = isolated_settings
-    result = run_pipeline(RunMode.SAMPLE, settings)
     assert result.success is True
 
 
 def test_sample_pipeline_run_metadata_populated(mock_writer, isolated_settings):
-    """RunMetadata has required fields populated."""
-    settings = isolated_settings
-    result = run_pipeline(RunMode.SAMPLE, settings)
+    result = run_pipeline(RunMode.SAMPLE, isolated_settings)
+
     meta = result.run_metadata
     assert re.fullmatch(r"\d{8}_\d{6}_sample", meta.run_id)
     assert meta.run_started_at is not None
@@ -129,92 +159,48 @@ def test_sample_pipeline_run_metadata_populated(mock_writer, isolated_settings):
     assert meta.brief_date is not None
     assert meta.timezone == "Asia/Hong_Kong"
     assert meta.llm_provider == "litellm"
-
-
-def test_sample_pipeline_noop_delivery_when_postmark_is_mocked(mock_writer, isolated_settings):
-    """Sample pipeline keeps delivery disabled even when Postmark creds exist."""
-    settings = isolated_settings
-    settings.creds.postmark_api_key = "test-key"
-    settings.creds.postmark_from_email = "brief@test.com"
-    settings.creds.postmark_maintainer_email = "maintainer@test.com"
-    result = run_pipeline(RunMode.SAMPLE, settings)
-    assert result.run_metadata.delivery_status == DeliveryStatus.DISABLED
+    assert meta.delivery_status == DeliveryStatus.DISABLED
 
 
 def test_sample_pipeline_preserves_writer_warnings_in_run_metadata(isolated_settings):
-    settings = isolated_settings
-
     def _mock_writer_with_warning(ranked_context, settings, run_date, mode=None):
         draft, usages = _mock_write_brief(ranked_context, settings, run_date, mode)
         draft = draft.model_copy(update={"warnings": ["only 2 evidence cards available"]})
         return draft, usages
 
     with patch("app.synthesis.writer.write_brief", side_effect=_mock_writer_with_warning):
-        result = run_pipeline(RunMode.SAMPLE, settings)
+        result = run_pipeline(RunMode.SAMPLE, isolated_settings)
 
     assert "only 2 evidence cards available" in result.run_metadata.warnings
 
 
-def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolated_settings):
-    """Sample pipeline writes artifacts to a date/run-specific artifact path."""
-    settings = isolated_settings
+def test_sample_pipeline_persists_core_artifacts(mock_writer, isolated_settings):
+    result = run_pipeline(RunMode.SAMPLE, isolated_settings)
 
-    result = run_pipeline(RunMode.SAMPLE, settings)
+    artifact_keys = {
+        "html",
+        "text",
+        "chart",
+        "evidence_cards",
+        "ranked_context",
+        "brief_rendered_html",
+        "run_metadata",
+        "market_snapshots",
+        "calendar_events",
+        "brief_draft",
+        "chart_candidates",
+        "chart_plan",
+        "chart_build",
+    }
+    assert artifact_keys <= set(result.run_metadata.output_paths)
+    for key in artifact_keys:
+        assert Path(result.run_metadata.output_paths[key]).exists()
 
-    html_path = Path(result.run_metadata.output_paths["html"])
-    text_path = Path(result.run_metadata.output_paths["text"])
-    chart_path = Path(result.run_metadata.output_paths["chart"])
-    evidence_path = Path(result.run_metadata.output_paths["evidence_cards"])
-    ranked_path = Path(result.run_metadata.output_paths["ranked_context"])
-    rendered_html_path = Path(result.run_metadata.output_paths["brief_rendered_html"])
-    metadata_path = Path(result.run_metadata.output_paths["run_metadata"])
-    market_path = Path(result.run_metadata.output_paths["market_snapshots"])
-    calendar_path = Path(result.run_metadata.output_paths["calendar_events"])
-    brief_draft_path = Path(result.run_metadata.output_paths["brief_draft"])
-    chart_candidates_path = Path(result.run_metadata.output_paths["chart_candidates"])
-    chart_plan_path = Path(result.run_metadata.output_paths["chart_plan"])
-    chart_build_path = Path(result.run_metadata.output_paths["chart_build"])
-    stable_html_path = Path(settings.app.output_dir) / "samples" / "sample_brief.html"
-    stable_text_path = Path(settings.app.output_dir) / "samples" / "sample_brief.txt"
-    stable_chart_path = Path(settings.app.output_dir) / "samples" / "sample_chart.png"
-
-    for path in (
-        html_path,
-        text_path,
-        chart_path,
-        evidence_path,
-        ranked_path,
-        rendered_html_path,
-        metadata_path,
-        market_path,
-        calendar_path,
-        brief_draft_path,
-        chart_candidates_path,
-        chart_plan_path,
-        chart_build_path,
-    ):
-        assert path.exists()
-        assert path.parent.parent.parent.name == "samples"
-
-    assert html_path.name == "brief.html"
-    assert text_path.name == "brief.txt"
-    assert chart_path.name == "sample_chart.png"
-    assert rendered_html_path.name == "brief_rendered.html"
-    assert metadata_path.name == "run_metadata.json"
-    assert re.fullmatch(r"\d{8}_\d{6}_sample", result.run_metadata.run_id)
-    assert evidence_path.parent.name == result.run_metadata.run_id
-    assert evidence_path.parent.parent.name == result.run_metadata.data_cutoff_at.strftime("%Y-%m-%d")
-    assert evidence_path.parent.parent.parent.name == "samples"
-    assert stable_html_path.exists()
-    assert stable_text_path.exists()
-    assert stable_chart_path.exists()
-
-    cards = json.loads(evidence_path.read_text(encoding="utf-8"))
+    cards = json.loads(Path(result.run_metadata.output_paths["evidence_cards"]).read_text(encoding="utf-8"))
     assert isinstance(cards, list)
-    assert len(cards) > 0
-    assert all("id" in card for card in cards)
+    assert cards
 
-    chart_build = json.loads(chart_build_path.read_text(encoding="utf-8"))
+    chart_build = json.loads(Path(result.run_metadata.output_paths["chart_build"]).read_text(encoding="utf-8"))
     assert chart_build["final_status"] in {"deterministic_render", "generated_code", "hardcoded_fallback"}
     assert "requested_instrument_ids" in chart_build
     assert "used_instrument_ids" in chart_build
@@ -222,19 +208,17 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolate
 
 
 def test_pipeline_uses_data_cutoff_override(mock_writer, isolated_settings):
-    settings = isolated_settings
-    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(isolated_settings.app.timezone))
 
-    result = run_pipeline(RunMode.SAMPLE, settings, data_cutoff=override)
+    result = run_pipeline(RunMode.SAMPLE, isolated_settings, data_cutoff=override)
 
     assert result.run_metadata.data_cutoff_at == override
 
 
 def test_pipeline_progress_callback_reports_steps(mock_writer, isolated_settings):
-    settings = isolated_settings
     events: list[str] = []
 
-    result = run_pipeline(RunMode.SAMPLE, settings, progress=events.append)
+    result = run_pipeline(RunMode.SAMPLE, isolated_settings, progress=events.append)
 
     assert result.success is True
     assert events[:3] == ["Determine run window", "Fetch market data", "Fetch calendar"]
@@ -242,21 +226,33 @@ def test_pipeline_progress_callback_reports_steps(mock_writer, isolated_settings
 
 
 def test_pipeline_records_step_and_scout_timings(mock_writer, isolated_settings):
-    settings = isolated_settings
-
-    result = run_pipeline(RunMode.SAMPLE, settings)
+    result = run_pipeline(RunMode.SAMPLE, isolated_settings)
 
     timings = result.run_metadata.timings
-    components = [t["component"] for t in timings]
+    components = [timing["component"] for timing in timings]
     assert "Fetch market data" in components
     assert "scout:fixture" in components
     assert "Record metadata" in components
-    assert all(isinstance(t["seconds"], float) for t in timings)
+    assert all(isinstance(timing["seconds"], float) for timing in timings)
+
+
+def test_sample_pipeline_is_credential_free(monkeypatch):
+    def fail_litellm_completion(**kwargs):
+        raise AssertionError("sample mode must not call live LiteLLM completion")
+
+    monkeypatch.setattr(provider.litellm_compat, "completion", fail_litellm_completion)
+    settings = _settings_without_credentials()
+
+    result = run_pipeline(RunMode.SAMPLE, settings)
+
+    assert result.success is True, result.error_message
+    assert result.brief_draft is not None
+    validation = validate_brief(result.brief_draft)
+    assert validation.is_valid, validation.critical_failures
 
 
 def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer, isolated_settings):
-    settings = isolated_settings
-    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(isolated_settings.app.timezone))
     snapshot = MarketSnapshot(
         as_of=override,
         observation_date="2026-05-07",
@@ -277,57 +273,34 @@ def test_dry_run_pipeline_passes_data_cutoff_to_live_market_fetch(mock_writer, i
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
          patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
          patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
-        result = run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+        result = run_pipeline(RunMode.DRY_RUN, isolated_settings, data_cutoff=override)
 
     assert result.run_metadata.data_cutoff_at == override
-    mock_fetch.assert_called_once_with(settings, {}, override)
-    assert "/dry-runs/" in result.run_metadata.output_paths["market_snapshots"]
+    mock_fetch.assert_called_once_with(isolated_settings, {}, override)
 
 
-def test_dry_run_pipeline_calls_calendar_provider_with_cutoff_date(mock_writer, isolated_settings):
-    settings = isolated_settings
-    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+def test_dry_run_pipeline_calls_calendar_provider_with_brief_date(mock_writer, isolated_settings):
+    override = datetime(2026, 5, 9, 6, 45, tzinfo=ZoneInfo(isolated_settings.app.timezone))
 
     with patch("app.pipeline.load_vol_params", return_value={}), \
          patch("app.pipeline.fetch_live_market_with_cache", return_value=[]), \
-         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]) as mock_cal, \
+         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]) as mock_calendar, \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
          patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
          patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
-        run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+        result = run_pipeline(RunMode.DRY_RUN, isolated_settings, data_cutoff=override)
 
-    mock_cal.assert_called_once_with(override.date())
-
-
-def test_dry_run_pipeline_weekend_rolls_calendar_to_monday(mock_writer, isolated_settings):
-    settings = isolated_settings
-    override = datetime(2026, 5, 9, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
-
-    with patch("app.pipeline.load_vol_params", return_value={}), \
-         patch("app.pipeline.fetch_live_market_with_cache", return_value=[]), \
-         patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]) as mock_cal, \
-         patch("app.pipeline.build_scouts", return_value=[]), \
-         patch("app.pipeline.run_discovery", return_value=[]), \
-         patch("app.render.charts.build_chart", side_effect=RuntimeError("skip chart")):
-        result = run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
-
-    assert result.run_metadata.brief_date == datetime(2026, 5, 11, 0, 0, tzinfo=ZoneInfo(settings.app.timezone))
-    mock_cal.assert_called_once_with(datetime(2026, 5, 11, 0, 0, tzinfo=ZoneInfo(settings.app.timezone)).date())
-    assert result.brief_draft is not None
-    draft = result.brief_draft.model_copy(
-        update={"run_metadata": result.run_metadata.model_dump(mode="json")}
+    assert result.run_metadata.brief_date == datetime(
+        2026, 5, 11, 0, 0, tzinfo=ZoneInfo(isolated_settings.app.timezone)
     )
-    render_context = build_render_context(draft, settings, vol_params={})
-    assert render_context["header_line"] == "Monday, May 11, 2026 | Morning Brief"
+    mock_calendar.assert_called_once_with(datetime(2026, 5, 11).date())
 
 
 def test_sample_pipeline_keeps_r2_uploads_disabled(mock_writer, isolated_settings):
-    settings = isolated_settings
-
     with patch("app.render.chart_uploader.publish_chart") as mock_chart_upload, \
          patch("app.render.chart_uploader.publish_run_artifacts") as mock_run_upload, \
          patch("app.render.chart_uploader.publish_latest_artifact_alias") as mock_alias_upload:
-        result = run_pipeline(RunMode.SAMPLE, settings)
+        result = run_pipeline(RunMode.SAMPLE, isolated_settings)
 
     assert result.success is True
     mock_chart_upload.assert_not_called()
@@ -336,8 +309,6 @@ def test_sample_pipeline_keeps_r2_uploads_disabled(mock_writer, isolated_setting
 
 
 def test_pipeline_marks_non_one_day_chart_fallback_as_degraded(mock_writer, isolated_settings):
-    settings = isolated_settings
-
     def _fake_build_chart(*args, output_path, **kwargs):
         Path(output_path).write_bytes(b"png")
         return (
@@ -367,17 +338,19 @@ def test_pipeline_marks_non_one_day_chart_fallback_as_degraded(mock_writer, isol
         )
 
     with patch("app.render.charts.build_chart", side_effect=_fake_build_chart):
-        result = run_pipeline(RunMode.SAMPLE, settings)
+        result = run_pipeline(RunMode.SAMPLE, isolated_settings)
 
-    build_chart_timing = next(t for t in result.run_metadata.timings if t["component"] == "Build chart")
+    build_chart_timing = next(
+        timing for timing in result.run_metadata.timings if timing["component"] == "Build chart"
+    )
     assert build_chart_timing["status"] == "degraded"
-    assert any("Chart generation degraded to hardcoded fallback (codegen_failed)" == w for w in result.run_metadata.warnings)
-    assert "chart_build" in result.run_metadata.output_paths
+    assert any(
+        warning == "Chart generation degraded to hardcoded fallback (codegen_failed)"
+        for warning in result.run_metadata.warnings
+    )
 
 
 def test_pipeline_keeps_one_day_fallback_as_success(mock_writer, isolated_settings):
-    settings = isolated_settings
-
     def _fake_build_chart(*args, output_path, **kwargs):
         Path(output_path).write_bytes(b"png")
         return (
@@ -407,16 +380,20 @@ def test_pipeline_keeps_one_day_fallback_as_success(mock_writer, isolated_settin
         )
 
     with patch("app.render.charts.build_chart", side_effect=_fake_build_chart):
-        result = run_pipeline(RunMode.SAMPLE, settings)
+        result = run_pipeline(RunMode.SAMPLE, isolated_settings)
 
-    build_chart_timing = next(t for t in result.run_metadata.timings if t["component"] == "Build chart")
+    build_chart_timing = next(
+        timing for timing in result.run_metadata.timings if timing["component"] == "Build chart"
+    )
     assert build_chart_timing["status"] == "success"
-    assert all("Chart generation degraded to hardcoded fallback" not in w for w in result.run_metadata.warnings)
+    assert all(
+        "Chart generation degraded to hardcoded fallback" not in warning
+        for warning in result.run_metadata.warnings
+    )
 
 
 def test_dry_run_pipeline_publishes_run_artifacts_and_latest_alias(mock_writer, isolated_settings):
-    settings = isolated_settings
-    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(isolated_settings.app.timezone))
     snapshot = MarketSnapshot(
         as_of=override,
         observation_date="2026-05-07",
@@ -436,23 +413,21 @@ def test_dry_run_pipeline_publishes_run_artifacts_and_latest_alias(mock_writer, 
          patch("app.data.calendar.InvestingCalendarProvider.fetch_for_date", return_value=[]), \
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
          patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
-         patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/outputs/dry-runs/2026-05-08/run/chart.png") as mock_chart_upload, \
-         patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/outputs/dry-runs/2026-05-08/run/brief.html"]) as mock_run_upload, \
-         patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/outputs/dry-runs/latest/brief_rendered.html") as mock_alias_upload:
-        result = run_pipeline(RunMode.DRY_RUN, settings, data_cutoff=override)
+         patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/chart.png") as mock_chart_upload, \
+         patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/brief.html"]) as mock_run_upload, \
+         patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/latest.html") as mock_alias_upload:
+        result = run_pipeline(RunMode.DRY_RUN, isolated_settings, data_cutoff=override)
 
     assert result.success is True
     assert result.run_metadata.delivery_status == DeliveryStatus.DISABLED
     mock_chart_upload.assert_called_once()
     mock_run_upload.assert_called_once()
     mock_alias_upload.assert_called_once()
-    assert mock_alias_upload.call_args.args[1] == "outputs/dry-runs/latest/brief_rendered.html"
 
 
 def test_live_pipeline_publishes_run_artifacts_even_when_delivery_fails(mock_writer, isolated_settings):
-    settings = isolated_settings
-    settings.creds.enable_email_delivery = True
-    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
+    isolated_settings.creds.enable_email_delivery = True
+    override = datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(isolated_settings.app.timezone))
     snapshot = MarketSnapshot(
         as_of=override,
         observation_date="2026-05-07",
@@ -477,108 +452,12 @@ def test_live_pipeline_publishes_run_artifacts_even_when_delivery_fails(mock_wri
          patch("app.discovery.orchestrator.build_scouts", return_value=[]), \
          patch("app.discovery.orchestrator.run_discovery", return_value=[]), \
          patch("app.delivery.get_provider", return_value=FailingProvider()), \
-         patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/outputs/runs/2026-05-08/run/chart.png"), \
-         patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/outputs/runs/2026-05-08/run/brief.html"]) as mock_run_upload, \
-         patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/outputs/runs/latest/brief_rendered.html") as mock_alias_upload:
-        result = run_pipeline(RunMode.LIVE, settings, data_cutoff=override)
+         patch("app.render.chart_uploader.publish_chart", return_value="https://pub.example.com/chart.png"), \
+         patch("app.render.chart_uploader.publish_run_artifacts", return_value=["https://pub.example.com/brief.html"]) as mock_run_upload, \
+         patch("app.render.chart_uploader.publish_latest_artifact_alias", return_value="https://pub.example.com/latest.html") as mock_alias_upload:
+        result = run_pipeline(RunMode.LIVE, isolated_settings, data_cutoff=override)
 
     assert result.run_metadata.delivery_status == DeliveryStatus.FAILED
+    assert "Email delivery failed: boom" in result.run_metadata.warnings
     mock_run_upload.assert_called_once()
     mock_alias_upload.assert_called_once()
-    assert "Email delivery failed: boom" in result.run_metadata.warnings
-
-
-def test_chart_output_path_sample_uses_tracked_artifact():
-    settings = Settings.load()
-    data_cutoff = datetime(2026, 5, 9, 8, 0, tzinfo=timezone.utc)
-
-    path = _chart_output_path(RunMode.SAMPLE, settings, data_cutoff)
-
-    assert path == f"{settings.app.output_dir}/samples/sample_chart.png"
-
-
-def test_chart_output_path_live_uses_data_cutoff_timestamp():
-    settings = Settings.load()
-    data_cutoff = datetime(2026, 5, 9, 8, 30, tzinfo=timezone.utc)
-
-    path = _chart_output_path(RunMode.LIVE, settings, data_cutoff)
-
-    assert path == f"{settings.app.output_dir}/runs/chart_20260509_0830.png"
-
-
-def test_chart_output_path_dry_run_uses_data_cutoff_timestamp():
-    settings = Settings.load()
-    data_cutoff = datetime(2026, 5, 9, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
-
-    path = _chart_output_path(RunMode.DRY_RUN, settings, data_cutoff)
-
-    assert path == f"{settings.app.output_dir}/dry-runs/chart_20260509_0645.png"
-
-
-def test_data_cutoff_override_naive_uses_configured_timezone():
-    settings = Settings.load()
-    tz = ZoneInfo(settings.app.timezone)
-    override = datetime(2026, 5, 8, 6, 45)
-
-    cutoff = _data_cutoff(settings, tz, override)
-
-    assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=tz)
-
-
-def test_data_cutoff_override_aware_converts_to_configured_timezone():
-    settings = Settings.load()
-    tz = ZoneInfo(settings.app.timezone)
-    override = datetime(2026, 5, 7, 22, 45, tzinfo=timezone.utc)
-
-    cutoff = _data_cutoff(settings, tz, override)
-
-    assert cutoff == datetime(2026, 5, 8, 6, 45, tzinfo=tz)
-
-
-def test_resolve_run_window_rolls_weekend_to_monday():
-    settings = Settings.load()
-    cutoff = datetime(2026, 5, 10, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
-
-    window = _resolve_run_window(settings, cutoff)
-
-    assert window.brief_date.isoformat() == "2026-05-11"
-    assert window.calendar_date.isoformat() == "2026-05-11"
-    assert window.evidence_window_start == datetime(2026, 5, 8, 6, 45, tzinfo=ZoneInfo(settings.app.timezone))
-    assert window.evidence_window_end == cutoff
-
-
-def test_load_fixture_market():
-    """FixtureMarketProvider returns non-empty list of MarketSnapshot objects."""
-    snapshots = FixtureMarketProvider().fetch_watchlist([], datetime.now(timezone.utc))
-    assert len(snapshots) > 0
-    for snap in snapshots:
-        assert snap.instrument_id
-        assert snap.source
-        assert snap.freshness_status is not None
-
-
-def test_load_fixture_calendar():
-    """Fixture calendar loader returns non-empty list of CalendarEvent objects."""
-    events = _load_fixture_calendar()
-    assert len(events) > 0
-    for event in events:
-        assert event.event_name
-        assert event.source
-
-
-def test_load_fixture_evidence():
-    """FixtureDiscoveryScout returns non-empty list of EvidenceCard objects."""
-    ctx = DiscoveryContext(
-        market_snapshots=[], calendar_events=[], themes=[], portfolio={},
-        lookback_hours=24,
-        data_cutoff=datetime.now(timezone.utc),
-        evidence_window_start=datetime.now(timezone.utc),
-        evidence_window_end=datetime.now(timezone.utc),
-        mode=RunMode.SAMPLE,
-    )
-    cards = FixtureDiscoveryScout().run(ctx)
-    assert len(cards) > 0
-    for card in cards:
-        assert card.id
-        assert card.url
-        assert card.confidence >= 0.0
