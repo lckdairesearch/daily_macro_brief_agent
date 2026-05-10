@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.data.market import fetch_chart_series
-from app.models import AssetClass, BriefDraft, ChartPlan, ChartSpec, ChartWindow
+from app.models import (
+    AssetClass,
+    BriefDraft,
+    ChartBuildAttempt,
+    ChartBuildInfo,
+    ChartPlan,
+    ChartSpec,
+    ChartWindow,
+)
 
 from .chart_codegen import (
     execute_chart_code,
@@ -29,8 +37,6 @@ _UNIT_MAP: dict[AssetClass, str] = {
     AssetClass.CREDIT: "bps",
     AssetClass.VOLATILITY: "index",
 }
-
-
 def build_chart(
     draft: BriefDraft,
     chart_plan: ChartPlan,
@@ -38,18 +44,29 @@ def build_chart(
     output_path: str = "outputs/samples/sample_chart.png",
     sample_mode: bool = True,
     as_of: datetime | None = None,
-) -> ChartSpec:
+) -> tuple[ChartSpec, ChartBuildInfo]:
     """Generate a chart PNG and return a ChartSpec with file_path set.
 
     Tries LLM-generated code up to 2 times; falls back to a hardcoded bar chart.
     """
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     dash_by_id = {s.instrument_id: s for s in draft.overnight_dashboard}
-    instrument_ids = [iid for iid in chart_plan.instrument_ids if iid in dash_by_id]
+    requested_instrument_ids = list(chart_plan.instrument_ids)
+    instrument_ids = [iid for iid in requested_instrument_ids if iid in dash_by_id]
     if chart_plan.window == ChartWindow.ONE_DAY:
         if not instrument_ids:
             instrument_ids = [s.instrument_id for s in draft.overnight_dashboard[:6]]
-        return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+        spec = _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+        return spec, ChartBuildInfo(
+            final_status="hardcoded_fallback",
+            fallback_reason="one_day_window",
+            output_path=output_path,
+            requested_window=chart_plan.window,
+            requested_chart_type=chart_plan.chart_type,
+            requested_instrument_ids=requested_instrument_ids,
+            used_instrument_ids=list(spec.instrument_ids),
+            code_generated=False,
+        )
     if len(instrument_ids) < 2:
         instrument_ids = [s.instrument_id for s in draft.overnight_dashboard[:2]]
 
@@ -64,7 +81,17 @@ def build_chart(
 
     if not series_data:
         _log.warning("build_chart: no series data available — using hardcoded fallback")
-        return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+        spec = _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+        return spec, ChartBuildInfo(
+            final_status="hardcoded_fallback",
+            fallback_reason="no_series_data",
+            output_path=output_path,
+            requested_window=chart_plan.window,
+            requested_chart_type=chart_plan.chart_type,
+            requested_instrument_ids=requested_instrument_ids,
+            used_instrument_ids=list(spec.instrument_ids),
+            code_generated=False,
+        )
 
     display_names = {iid: dash_by_id[iid].display_name for iid in series_data if iid in dash_by_id}
     asset_classes = {iid: dash_by_id[iid].asset_class.value for iid in series_data if iid in dash_by_id}
@@ -75,6 +102,7 @@ def build_chart(
 
     caption = chart_plan.caption or (draft.chart.caption if draft.chart else "Macro cross-asset setup into the session.")
 
+    attempts: list[ChartBuildAttempt] = []
     error_context = ""
     for attempt in range(2):
         try:
@@ -90,7 +118,8 @@ def build_chart(
                 error_context=error_context,
             )
             execute_chart_code(code, output_path)
-            return ChartSpec(
+            attempts.append(ChartBuildAttempt(attempt_number=attempt + 1, status="success"))
+            spec = ChartSpec(
                 title=chart_plan.title,
                 caption=caption,
                 chart_type=chart_plan.chart_type,
@@ -103,12 +132,42 @@ def build_chart(
                 selection_method=chart_plan.selection_method,
                 linked_three_things_index=chart_plan.linked_three_things_index,
             )
+            return spec, ChartBuildInfo(
+                final_status="generated_code",
+                output_path=output_path,
+                requested_window=chart_plan.window,
+                requested_chart_type=chart_plan.chart_type,
+                requested_instrument_ids=requested_instrument_ids,
+                used_instrument_ids=list(spec.instrument_ids),
+                series_instrument_ids=list(series_data.keys()),
+                code_generated=True,
+                attempts=attempts,
+            )
         except Exception as exc:
             error_context = str(exc)
+            attempts.append(
+                ChartBuildAttempt(
+                    attempt_number=attempt + 1,
+                    status="failed",
+                    error_message=str(exc),
+                )
+            )
             _log.warning("build_chart: attempt %d failed: %s", attempt + 1, exc)
 
     _log.warning("build_chart: both attempts failed — using hardcoded fallback")
-    return _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+    spec = _hardcoded_fallback(draft, output_path, chart_plan, instrument_ids)
+    return spec, ChartBuildInfo(
+        final_status="hardcoded_fallback",
+        fallback_reason="codegen_failed",
+        output_path=output_path,
+        requested_window=chart_plan.window,
+        requested_chart_type=chart_plan.chart_type,
+        requested_instrument_ids=requested_instrument_ids,
+        used_instrument_ids=list(spec.instrument_ids),
+        series_instrument_ids=list(series_data.keys()),
+        code_generated=False,
+        attempts=attempts,
+    )
 def _hardcoded_fallback(
     draft: BriefDraft,
     output_path: str,

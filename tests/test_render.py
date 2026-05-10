@@ -397,7 +397,7 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
     chart_plan = _make_chart_plan()
     output = str(tmp_path / "chart.png")
 
-    spec = build_chart(
+    spec, build_info = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -408,6 +408,9 @@ def test_build_chart_sample_mode_produces_png(tmp_path, monkeypatch):
     assert Path(output).exists()
     assert spec.file_path == output
     assert spec.code_generated is True
+    assert build_info.final_status == "generated_code"
+    assert build_info.code_generated is True
+    assert build_info.attempts[-1].status == "success"
 
 
 def test_build_chart_prefers_chart_plan_caption(tmp_path, monkeypatch):
@@ -433,7 +436,7 @@ def test_build_chart_prefers_chart_plan_caption(tmp_path, monkeypatch):
     chart_plan = _make_chart_plan(caption="This caption comes from the selected chart plan and should win.")
     output = str(tmp_path / "chart.png")
 
-    spec = build_chart(
+    spec, _build_info = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -458,7 +461,7 @@ def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
     chart_plan = _make_chart_plan()
     output = str(tmp_path / "fallback.png")
 
-    spec = build_chart(
+    spec, build_info = build_chart(
         draft,
         chart_plan=chart_plan,
         settings=settings,
@@ -468,6 +471,9 @@ def test_build_chart_falls_back_when_llm_fails(tmp_path, monkeypatch):
     )
     assert Path(output).exists()
     assert spec.code_generated is False
+    assert build_info.final_status == "hardcoded_fallback"
+    assert build_info.fallback_reason == "codegen_failed"
+    assert [attempt.status for attempt in build_info.attempts] == ["failed", "failed"]
 
 
 # ---------------------------------------------------------------------------

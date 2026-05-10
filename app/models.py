@@ -246,6 +246,29 @@ class ChartSpec(BaseModel):
     linked_three_things_index: int | None = None
 
 
+class ChartBuildAttempt(BaseModel):
+    """A single chart code-generation attempt."""
+
+    attempt_number: int
+    status: str
+    error_message: str | None = None
+
+
+class ChartBuildInfo(BaseModel):
+    """Structured audit trail for chart build execution."""
+
+    final_status: str
+    fallback_reason: str | None = None
+    output_path: str
+    requested_window: ChartWindow
+    requested_chart_type: str
+    requested_instrument_ids: list[str] = Field(default_factory=list)
+    used_instrument_ids: list[str] = Field(default_factory=list)
+    series_instrument_ids: list[str] = Field(default_factory=list)
+    code_generated: bool = False
+    attempts: list[ChartBuildAttempt] = Field(default_factory=list)
+
+
 class BriefDraft(BaseModel):
     """Structured brief before rendering."""
     

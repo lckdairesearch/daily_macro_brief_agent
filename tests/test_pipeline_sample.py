@@ -162,6 +162,7 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolate
     brief_draft_path = Path(result.run_metadata.output_paths["brief_draft"])
     chart_candidates_path = Path(result.run_metadata.output_paths["chart_candidates"])
     chart_plan_path = Path(result.run_metadata.output_paths["chart_plan"])
+    chart_build_path = Path(result.run_metadata.output_paths["chart_build"])
     stable_html_path = Path(settings.app.output_dir) / "samples" / "sample_brief.html"
     stable_text_path = Path(settings.app.output_dir) / "samples" / "sample_brief.txt"
     stable_chart_path = Path(settings.app.output_dir) / "samples" / "sample_chart.png"
@@ -179,6 +180,7 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolate
         brief_draft_path,
         chart_candidates_path,
         chart_plan_path,
+        chart_build_path,
     ):
         assert path.exists()
         assert path.parent.parent.parent.name == "samples"
@@ -200,6 +202,12 @@ def test_sample_pipeline_persists_evidence_cards_in_run_dir(mock_writer, isolate
     assert isinstance(cards, list)
     assert len(cards) > 0
     assert all("id" in card for card in cards)
+
+    chart_build = json.loads(chart_build_path.read_text(encoding="utf-8"))
+    assert chart_build["final_status"] in {"generated_code", "hardcoded_fallback"}
+    assert "requested_instrument_ids" in chart_build
+    assert "used_instrument_ids" in chart_build
+    assert "attempts" in chart_build
 
 
 def test_pipeline_uses_data_cutoff_override(mock_writer, isolated_settings):

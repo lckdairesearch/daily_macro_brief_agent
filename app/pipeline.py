@@ -284,9 +284,10 @@ def run_pipeline(
     _step_started = perf_counter()
     from app.render.charts import build_chart
     chart_image_url: str | None = None
+    chart_build_info: dict | None = None
     chart_status = "success"
     try:
-        chart_spec = build_chart(
+        chart_spec, built_chart_info = build_chart(
             draft=brief_draft,
             chart_plan=chart_plan,
             settings=settings,
@@ -294,6 +295,21 @@ def run_pipeline(
             sample_mode=(mode == RunMode.SAMPLE),
             as_of=data_cutoff,
         )
+        chart_build_info = built_chart_info.model_dump(mode="json")
+        _save_json_artifact(
+            run_output_dir / "chart_build.json",
+            chart_build_info,
+            output_paths,
+            "chart_build",
+        )
+        if built_chart_info.final_status == "hardcoded_fallback":
+            if built_chart_info.fallback_reason == "one_day_window":
+                chart_status = "success"
+            else:
+                chart_status = "degraded"
+                warnings.append(
+                    f"Chart generation degraded to hardcoded fallback ({built_chart_info.fallback_reason})"
+                )
         if chart_spec.file_path:
             output_paths["chart"] = chart_spec.file_path
             brief_draft = brief_draft.model_copy(update={"chart": chart_spec})
@@ -310,6 +326,25 @@ def run_pipeline(
         _log.warning("Chart generation failed: %s", _chart_exc)
         warnings.append(f"Chart generation failed: {_chart_exc}")
         chart_status = "failed"
+        chart_build_info = {
+            "final_status": "failed",
+            "fallback_reason": "unexpected_exception",
+            "output_path": _chart_output_path(mode, settings, data_cutoff, run_id=run_id),
+            "requested_window": chart_plan.window.value,
+            "requested_chart_type": chart_plan.chart_type,
+            "requested_instrument_ids": list(chart_plan.instrument_ids),
+            "used_instrument_ids": [],
+            "series_instrument_ids": [],
+            "code_generated": False,
+            "attempts": [],
+            "error_message": str(_chart_exc),
+        }
+        _save_json_artifact(
+            run_output_dir / "chart_build.json",
+            chart_build_info,
+            output_paths,
+            "chart_build",
+        )
     _record_timing(timings, "Build chart", _step_started, status=chart_status)
 
     # --- Step 12: Render HTML/text ---
