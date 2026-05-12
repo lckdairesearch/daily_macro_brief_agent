@@ -1058,6 +1058,28 @@ def test_dashboard_render_row_flattens_small_five_day_move():
     assert row["trend_class"] == "flat"
 
 
+def test_dashboard_render_row_marks_aged_accepted_snapshot():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    draft = _make_draft().model_copy(
+        update={
+            "overnight_dashboard": [
+                _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True).model_copy(
+                    update={
+                        "observation_date": "2026-05-08",
+                        "freshness_status": FreshnessStatus.AGED_ACCEPTED,
+                    }
+                )
+            ]
+        }
+    )
+    ctx = build_render_context(draft, settings)
+
+    assert ctx["dashboard_rows"][0]["asset"] == "US 10Y Yield*"
+    assert ctx["dashboard_aged_note"] == "* Delayed Ovservations: May 8 - US10Y."
+
+
 def test_build_render_context_filters_dashboard_to_core_plus_significant_extras():
     from app.render.email import build_render_context
 
@@ -1091,6 +1113,30 @@ def test_build_render_context_filters_dashboard_to_core_plus_significant_extras(
         "VIX",
         "MOVE Index",
     ]
+
+
+def test_build_render_context_groups_aged_dashboard_note_by_observation_date():
+    from app.render.email import build_render_context
+
+    settings = _make_settings()
+    dashboard = [
+        _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True).model_copy(
+            update={"observation_date": "2026-05-08", "freshness_status": FreshnessStatus.AGED_ACCEPTED}
+        ),
+        _snapshot("US2Y", "US 2Y Yield", AssetClass.RATES, 3.5, flagged=True).model_copy(
+            update={"observation_date": "2026-05-08", "freshness_status": FreshnessStatus.AGED_ACCEPTED}
+        ),
+        _snapshot("HY_OAS", "HY OAS", AssetClass.CREDIT, 4.0, flagged=True).model_copy(
+            update={"observation_date": "2026-05-07", "freshness_status": FreshnessStatus.AGED_ACCEPTED}
+        ),
+    ]
+    draft = _make_draft().model_copy(update={"overnight_dashboard": dashboard})
+
+    ctx = build_render_context(draft, settings)
+
+    assert ctx["dashboard_aged_note"] == (
+        "* Delayed Ovservations: May 7 - HY_OAS; May 8 - US10Y, US2Y."
+    )
 
 
 def test_build_render_context_does_not_duplicate_significant_core_assets():
@@ -1316,6 +1362,25 @@ def test_warnings_do_not_render_in_html_or_text(tmp_path):
     assert "WARNINGS" not in text
     assert "first warning" not in text
     assert "third warning" not in text
+
+
+def test_aged_dashboard_note_renders_in_html_and_text(tmp_path):
+    from app.render.email import render_brief
+
+    settings = _make_settings()
+    aged_snapshot = _snapshot("US10Y", "US 10Y Yield", AssetClass.RATES, 5.0, flagged=True).model_copy(
+        update={"observation_date": "2026-05-08", "freshness_status": FreshnessStatus.AGED_ACCEPTED}
+    )
+    draft = _make_draft().model_copy(update={"overnight_dashboard": [aged_snapshot]})
+
+    paths = render_brief(draft, settings, output_dir=tmp_path, vol_params={})
+    html = Path(paths["html"]).read_text(encoding="utf-8")
+    text = Path(paths["text"]).read_text(encoding="utf-8")
+
+    assert "US 10Y Yield*" in html
+    assert "US 10Y Yield*" in text
+    assert "Delayed Ovservations: May 8 - US10Y." in html
+    assert "Delayed Ovservations: May 8 - US10Y." in text
 
 
 def test_theme_radar_topic_renders_before_title(tmp_path):

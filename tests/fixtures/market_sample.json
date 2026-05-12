@@ -15,7 +15,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 1.0543,
       "region": "US",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": null
@@ -34,7 +34,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 2.28,
       "region": "US",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": null
@@ -53,7 +53,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.7546,
       "region": "EU",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": false,
       "warning": null
@@ -72,7 +72,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": -0.5401,
       "region": "US",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": false,
       "warning": null
@@ -91,7 +91,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": -0.2854,
       "region": "Asia",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": "Group move: >= 2 fx/Asia instruments moved negative with at least one breaching the 1.0-sigma threshold"
@@ -110,7 +110,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 1.2093,
       "region": "EU",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": null
@@ -129,7 +129,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": -1.1499,
       "region": "Asia",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": null
@@ -148,7 +148,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.0824,
       "region": "Global",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": false,
       "warning": null
@@ -167,7 +167,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.8097,
       "region": "Global",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": false,
       "warning": null
@@ -186,7 +186,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.1039,
       "region": "Global",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": false,
       "warning": null
@@ -205,7 +205,7 @@
       "one_day_change_unit": "bps",
       "one_day_zscore": 1.0479,
       "region": "US",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": null
@@ -224,7 +224,7 @@
       "one_day_change_unit": "bps",
       "one_day_zscore": 1.1705,
       "region": "US",
-      "source": "alpha_vantage",
+      "source": "fixture",
       "source_url": "https://www.alphavantage.co/query",
       "threshold_flag": true,
       "warning": null
@@ -243,7 +243,7 @@
       "one_day_change_unit": "bps",
       "one_day_zscore": 0.7572,
       "region": "EU",
-      "source": "databento",
+      "source": "fixture",
       "source_url": null,
       "threshold_flag": false,
       "warning": null
@@ -262,7 +262,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": -0.2991,
       "region": "Global",
-      "source": "databento",
+      "source": "fixture",
       "source_url": null,
       "threshold_flag": false,
       "warning": null
@@ -281,7 +281,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.3761,
       "region": "Global",
-      "source": "databento",
+      "source": "fixture",
       "source_url": null,
       "threshold_flag": false,
       "warning": null
@@ -300,7 +300,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.443,
       "region": "Global",
-      "source": "databento",
+      "source": "fixture",
       "source_url": null,
       "threshold_flag": false,
       "warning": null
@@ -319,7 +319,7 @@
       "one_day_change_unit": "bps",
       "one_day_zscore": 0.0,
       "region": "US",
-      "source": "fred",
+      "source": "fixture",
       "source_url": "https://api.stlouisfed.org/fred/series/observations",
       "threshold_flag": false,
       "warning": null
@@ -338,7 +338,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": 0.0868,
       "region": "US",
-      "source": "yfinance",
+      "source": "fixture",
       "source_url": null,
       "threshold_flag": false,
       "warning": null
@@ -357,7 +357,7 @@
       "one_day_change_unit": "%",
       "one_day_zscore": -1.3813,
       "region": "US",
-      "source": "yfinance",
+      "source": "fixture",
       "source_url": null,
       "threshold_flag": true,
       "warning": null

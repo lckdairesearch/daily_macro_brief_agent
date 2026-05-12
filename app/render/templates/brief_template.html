@@ -187,7 +187,10 @@
                 {% endfor %}
             </tbody>
         </table>
-        <p class="source-note">* Bold indicates move &gt; 1 standard deviation. 5D trend arrows are computed from 5D move versus sqrt(5) daily volatility.</p>
+        <p class="source-note">Bold indicates move &gt; 1 standard deviation. 5D trend arrows are computed from 5D move versus sqrt(5) daily volatility.</p>
+        {% if dashboard_aged_note %}
+        <p class="source-note">{{ dashboard_aged_note }}</p>
+        {% endif %}
 
         <div class="section-header">{{ calendar_title }}</div>
         <table class="calendar-table" role="presentation" cellpadding="0" cellspacing="0" border="0">

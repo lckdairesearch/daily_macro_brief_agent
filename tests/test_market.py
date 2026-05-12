@@ -4,6 +4,7 @@ import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
@@ -70,6 +71,13 @@ def test_fixture_provider_returns_market_snapshot_instances():
         assert isinstance(snap, MarketSnapshot)
 
 
+def test_fixture_provider_normalizes_source_to_fixture():
+    provider = FixtureMarketProvider()
+    snapshots = provider.fetch_watchlist([], datetime.now(timezone.utc))
+    assert snapshots
+    assert all(snap.source == "fixture" for snap in snapshots)
+
+
 def test_fixture_provider_all_snapshots_pass_pydantic_validation():
     """Each snapshot in the fixture round-trips cleanly through model_validate."""
     data = json.loads(FIXTURE.read_text())
@@ -126,6 +134,7 @@ def test_fgbl_price_to_yield_round_trip():
 _START = date(2026, 5, 6)
 _END = date(2026, 5, 8)
 _AS_OF = datetime(2026, 5, 8, 20, 0, 0, tzinfo=timezone.utc)  # Thursday 20:00 UTC → safe end = same day 22:00 UTC
+_TUESDAY_HKT_CUTOFF = datetime(2026, 5, 12, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
 
 
 def _mock_response(payload: dict) -> MagicMock:
@@ -327,6 +336,9 @@ def db_client_mock():
     db = pytest.importorskip("databento")
     client = MagicMock()
     client.symbology.resolve.return_value = {"not_found": []}
+    client.metadata.get_dataset_range.return_value = {
+        "schema": {"ohlcv-1d": {"end": "2026-05-08T23:59:59.000000000Z"}}
+    }
     return client
 
 
@@ -799,8 +811,8 @@ def test_db_provider_wti_sunday_allows_friday_observation(db_client_mock):
     assert snaps[0].observation_date == "2026-05-08"
 
 
-def test_db_provider_wti_monday_allows_thursday_observation(db_client_mock):
-    """Monday run must accept Thursday data — AV not refreshed over weekend, run is Sunday UTC."""
+def test_db_provider_wti_monday_skips_thursday_observation(db_client_mock, caplog):
+    """Default overnight instruments still require Friday on Monday HKT runs."""
     entries = [
         {"date": "2026-05-05", "close": 109.00, "volume": 10000},
         {"date": "2026-05-07", "close": 110.00, "volume": 12000},  # Thursday
@@ -812,12 +824,12 @@ def test_db_provider_wti_monday_allows_thursday_observation(db_client_mock):
     with patch("databento.Historical", return_value=db_client_mock):
         snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
 
-    assert len(snaps) == 1
-    assert snaps[0].observation_date == "2026-05-07"
+    assert snaps == []
+    assert "stale observation" in caplog.text
 
 
-def test_db_provider_wti_tuesday_allows_two_day_old_observation(db_client_mock):
-    """Tue–Fri runs accept data up to 2 days old to absorb AV cache delay after FRED publishes."""
+def test_db_provider_wti_tuesday_skips_two_day_old_observation(db_client_mock, caplog):
+    """Default overnight instruments do not get the delayed-series grace window."""
     entries = [
         {"date": "2026-05-07", "close": 109.00, "volume": 10000},
         {"date": "2026-05-10", "close": 110.00, "volume": 12000},  # Sunday (no market but tests buffer)
@@ -829,12 +841,12 @@ def test_db_provider_wti_tuesday_allows_two_day_old_observation(db_client_mock):
     with patch("databento.Historical", return_value=db_client_mock):
         snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], tuesday_as_of)
 
-    assert len(snaps) == 1  # May 10 >= May 10 (Tuesday - 2 days)
-    assert snaps[0].observation_date == "2026-05-10"
+    assert snaps == []
+    assert "stale observation" in caplog.text
 
 
-def test_db_provider_wti_sunday_allows_thursday_observation(db_client_mock):
-    """Sunday run must accept Thursday data — Friday yields not published until Monday."""
+def test_db_provider_wti_sunday_skips_thursday_observation(db_client_mock, caplog):
+    """Default overnight instruments still require Friday on Sunday HKT runs."""
     entries = [
         {"date": "2026-05-06", "close": 109.00, "volume": 10000},
         {"date": "2026-05-07", "close": 110.00, "volume": 12000},  # Thursday
@@ -846,8 +858,8 @@ def test_db_provider_wti_sunday_allows_thursday_observation(db_client_mock):
     with patch("databento.Historical", return_value=db_client_mock):
         snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], sunday_as_of)
 
-    assert len(snaps) == 1
-    assert snaps[0].observation_date == "2026-05-07"
+    assert snaps == []
+    assert "stale observation" in caplog.text
 
 
 def test_db_provider_end_ts_rolled_back_for_sunday_as_of(db_client_mock):
@@ -876,6 +888,21 @@ def test_db_provider_end_ts_rolled_back_for_monday_as_of(db_client_mock):
     assert call_kwargs["end"] == "2026-05-08T22:00:00"  # Friday, not Sunday
 
 
+def test_db_provider_clamps_end_ts_to_schema_end(db_client_mock):
+    store = MagicMock()
+    store.to_df.return_value = pd.DataFrame()
+    db_client_mock.timeseries.get_range.return_value = store
+    db_client_mock.metadata.get_dataset_range.return_value = {
+        "schema": {"ohlcv-1d": {"end": "2026-05-07T21:30:00.000000000Z"}}
+    }
+
+    with patch("databento.Historical", return_value=db_client_mock):
+        DatabentoMarketProvider("key").fetch_watchlist(["WTI"], _AS_OF)
+
+    call_kwargs = db_client_mock.timeseries.get_range.call_args.kwargs
+    assert call_kwargs["end"] == "2026-05-07T21:30:00"
+
+
 def test_av_provider_us10y_bps_change():
     payload = {"data": [
         {"date": "2026-05-07", "value": "4.50"},
@@ -886,6 +913,19 @@ def test_av_provider_us10y_bps_change():
     assert len(snaps) == 1
     assert snaps[0].one_day_change_unit == "bps"
     assert snaps[0].one_day_change == pytest.approx(5.0)
+
+
+def test_av_provider_us10y_tuesday_hkt_is_aged_accepted():
+    payload = {"data": [
+        {"date": "2026-05-07", "value": "4.50"},
+        {"date": "2026-05-08", "value": "4.55"},
+    ]}
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["US10Y"], _TUESDAY_HKT_CUTOFF)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-08"
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
 
 
 def test_av_provider_insufficient_data_skipped():
@@ -906,6 +946,20 @@ def test_av_provider_fetch_error_skipped(caplog):
 def test_av_provider_unknown_instrument_skipped():
     snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["UNKNOWN_XYZ"], _AS_OF)
     assert snaps == []
+
+
+def test_av_provider_usdcnh_tuesday_hkt_stale_is_skipped(caplog):
+    payload = {
+        "Time Series FX (Daily)": {
+            "2026-05-08": {"4. close": "6.79110"},
+            "2026-05-07": {"4. close": "6.78000"},
+        }
+    }
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["USDCNH"], _TUESDAY_HKT_CUTOFF)
+
+    assert snaps == []
+    assert "stale observation" in caplog.text
 
 
 # --- DatabentoMarketProvider ---
@@ -992,7 +1046,7 @@ def test_fred_provider_stale_forward_fill_skipped(caplog):
         {"date": "2026-05-08", "value": "."},
     ]}
     with patch("requests.get", return_value=_mock_response(payload)):
-        snaps = FredMarketProvider("key").fetch_watchlist(["HY_OAS"], _AS_OF)
+        snaps = FredMarketProvider("key").fetch_watchlist(["HY_OAS"], _TUESDAY_HKT_CUTOFF)
 
     assert snaps == []
     assert "stale observation" in caplog.text
@@ -1002,6 +1056,19 @@ def test_fred_provider_fetch_error_skipped():
     with patch("requests.get", side_effect=RuntimeError("network error")):
         snaps = FredMarketProvider("key").fetch_watchlist(["HY_OAS"], _AS_OF)
     assert snaps == []
+
+
+def test_fred_provider_tuesday_hkt_is_aged_accepted():
+    payload = {"observations": [
+        {"date": "2026-05-07", "value": "3.30"},
+        {"date": "2026-05-08", "value": "3.35"},
+    ]}
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = FredMarketProvider("key").fetch_watchlist(["HY_OAS"], _TUESDAY_HKT_CUTOFF)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-08"
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
 
 
 # --- YfinanceMarketProvider ---

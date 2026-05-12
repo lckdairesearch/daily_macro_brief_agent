@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.models import BriefDraft, CalendarEvent, ChartSpec, MarketSnapshot, SourceType
+from app.models import FreshnessStatus
 
 if TYPE_CHECKING:
     from app.settings import Settings
@@ -83,6 +84,8 @@ def render_text(context: dict[str, Any]) -> str:
     lines.append("OVERNIGHT DASHBOARD")
     for row in context["dashboard_rows"]:
         lines.append(f"{row['asset']}: {row['last']} | {row['change']} | 5D {row['trend_arrow']}")
+    if context.get("dashboard_aged_note"):
+        lines.append(context["dashboard_aged_note"])
     lines.append("")
 
     lines.append(context.get("calendar_title", "Today's Calendar").upper())
@@ -160,6 +163,7 @@ def build_render_context(
             _format_dashboard_row(snapshot, vol_params or {})
             for snapshot in dashboard_snapshots
         ],
+        "dashboard_aged_note": _format_dashboard_aged_note(dashboard_snapshots),
         "three_things": [_format_brief_item(item, label_map) for item in draft.three_things],
         "calendar_events": [_format_calendar_event(event) for event in draft.todays_calendar],
         "calendar_event_rows": _pair_calendar_events(draft.todays_calendar),
@@ -251,7 +255,7 @@ def _format_dashboard_row(
     trend_arrow, trend_class = _five_day_trend(snapshot, vol_params)
     trend_color = {"up": "#188038", "down": "#d93025", "flat": "#666666"}[trend_class]
     return {
-        "asset": snapshot.display_name,
+        "asset": f"{snapshot.display_name}*" if snapshot.freshness_status == FreshnessStatus.AGED_ACCEPTED else snapshot.display_name,
         "last": _format_level(snapshot),
         "change": _format_change(snapshot.one_day_change, snapshot.one_day_change_unit),
         "change_class": change_class,
@@ -259,6 +263,26 @@ def _format_dashboard_row(
         "trend_class": trend_class,
         "trend_color": trend_color,
     }
+
+
+def _format_dashboard_aged_note(snapshots: list[MarketSnapshot]) -> str | None:
+    grouped: dict[str, list[str]] = {}
+    for snapshot in snapshots:
+        if snapshot.freshness_status != FreshnessStatus.AGED_ACCEPTED:
+            continue
+        observed = snapshot.observation_date
+        if not observed:
+            continue
+        grouped.setdefault(observed, []).append(snapshot.instrument_id)
+
+    if not grouped:
+        return None
+
+    parts: list[str] = []
+    for observed_date in sorted(grouped):
+        label = datetime.fromisoformat(observed_date).strftime("%b %-d")
+        parts.append(f"{label} - {', '.join(sorted(grouped[observed_date]))}")
+    return "* Delayed Ovservations: " + "; ".join(parts) + "."
 
 
 def _dedupe(values: list[str]) -> list[str]:

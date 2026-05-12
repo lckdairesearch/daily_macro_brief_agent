@@ -28,6 +28,7 @@ class RunMode(str, Enum):
 class FreshnessStatus(str, Enum):
     """Data freshness status."""
     FRESH = "fresh"
+    AGED_ACCEPTED = "aged_accepted"
     STALE_CACHE = "stale_cache"
 
 

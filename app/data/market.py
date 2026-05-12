@@ -69,7 +69,10 @@ class FixtureMarketProvider:
                 "Verify the fixture file exists under tests/fixtures/."
             )
         raw = json.loads(self._fixture_path.read_text(encoding="utf-8"))
-        return [MarketSnapshot.model_validate(row) for row in raw["snapshots"]]
+        return [
+            MarketSnapshot.model_validate({**row, "source": "fixture"})
+            for row in raw["snapshots"]
+        ]
 
 
 # ── Phase B: Raw API client layer ─────────────────────────────────────────────
@@ -172,6 +175,8 @@ def _av_fetch_daily(
 
 
 _DB_TIMEOUT_SECS = 120
+_HKT = ZoneInfo("Asia/Hong_Kong")
+_DELAYED_DAILY_IDS = frozenset({"US2Y", "US10Y", "HY_OAS"})
 
 
 def _db_safe_end_dt(as_of: datetime) -> datetime:
@@ -193,6 +198,33 @@ def _db_safe_end_dt(as_of: datetime) -> datetime:
     return end
 
 
+def _parse_db_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _db_schema_end_dt(
+    client: Any,
+    dataset: str,
+    cache: dict[str, datetime | None] | None = None,
+) -> datetime | None:
+    if cache is not None and dataset in cache:
+        return cache[dataset]
+
+    schema_end: datetime | None = None
+    try:
+        dataset_range = client.metadata.get_dataset_range(dataset=dataset)
+        schema_info = dataset_range.get("schema", {}).get("ohlcv-1d", {})
+        schema_end = _parse_db_timestamp(schema_info.get("end"))
+    except Exception as exc:
+        _log.warning("Databento metadata range lookup failed for %s: %s", dataset, exc)
+
+    if cache is not None:
+        cache[dataset] = schema_end
+    return schema_end
+
+
 def _db_fetch_daily_ohlcv(
     dataset: str,
     symbol: str,
@@ -200,6 +232,7 @@ def _db_fetch_daily_ohlcv(
     start_date: date,
     as_of: datetime,
     price_to_yield: bool = False,
+    schema_end_cache: dict[str, datetime | None] | None = None,
 ) -> list[dict]:
     """
     Fetch daily close rows from Databento using the ohlcv-1d schema.
@@ -229,11 +262,15 @@ def _db_fetch_daily_ohlcv(
     import concurrent.futures
     import databento as db
 
+    client = db.Historical(api_key)
     end_dt = _db_safe_end_dt(as_of)
+    schema_end_dt = _db_schema_end_dt(client, dataset, schema_end_cache)
+    if schema_end_dt is not None:
+        end_dt = min(end_dt, schema_end_dt)
+    if end_dt.date() < start_date:
+        return []
     end_date_obj = end_dt.date()
     end_str = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
-
-    client = db.Historical(api_key)
 
     def _resolve():
         return client.symbology.resolve(
@@ -638,22 +675,33 @@ def _compute_5d_change(rows: list[dict], change_unit: str) -> float | None:
     return last - prev5
 
 
-def _minimum_observation_date(as_of: datetime) -> date:
-    """Earliest daily observation allowed in the overnight dashboard.
+def _previous_business_day(anchor: date) -> date:
+    current = anchor - timedelta(days=1)
+    while current.weekday() >= 5:
+        current -= timedelta(days=1)
+    return current
 
-    AV TREASURY_YIELD (FRED H.15) does not refresh over weekends. The scheduled
-    Monday run fires at Sunday 22:45 UTC — before US business hours — so AV still
-    shows Thursday as the latest. Accept Thursday for Monday and weekend runs.
-    Tue–Fri use a 2-day buffer to absorb any AV cache delay after FRED publishes.
-    """
-    as_of_date = as_of.date()
-    if as_of_date.weekday() == 0:  # Monday: AV not refreshed Sat/Sun; accept Thursday.
-        return as_of_date - timedelta(days=4)
-    if as_of_date.weekday() == 5:  # Saturday: accept Thursday.
-        return as_of_date - timedelta(days=2)
-    if as_of_date.weekday() == 6:  # Sunday: accept Thursday.
-        return as_of_date - timedelta(days=3)
-    return as_of_date - timedelta(days=2)  # Tue–Fri: 1 extra day buffer
+
+def _strict_overnight_min_observation_date(as_of: datetime) -> date:
+    """Latest completed trading day expected for default overnight instruments."""
+    hkt_date = as_of.astimezone(_HKT).date()
+    return _previous_business_day(hkt_date)
+
+
+def _publication_aware_min_observation_date(as_of: datetime) -> date:
+    """Oldest acceptable date for delayed U.S. daily releases at the HKT morning cutoff."""
+    hkt_date = as_of.astimezone(_HKT).date()
+    weekday = hkt_date.weekday()
+    offsets = {
+        0: 4,  # Monday HKT -> Thursday
+        1: 4,  # Tuesday HKT -> Friday
+        2: 2,  # Wednesday HKT -> Monday
+        3: 2,  # Thursday HKT -> Tuesday
+        4: 2,  # Friday HKT -> Wednesday
+        5: 2,  # Saturday HKT -> Thursday
+        6: 3,  # Sunday HKT -> Thursday
+    }
+    return hkt_date - timedelta(days=offsets[weekday])
 
 
 def _observation_date(row: dict) -> date:
@@ -667,13 +715,23 @@ def _latest_observation_date(rows: list[dict]) -> date:
     return _observation_date(rows[-1])
 
 
-def _is_observation_current(rows: list[dict], as_of: datetime) -> bool:
-    return _latest_observation_date(rows) >= _minimum_observation_date(as_of)
+def _classify_observation_freshness(rows: list[dict], as_of: datetime, instrument_id: str) -> FreshnessStatus | None:
+    latest = _latest_observation_date(rows)
+    strict_minimum = _strict_overnight_min_observation_date(as_of)
+    if latest >= strict_minimum:
+        return FreshnessStatus.FRESH
+    if instrument_id in _DELAYED_DAILY_IDS and latest >= _publication_aware_min_observation_date(as_of):
+        return FreshnessStatus.AGED_ACCEPTED
+    return None
 
 
 def _warn_stale_observation(source: str, instrument_id: str, rows: list[dict], as_of: datetime) -> None:
     latest = _latest_observation_date(rows)
-    minimum = _minimum_observation_date(as_of)
+    minimum = (
+        _publication_aware_min_observation_date(as_of)
+        if instrument_id in _DELAYED_DAILY_IDS
+        else _strict_overnight_min_observation_date(as_of)
+    )
     _log.warning(
         "%s: stale observation for %s skipped; latest=%s, required>=%s",
         source,
@@ -712,7 +770,8 @@ class AlphaVantageMarketProvider:
                 if len(rows) < 2:
                     _log.debug("AlphaVantage: insufficient data for %s (%d rows) — skipped (V2 item if monthly-only)", iid, len(rows))
                     continue
-                if not _is_observation_current(rows, as_of):
+                freshness_status = _classify_observation_freshness(rows, as_of, iid)
+                if freshness_status is None:
                     _warn_stale_observation("AlphaVantage", iid, rows, as_of)
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
@@ -731,7 +790,7 @@ class AlphaVantageMarketProvider:
                     five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="alpha_vantage",
                     source_url=_AV_BASE,
-                    freshness_status=FreshnessStatus.FRESH,
+                    freshness_status=freshness_status,
                 ))
             except Exception as exc:
                 _log.warning("AlphaVantage fetch failed for %s: %s", iid, exc)
@@ -747,6 +806,7 @@ class DatabentoMarketProvider:
     def fetch_watchlist(self, instruments: list[str], as_of: datetime) -> list[MarketSnapshot]:
         start = _db_safe_end_dt(as_of).date() - timedelta(days=_LIVE_LOOKBACK_DAYS)
         snapshots: list[MarketSnapshot] = []
+        schema_end_cache: dict[str, datetime | None] = {}
         for iid in instruments:
             meta = _DB_INSTRUMENT_META.get(iid)
             if meta is None:
@@ -760,11 +820,13 @@ class DatabentoMarketProvider:
                     start,
                     as_of,
                     price_to_yield=meta["price_to_yield"],
+                    schema_end_cache=schema_end_cache,
                 )
                 if len(rows) < 2:
                     _log.warning("Databento: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
-                if not _is_observation_current(rows, as_of):
+                freshness_status = _classify_observation_freshness(rows, as_of, iid)
+                if freshness_status is None:
                     _warn_stale_observation("Databento", iid, rows, as_of)
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
@@ -782,7 +844,7 @@ class DatabentoMarketProvider:
                     five_day_change=round(change5, 4) if change5 is not None else None,
                     five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="databento",
-                    freshness_status=FreshnessStatus.FRESH,
+                    freshness_status=freshness_status,
                 ))
             except Exception as exc:
                 _log.warning("Databento fetch failed for %s: %s", iid, exc)
@@ -809,7 +871,8 @@ class FredMarketProvider:
                 if len(rows) < 2:
                     _log.warning("FRED: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
-                if not _is_observation_current(rows, as_of):
+                freshness_status = _classify_observation_freshness(rows, as_of, iid)
+                if freshness_status is None:
                     _warn_stale_observation("FRED", iid, rows, as_of)
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
@@ -829,7 +892,7 @@ class FredMarketProvider:
                     five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="fred",
                     source_url=_FRED_BASE,
-                    freshness_status=FreshnessStatus.FRESH,
+                    freshness_status=freshness_status,
                 ))
             except Exception as exc:
                 _log.warning("FRED fetch failed for %s: %s", iid, exc)
@@ -853,7 +916,8 @@ class YfinanceMarketProvider:
                 if len(rows) < 2:
                     _log.warning("yfinance: insufficient data for %s (%d rows) — skipped", iid, len(rows))
                     continue
-                if not _is_observation_current(rows, as_of):
+                freshness_status = _classify_observation_freshness(rows, as_of, iid)
+                if freshness_status is None:
                     _warn_stale_observation("yfinance", iid, rows, as_of)
                     continue
                 last_close, change = _compute_1d_change(rows, meta["change_unit"])
@@ -871,7 +935,7 @@ class YfinanceMarketProvider:
                     five_day_change=round(change5, 4) if change5 is not None else None,
                     five_day_change_unit=meta["change_unit"] if change5 is not None else None,
                     source="yfinance",
-                    freshness_status=FreshnessStatus.FRESH,
+                    freshness_status=freshness_status,
                 ))
             except Exception as exc:
                 _log.warning("yfinance fetch failed for %s: %s", iid, exc)
@@ -993,6 +1057,7 @@ def fetch_chart_series(
     end = as_of.date()
     start = end - timedelta(days=lookback_days)
     result: dict[str, list[dict]] = {}
+    schema_end_cache: dict[str, datetime | None] = {}
 
     for iid in instruments:
         try:
@@ -1012,8 +1077,9 @@ def fetch_chart_series(
                     settings.creds.databento_api_key,
                     start, as_of,
                     price_to_yield=meta["price_to_yield"],
+                    schema_end_cache=schema_end_cache,
                 )
-                if rows and not _is_observation_current(rows, as_of):
+                if rows and _classify_observation_freshness(rows, as_of, iid) is None:
                     _warn_stale_observation("Databento/chart", iid, rows, as_of)
                     rows = []
             elif iid in _FRED_INSTRUMENT_META:
