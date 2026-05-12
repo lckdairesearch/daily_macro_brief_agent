@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from datetime import UTC
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,7 +20,13 @@ from app.discovery.scouts.base import (
 )
 from app.discovery.scouts.central_bank import CentralBankScout
 from app.discovery.scouts.news import NewsScout
-from app.discovery.scouts.podcast import PodcastScout
+from app.discovery.scouts.podcast import (
+    PodcastScout,
+    _fetch_plain_transcript,
+    _is_fresh_episode,
+    _normalize_episode_content_payload,
+    _strip_html,
+)
 from app.discovery.scouts.research import ResearchScout
 from app.discovery.scouts.x import XScout
 from app.models import EvidenceCard, LLMUsage, RunMode, SourceType
@@ -65,6 +69,31 @@ def _candidate_json(n: int = 2) -> str:
         for i in range(n)
     ]
     return json.dumps({"cards": cards})
+
+
+def _transcript_content_json(
+    *,
+    thesis: str = "Transcript thesis",
+    evidence: str = "Transcript evidence",
+    macro_relevance: str = "Macro relevance",
+    portfolio_relevance: str = "Portfolio relevance",
+    confidence: float = 0.8,
+    tags: list[str] | None = None,
+) -> str:
+    return json.dumps(
+        {
+            "cards": [
+                {
+                    "thesis": thesis,
+                    "evidence": evidence,
+                    "macro_relevance": macro_relevance,
+                    "portfolio_relevance": portfolio_relevance,
+                    "confidence": confidence,
+                    "tags": [] if tags is None else tags,
+                }
+            ]
+        }
+    )
 
 
 def _mock_litellm_response(content: str) -> MagicMock:
@@ -190,7 +219,13 @@ class _UsageScout(_SucceedingScout):
         base = super().run(context)
         return ScoutRunResult(
             cards=base.cards,
-            llm_usage=[LLMUsage(model="openai/test-model", latency_seconds=0.1, stage="scout:test")],
+            llm_usage=[
+                LLMUsage(
+                    model="openai/test-model",
+                    latency_seconds=0.1,
+                    stage="scout:test",
+                )
+            ],
         )
 
 
@@ -447,8 +482,6 @@ def test_x_scout_handles_markdown_json(mock_client_cls):
 # 8.3 — PodcastScout (mocked requests.post for Taddy GraphQL)
 # ---------------------------------------------------------------------------
 
-from app.discovery.scouts.podcast import _strip_html, _is_fresh_episode, _fetch_plain_transcript
-
 
 def _make_taddy_episode(
     uid: str = "uuid-1",
@@ -656,7 +689,7 @@ def test_podcast_scout_uses_transcript_when_available(mock_get, mock_post, mock_
     # First litellm call = episode filter; second = transcript extraction
     mock_completion.side_effect = [
         _mock_litellm_response('{"relevant_indices": [0]}'),
-        _mock_litellm_response(_candidate_json(1)),
+        _mock_litellm_response(_transcript_content_json()),
     ]
     transcript_resp = MagicMock()
     transcript_resp.raise_for_status = MagicMock()
@@ -715,7 +748,7 @@ def test_podcast_scout_uses_long_timeout_for_transcript_extraction(
 
     mock_completion.side_effect = [
         _mock_litellm_response('{"relevant_indices": [0]}'),
-        _mock_litellm_response(_candidate_json(1)),
+        _mock_litellm_response(_transcript_content_json()),
     ]
     transcript_resp = MagicMock()
     transcript_resp.raise_for_status = MagicMock()
@@ -748,6 +781,67 @@ def test_podcast_scout_skips_exclusive_transcripts(mock_get, mock_post):
     mock_get.assert_not_called()
 
 
+@patch("app.discovery.scouts.podcast.litellm_compat.completion")
+@patch("app.discovery.scouts.podcast.requests.post")
+@patch("app.discovery.scouts.podcast.requests.get")
+def test_podcast_scout_transcript_schema_drift_still_returns_card(
+    mock_get, mock_post, mock_completion
+):
+    transcript_url = {
+        "url": "https://transcripts.example.com/ep0.txt",
+        "type": "text/plain",
+        "isTaddyExclusive": False,
+        "language": "en",
+    }
+    ep = _make_taddy_episode("ep0", name="Actual Episode Title", transcript_urls=[transcript_url])
+    mock_post.return_value = _taddy_search_response([ep])
+    mock_completion.side_effect = [
+        _mock_litellm_response('{"relevant_indices": [0]}'),
+        _mock_litellm_response(
+            json.dumps(
+                {
+                    "cards": [
+                        {
+                            "episode_title": "LLM Wrong Title",
+                            "podcast_name": "LLM Wrong Podcast",
+                            "source_url": "https://wrong.example.com/source",
+                            "thesis": "Fed remains restrictive",
+                            "supporting_evidence": (
+                                "The host ties sticky inflation to higher-for-longer rates."
+                            ),
+                            "macro_relevance": "Rates and inflation outlook remain restrictive.",
+                            "portfolio_relevance": ["short long-term US duration", "gold hedge"],
+                            "confidence": "medium",
+                            "tags": ["fed", "rates"],
+                        }
+                    ]
+                }
+            )
+        ),
+    ]
+    transcript_resp = MagicMock()
+    transcript_resp.raise_for_status = MagicMock()
+    transcript_resp.text = "Fed raised rates. Sticky inflation matters for duration and gold."
+    mock_get.return_value = transcript_resp
+
+    scout = _make_scout(
+        freeflow_search_terms=["global macro"],
+        max_freeflow_queries=1,
+        use_transcripts=True,
+    )
+    result = scout.run(_make_context(RunMode.LIVE))
+
+    assert len(result.cards) == 1
+    card = result.cards[0]
+    assert card.title == "Actual Episode Title"
+    assert card.source_name == "Macro Pod"
+    assert card.url == "https://audio.example.com/ep0.mp3"
+    assert card.evidence == "The host ties sticky inflation to higher-for-longer rates."
+    assert card.portfolio_relevance == "short long-term US duration; gold hedge"
+    assert card.confidence == 0.5
+    assert any(u.stage == "scout:podcast_transcript_extract" for u in result.llm_usage)
+
+
 # ---------------------------------------------------------------------------
 # PodcastScout helpers — unit tests
 # ---------------------------------------------------------------------------
@@ -775,6 +869,45 @@ def test_is_fresh_episode_rejects_stale():
 
 def test_is_fresh_episode_handles_missing_date():
     assert _is_fresh_episode({}, 0) is False
+
+
+def test_transcript_content_normalizer_coerces_portfolio_relevance_list():
+    parsed = _normalize_episode_content_payload(
+        {
+            "cards": [
+                {
+                    "thesis": "T",
+                    "evidence": "E",
+                    "macro_relevance": "M",
+                    "portfolio_relevance": ["duration_short", "metals_complex_long"],
+                    "confidence": 0.7,
+                    "tags": [],
+                }
+            ]
+        }
+    )
+
+    assert parsed.cards[0].portfolio_relevance == "duration_short; metals_complex_long"
+
+
+def test_transcript_content_normalizer_coerces_medium_confidence():
+    parsed = _normalize_episode_content_payload(
+        {
+            "cards": [
+                {
+                    "thesis": "T",
+                    "supporting_evidence": "E",
+                    "macro_relevance": "M",
+                    "portfolio_relevance": "P",
+                    "confidence": "medium",
+                    "tags": [],
+                }
+            ]
+        }
+    )
+
+    assert parsed.cards[0].confidence == 0.5
+    assert parsed.cards[0].evidence == "E"
 
 
 # ---------------------------------------------------------------------------

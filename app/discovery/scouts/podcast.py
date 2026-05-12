@@ -19,26 +19,25 @@ import logging
 import re
 import time
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 import requests
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.discovery.scouts.base import (
+    DEFAULT_SCOUT_TIMEOUT_SECONDS,
     CandidateBuildResult,
     DiscoveryContext,
-    DEFAULT_SCOUT_TIMEOUT_SECONDS,
-    _EvidenceCandidateList,
+    ScoutRunResult,
     _parse_or_structure,
     build_market_context,
-    ScoutRunResult,
-    to_evidence_cards,
 )
 from app.llm import litellm_compat
-from app.llm.provider import usage_from_response
 from app.llm.prompt_registry import load_prompt
+from app.llm.provider import usage_from_response
 from app.models import EvidenceCard, LLMUsage, SourceType
 
 logger = logging.getLogger(__name__)
@@ -77,6 +76,20 @@ class _EpisodeContent(BaseModel):
     portfolio_relevance: str
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     tags: list[str] = Field(default_factory=list)
+
+
+class _EpisodeContentList(BaseModel):
+    """Top-level transcript extraction payload."""
+
+    cards: list[_EpisodeContent]
+
+
+@dataclass(frozen=True)
+class _TranscriptContentBuildResult:
+    """Parsed transcript content plus any cleanup-call metadata."""
+
+    contents: _EpisodeContentList
+    llm_usage: list[LLMUsage] = field(default_factory=list)
 
 
 class PodcastScout:
@@ -286,7 +299,10 @@ class PodcastScout:
         kwargs: dict[str, Any] = {
             "model": self.scout_model,
             "messages": [
-                {"role": "system", "content": "You are a macro research filter. Return valid JSON only."},
+                {
+                    "role": "system",
+                    "content": "You are a macro research filter. Return valid JSON only.",
+                },
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             "response_format": {"type": "json_object"},
@@ -339,9 +355,30 @@ class PodcastScout:
             transcript_text = _fetch_plain_transcript(episode)
 
         if transcript_text:
-            result = self._extract_from_transcript(
+            content, llm_usage = self._extract_from_transcript(
                 title, podcast_name, pub_date, transcript_text,
                 system_prompt, portfolio_themes, market_ctx,
+            )
+            if not content:
+                return None, llm_usage
+            pub_dt = datetime.fromtimestamp(pub_ts, tz=timezone.utc) if pub_ts else None
+            return (
+                EvidenceCard(
+                    id=f"ev_{uuid.uuid4().hex[:8]}",
+                    title=title,
+                    source_name=podcast_name,
+                    source_type=SourceType.PODCAST,
+                    url=episode_url,
+                    published_at=pub_dt,
+                    retrieved_at=context.evidence_window_end.astimezone(timezone.utc),
+                    thesis=content.thesis,
+                    evidence=content.evidence,
+                    macro_relevance=content.macro_relevance,
+                    portfolio_relevance=content.portfolio_relevance,
+                    confidence=content.confidence,
+                    tags=content.tags,
+                ),
+                llm_usage,
             )
         else:
             result = self._extract_via_web_search(
@@ -383,7 +420,7 @@ class PodcastScout:
         system_prompt: str,
         portfolio_themes: list[str],
         market_ctx: dict[str, Any],
-    ) -> CandidateBuildResult:
+    ) -> tuple[_EpisodeContent | None, list[LLMUsage]]:
         payload = {
             "episode_title": title,
             "podcast_name": podcast_name,
@@ -401,7 +438,13 @@ class PodcastScout:
         kwargs: dict[str, Any] = {
             "model": self.scout_model,
             "messages": [
-                {"role": "system", "content": system_prompt + '\n\nReturn valid JSON only, using schema: {"cards": [...]}'},
+                {
+                    "role": "system",
+                    "content": (
+                        system_prompt
+                        + '\n\nReturn valid JSON only, using schema: {"cards": [...]}'
+                    ),
+                },
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             "response_format": {"type": "json_object"},
@@ -413,20 +456,22 @@ class PodcastScout:
         try:
             response = litellm_compat.completion(**kwargs)
             text = response.choices[0].message.content or '{"cards": []}'
-            return CandidateBuildResult(
-                candidates=_EvidenceCandidateList.model_validate_json(text),
-                llm_usage=[
-                    usage_from_response(
-                        response,
-                        fallback_model=self.scout_model,
-                        latency_seconds=0.0,
-                        stage="scout:podcast_transcript_extract",
-                    )
-                ],
+            parsed = _parse_or_structure_episode_content(
+                text,
+                model=self.scout_model,
+                api_key=self.api_key,
             )
+            usage = usage_from_response(
+                response,
+                fallback_model=self.scout_model,
+                latency_seconds=0.0,
+                stage="scout:podcast_transcript_extract",
+            )
+            content = parsed.contents.cards[0] if parsed.contents.cards else None
+            return content, [usage, *parsed.llm_usage]
         except Exception as exc:
             logger.warning("PodcastScout: transcript extraction failed: %s", exc)
-            return CandidateBuildResult(candidates=_EvidenceCandidateList(cards=[]))
+            return None, []
 
     def _extract_via_web_search(
         self,
@@ -546,3 +591,132 @@ def _is_fresh_episode(episode: dict[str, Any], cutoff_ts: int) -> bool:
         return int(pub) >= cutoff_ts
     except (TypeError, ValueError):
         return False
+
+
+def _parse_or_structure_episode_content(
+    text: str,
+    *,
+    model: str,
+    api_key: str | None,
+) -> _TranscriptContentBuildResult:
+    """Parse transcript-backed episode content; fall back to a cleanup structuring call."""
+    direct = _try_parse_episode_content_text(text)
+    if direct is not None:
+        return _TranscriptContentBuildResult(contents=direct)
+
+    kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Convert the following content into JSON with schema: "
+                    '{"cards": [{"thesis": "", "evidence": "", "macro_relevance": "", '
+                    '"portfolio_relevance": "", "confidence": 0.5, "tags": []}]}'
+                ),
+            },
+            {"role": "user", "content": text},
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.0,
+        "timeout": DEFAULT_SCOUT_TIMEOUT_SECONDS,
+    }
+    if api_key:
+        kwargs["api_key"] = api_key
+    cleanup = litellm_compat.completion(**kwargs)
+    content = _try_parse_episode_content_text(
+        cleanup.choices[0].message.content or '{"cards": []}'
+    )
+    if content is None:
+        raise ValueError("cleanup did not return valid transcript content JSON")
+    return _TranscriptContentBuildResult(
+        contents=content,
+        llm_usage=[
+            usage_from_response(
+                cleanup,
+                fallback_model=model,
+                latency_seconds=0.0,
+                stage="scout:cleanup",
+            )
+        ],
+    )
+
+
+def _try_parse_episode_content_text(text: str) -> _EpisodeContentList | None:
+    """Attempt to parse transcript content JSON directly, including fenced JSON."""
+    for candidate in (text, *_extract_fenced_json_candidates(text)):
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        try:
+            return _normalize_episode_content_payload(payload)
+        except (TypeError, ValidationError, ValueError):
+            continue
+    return None
+
+
+def _extract_fenced_json_candidates(text: str) -> list[str]:
+    match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+    if not match:
+        return []
+    return [match.group(1).strip()]
+
+
+def _normalize_episode_content_payload(payload: Any) -> _EpisodeContentList:
+    """Normalize small schema drift from transcript extraction into the strict content schema."""
+    if not isinstance(payload, dict):
+        raise TypeError("transcript payload must be a JSON object")
+
+    raw_cards = payload.get("cards")
+    if not isinstance(raw_cards, list):
+        raise TypeError("transcript payload must contain a cards list")
+
+    normalized_cards: list[dict[str, Any]] = []
+    for raw_card in raw_cards:
+        if not isinstance(raw_card, dict):
+            raise TypeError("each transcript card must be a JSON object")
+        card = dict(raw_card)
+        if "evidence" not in card and "supporting_evidence" in card:
+            card["evidence"] = card["supporting_evidence"]
+        card["portfolio_relevance"] = _coerce_portfolio_relevance(card.get("portfolio_relevance"))
+        card["confidence"] = _coerce_confidence(card.get("confidence", 0.5))
+        card["tags"] = _coerce_tags(card.get("tags"))
+        normalized_cards.append(card)
+
+    return _EpisodeContentList.model_validate({"cards": normalized_cards})
+
+
+def _coerce_portfolio_relevance(value: Any) -> Any:
+    if isinstance(value, list):
+        parts = [str(item).strip() for item in value if str(item).strip()]
+        return "; ".join(parts)
+    return value
+
+
+def _coerce_confidence(value: Any) -> float:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        label_map = {"low": 0.3, "medium": 0.5, "high": 0.8}
+        if normalized in label_map:
+            return label_map[normalized]
+        try:
+            return float(normalized)
+        except ValueError as exc:
+            raise ValueError(f"unsupported confidence value: {value}") from exc
+    if isinstance(value, bool):
+        raise ValueError("boolean confidence is not supported")
+    if isinstance(value, (int, float)):
+        return float(value)
+    raise ValueError(f"unsupported confidence value: {value}")
+
+
+def _coerce_tags(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        value = value.strip()
+        return [value] if value else []
+    raise ValueError("tags must be a list or string")
