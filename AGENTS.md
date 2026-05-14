@@ -26,6 +26,22 @@ This file applies to all coding agents (Codex, etc.) working in this repository.
 - **Ask before deleting or rewriting existing tests, fixtures, or source files.**
 - **Prefer fixture-backed sample mode** over live integration when the task can be completed without credentials.
 
+## Worktree workflow
+
+When the human explicitly asks to "start a new worktree", treat that as an instruction to create and use a fresh git worktree before making code changes.
+
+Rules:
+- If the user provides a branch name, use it.
+- If the user does not provide a path, create the worktree as a sibling directory named `../<repo-name>-<branch-name>`.
+- Prefer `git worktree add ../<repo-name>-<branch-name> -b <branch-name>` when creating a new branch.
+- If the branch already exists, use `git worktree add ../<repo-name>-<branch-name> <branch-name>`.
+- After creating the worktree, copy repo-root local env files needed for development into the new worktree, including `.env` and `.env.*` files that exist in the repo root, but exclude template files such as `.env.example`.
+- Use non-destructive copy behavior for env files. Do not overwrite an existing env file in the target worktree unless the human explicitly asks.
+- Never commit copied env files, print their contents, or expose secrets in output.
+- After the worktree is created, do all edits, installs, and tests from that worktree unless the human says otherwise.
+- If sandbox or filesystem permissions block creating the worktree or copying env files, request escalation instead of silently skipping the step.
+- In the handoff note, report the worktree path, branch name, and which env files were copied.
+
 ## Handoff note format
 
 When handing back to the human coder, leave a note with:
