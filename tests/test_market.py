@@ -24,6 +24,7 @@ from app.data.market import (
     _yf_fetch_daily,
     cache_market,
     detect_moves,
+    fetch_chart_series,
     fetch_live_market_with_cache,
     fetch_live_market,
     load_cached_market,
@@ -135,6 +136,8 @@ _START = date(2026, 5, 6)
 _END = date(2026, 5, 8)
 _AS_OF = datetime(2026, 5, 8, 20, 0, 0, tzinfo=timezone.utc)  # Thursday 20:00 UTC → safe end = same day 22:00 UTC
 _TUESDAY_HKT_CUTOFF = datetime(2026, 5, 12, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+_WEDNESDAY_HKT_CUTOFF = datetime(2026, 5, 13, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
+_THURSDAY_HKT_CUTOFF = datetime(2026, 5, 14, 6, 45, tzinfo=ZoneInfo("Asia/Hong_Kong"))
 
 
 def _mock_response(payload: dict) -> MagicMock:
@@ -811,8 +814,8 @@ def test_db_provider_wti_sunday_allows_friday_observation(db_client_mock):
     assert snaps[0].observation_date == "2026-05-08"
 
 
-def test_db_provider_wti_monday_skips_thursday_observation(db_client_mock, caplog):
-    """Default overnight instruments still require Friday on Monday HKT runs."""
+def test_db_provider_wti_monday_hkt_accepts_thursday_as_aged_accepted(db_client_mock):
+    """The shared HKT publication-aware schedule accepts Thursday on Monday morning."""
     entries = [
         {"date": "2026-05-05", "close": 109.00, "volume": 10000},
         {"date": "2026-05-07", "close": 110.00, "volume": 12000},  # Thursday
@@ -824,15 +827,16 @@ def test_db_provider_wti_monday_skips_thursday_observation(db_client_mock, caplo
     with patch("databento.Historical", return_value=db_client_mock):
         snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], monday_as_of)
 
-    assert snaps == []
-    assert "stale observation" in caplog.text
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-07"
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
 
 
-def test_db_provider_wti_tuesday_skips_two_day_old_observation(db_client_mock, caplog):
-    """Default overnight instruments do not get the delayed-series grace window."""
+def test_db_provider_wti_tuesday_hkt_is_aged_accepted(db_client_mock):
+    """Lagging commodity series use the shared aged-accepted window on Tuesday HKT."""
     entries = [
         {"date": "2026-05-07", "close": 109.00, "volume": 10000},
-        {"date": "2026-05-10", "close": 110.00, "volume": 12000},  # Sunday (no market but tests buffer)
+        {"date": "2026-05-08", "close": 110.00, "volume": 12000},
     ]
     store = MagicMock()
     store.to_df.return_value = _make_ohlcv_df(entries)
@@ -841,12 +845,58 @@ def test_db_provider_wti_tuesday_skips_two_day_old_observation(db_client_mock, c
     with patch("databento.Historical", return_value=db_client_mock):
         snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], tuesday_as_of)
 
-    assert snaps == []
-    assert "stale observation" in caplog.text
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-08"
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
 
 
-def test_db_provider_wti_sunday_skips_thursday_observation(db_client_mock, caplog):
-    """Default overnight instruments still require Friday on Sunday HKT runs."""
+@pytest.mark.parametrize(
+    ("instrument_id", "as_of", "entries", "expected_observation_date"),
+    [
+        (
+            "COPPER",
+            _WEDNESDAY_HKT_CUTOFF,
+            [
+                {"date": "2026-05-08", "close": 4.55, "volume": 10000},
+                {"date": "2026-05-11", "close": 4.60, "volume": 12000},
+            ],
+            "2026-05-11",
+        ),
+        (
+            "BRENT",
+            _THURSDAY_HKT_CUTOFF,
+            [
+                {"date": "2026-05-11", "close": 64.10, "volume": 10000},
+                {"date": "2026-05-12", "close": 64.80, "volume": 12000},
+            ],
+            "2026-05-12",
+        ),
+    ],
+)
+def test_db_provider_midweek_hkt_lagging_commodities_are_aged_accepted(
+    db_client_mock,
+    instrument_id,
+    as_of,
+    entries,
+    expected_observation_date,
+):
+    db_client_mock.metadata.get_dataset_range.return_value = {
+        "schema": {"ohlcv-1d": {"end": "2026-05-13T23:59:59.000000000Z"}}
+    }
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+
+    with patch("databento.Historical", return_value=db_client_mock):
+        snaps = DatabentoMarketProvider("key").fetch_watchlist([instrument_id], as_of)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == expected_observation_date
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
+
+
+def test_db_provider_wti_sunday_hkt_accepts_thursday_as_aged_accepted(db_client_mock):
+    """The shared HKT publication-aware schedule accepts Thursday on Sunday morning."""
     entries = [
         {"date": "2026-05-06", "close": 109.00, "volume": 10000},
         {"date": "2026-05-07", "close": 110.00, "volume": 12000},  # Thursday
@@ -858,8 +908,9 @@ def test_db_provider_wti_sunday_skips_thursday_observation(db_client_mock, caplo
     with patch("databento.Historical", return_value=db_client_mock):
         snaps = DatabentoMarketProvider("key").fetch_watchlist(["WTI"], sunday_as_of)
 
-    assert snaps == []
-    assert "stale observation" in caplog.text
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-07"
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
 
 
 def test_db_provider_end_ts_rolled_back_for_sunday_as_of(db_client_mock):
@@ -922,6 +973,19 @@ def test_av_provider_us10y_tuesday_hkt_is_aged_accepted():
     ]}
     with patch("requests.get", return_value=_mock_response(payload)):
         snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["US10Y"], _TUESDAY_HKT_CUTOFF)
+
+    assert len(snaps) == 1
+    assert snaps[0].observation_date == "2026-05-08"
+    assert snaps[0].freshness_status == FreshnessStatus.AGED_ACCEPTED
+
+
+def test_av_provider_gold_tuesday_hkt_is_aged_accepted():
+    payload = {"data": [
+        {"date": "2026-05-07", "price": "3340.10"},
+        {"date": "2026-05-08", "price": "3351.25"},
+    ]}
+    with patch("requests.get", return_value=_mock_response(payload)):
+        snaps = AlphaVantageMarketProvider("key").fetch_watchlist(["GOLD"], _TUESDAY_HKT_CUTOFF)
 
     assert len(snaps) == 1
     assert snaps[0].observation_date == "2026-05-08"
@@ -1114,6 +1178,30 @@ def test_yf_provider_insufficient_data_skipped():
     with patch("yfinance.Ticker", return_value=ticker_mock):
         snaps = YfinanceMarketProvider().fetch_watchlist(["VIX"], _AS_OF)
     assert snaps == []
+
+
+def test_fetch_chart_series_keeps_aged_accepted_databento_commodity(db_client_mock):
+    entries = [
+        {"date": "2026-05-07", "close": 109.00, "volume": 10000},
+        {"date": "2026-05-08", "close": 110.00, "volume": 12000},
+    ]
+    store = MagicMock()
+    store.to_df.return_value = _make_ohlcv_df(entries)
+    db_client_mock.timeseries.get_range.return_value = store
+    settings = MagicMock()
+    settings.creds.databento_api_key = "db"
+
+    with patch("databento.Historical", return_value=db_client_mock):
+        series = fetch_chart_series(
+            ["WTI"],
+            lookback_days=10,
+            as_of=_TUESDAY_HKT_CUTOFF,
+            settings=settings,
+            sample_mode=False,
+        )
+
+    assert "WTI" in series
+    assert series["WTI"][-1]["date"] == "2026-05-08"
 
 
 # ---------------------------------------------------------------------------

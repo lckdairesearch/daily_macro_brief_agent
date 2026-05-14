@@ -176,7 +176,8 @@ def _av_fetch_daily(
 
 _DB_TIMEOUT_SECS = 120
 _HKT = ZoneInfo("Asia/Hong_Kong")
-_DELAYED_DAILY_IDS = frozenset({"US2Y", "US10Y", "HY_OAS"})
+_FRESHNESS_POLICY_STRICT = "strict"
+_FRESHNESS_POLICY_PUBLICATION_AWARE = "publication_aware"
 
 
 def _db_safe_end_dt(as_of: datetime) -> datetime:
@@ -601,11 +602,11 @@ _AV_INSTRUMENT_META: dict[str, dict] = {
     "USDJPY": {"function": "FX_DAILY",               "symbol": "USDJPY", "display_name": "USD/JPY",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%", "level_unit_label": "JPY per USD", "is_proxy": False, "extra": {"from_symbol": "USD", "to_symbol": "JPY"}},
     "EURUSD": {"function": "FX_DAILY",               "symbol": "EURUSD", "display_name": "EUR/USD",             "asset_class": AssetClass.FX,        "region": "EU",     "change_unit": "%", "level_unit_label": "USD per EUR", "is_proxy": False, "extra": {"from_symbol": "EUR", "to_symbol": "USD"}},
     "USDCNH": {"function": "FX_DAILY",               "symbol": "USDCNH", "display_name": "USD/CNH",             "asset_class": AssetClass.FX,        "region": "Asia",   "change_unit": "%", "level_unit_label": "CNH per USD", "is_proxy": False, "extra": {"from_symbol": "USD", "to_symbol": "CNH"}},
-    "GOLD":   {"function": "GOLD_SILVER_HISTORY",     "symbol": "GOLD",   "display_name": "Gold (spot)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False},
-    "SILVER": {"function": "GOLD_SILVER_HISTORY",     "symbol": "SILVER", "display_name": "Silver (spot)",       "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False},
+    "GOLD":   {"function": "GOLD_SILVER_HISTORY",     "symbol": "GOLD",   "display_name": "Gold (spot)",         "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
+    "SILVER": {"function": "GOLD_SILVER_HISTORY",     "symbol": "SILVER", "display_name": "Silver (spot)",       "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
     "BTC":    {"function": "DIGITAL_CURRENCY_DAILY", "symbol": "BTC",    "display_name": "Bitcoin",             "asset_class": AssetClass.CRYPTO,    "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False},
-    "US2Y":   {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 2Y Yield",         "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "extra": {"maturity": "2year"}},
-    "US10Y":  {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 10Y Yield",        "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "extra": {"maturity": "10year"}},
+    "US2Y":   {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 2Y Yield",         "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "extra": {"maturity": "2year"}, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
+    "US10Y":  {"function": "TREASURY_YIELD",         "symbol": "",       "display_name": "US 10Y Yield",        "asset_class": AssetClass.RATES,     "region": "US",     "change_unit": "bps", "level_unit_label": "%", "is_proxy": False, "extra": {"maturity": "10year"}, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
 }
 
 _DB_INSTRUMENT_META: dict[str, dict] = {
@@ -613,15 +614,15 @@ _DB_INSTRUMENT_META: dict[str, dict] = {
     # AV COPPER returns monthly data only; AV WTI/BRENT lag by up to 1 week.
     # Use exchange front-month futures via Databento instead.
     # V1 note: roll artifacts (price jump at contract expiry) not yet detected; easy V2 add.
-    "COPPER": {"dataset": "GLBX.MDP3",   "symbol": "HG.c.0",  "display_name": "Copper (front-month)",           "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False},
-    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI (front-month)",    "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False},
-    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent (front-month)", "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False},
+    "COPPER": {"dataset": "GLBX.MDP3",   "symbol": "HG.c.0",  "display_name": "Copper (front-month)",           "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
+    "WTI":    {"dataset": "GLBX.MDP3",   "symbol": "CL.c.0",  "display_name": "WTI (front-month)",    "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
+    "BRENT":  {"dataset": "IFEU.IMPACT", "symbol": "BRN.c.0", "display_name": "Brent (front-month)", "asset_class": AssetClass.COMMODITY, "region": "Global", "change_unit": "%", "level_unit_label": "USD", "is_proxy": False, "price_to_yield": False, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
 }
 
 _FRED_INSTRUMENT_META: dict[str, dict] = {
     # BAMLH0A0HYM2 is reported by FRED in percent (3.30 = 330 bps).
     # level_multiplier converts the raw value to the display unit (bps).
-    "HY_OAS": {"series_id": "BAMLH0A0HYM2", "display_name": "ICE BofA US High Yield OAS", "asset_class": AssetClass.CREDIT, "region": "US", "change_unit": "bps", "level_unit_label": "bps", "is_proxy": False, "level_multiplier": 100},
+    "HY_OAS": {"series_id": "BAMLH0A0HYM2", "display_name": "ICE BofA US High Yield OAS", "asset_class": AssetClass.CREDIT, "region": "US", "change_unit": "bps", "level_unit_label": "bps", "is_proxy": False, "level_multiplier": 100, "freshness_policy": _FRESHNESS_POLICY_PUBLICATION_AWARE},
 }
 
 _YF_INSTRUMENT_META: dict[str, dict] = {
@@ -645,6 +646,11 @@ INSTRUMENT_META: dict[str, dict] = {
 def get_instrument_meta(instrument_id: str) -> dict[str, Any] | None:
     """Return canonical metadata for a chartable instrument id."""
     return INSTRUMENT_META.get(instrument_id)
+
+
+def _freshness_policy_for_instrument(instrument_id: str) -> str:
+    meta = get_instrument_meta(instrument_id) or {}
+    return str(meta.get("freshness_policy", _FRESHNESS_POLICY_STRICT))
 
 
 def _compute_1d_change(rows: list[dict], change_unit: str) -> tuple[float, float]:
@@ -689,7 +695,7 @@ def _strict_overnight_min_observation_date(as_of: datetime) -> date:
 
 
 def _publication_aware_min_observation_date(as_of: datetime) -> date:
-    """Oldest acceptable date for delayed U.S. daily releases at the HKT morning cutoff."""
+    """Oldest acceptable date for known lagging daily series at the HKT morning cutoff."""
     hkt_date = as_of.astimezone(_HKT).date()
     weekday = hkt_date.weekday()
     offsets = {
@@ -715,23 +721,28 @@ def _latest_observation_date(rows: list[dict]) -> date:
     return _observation_date(rows[-1])
 
 
+def _minimum_observation_date(as_of: datetime, instrument_id: str) -> date:
+    if _freshness_policy_for_instrument(instrument_id) == _FRESHNESS_POLICY_PUBLICATION_AWARE:
+        return _publication_aware_min_observation_date(as_of)
+    return _strict_overnight_min_observation_date(as_of)
+
+
 def _classify_observation_freshness(rows: list[dict], as_of: datetime, instrument_id: str) -> FreshnessStatus | None:
     latest = _latest_observation_date(rows)
     strict_minimum = _strict_overnight_min_observation_date(as_of)
     if latest >= strict_minimum:
         return FreshnessStatus.FRESH
-    if instrument_id in _DELAYED_DAILY_IDS and latest >= _publication_aware_min_observation_date(as_of):
+    if (
+        _freshness_policy_for_instrument(instrument_id) == _FRESHNESS_POLICY_PUBLICATION_AWARE
+        and latest >= _publication_aware_min_observation_date(as_of)
+    ):
         return FreshnessStatus.AGED_ACCEPTED
     return None
 
 
 def _warn_stale_observation(source: str, instrument_id: str, rows: list[dict], as_of: datetime) -> None:
     latest = _latest_observation_date(rows)
-    minimum = (
-        _publication_aware_min_observation_date(as_of)
-        if instrument_id in _DELAYED_DAILY_IDS
-        else _strict_overnight_min_observation_date(as_of)
-    )
+    minimum = _minimum_observation_date(as_of, instrument_id)
     _log.warning(
         "%s: stale observation for %s skipped; latest=%s, required>=%s",
         source,
