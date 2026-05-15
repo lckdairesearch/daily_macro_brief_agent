@@ -43,8 +43,8 @@ V1 supports:
 Operating schedule:
 
 - timezone: `Asia/Hong_Kong`
-- target send time: `07:15 HKT`, Monday to Friday
-- default data cutoff: `06:45 HKT`
+- target send time: `08:00 HKT`, Monday to Friday
+- default data cutoff: `08:00 HKT`
 
 Runtime modes:
 

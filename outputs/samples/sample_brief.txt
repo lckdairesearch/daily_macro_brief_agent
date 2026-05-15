@@ -1,4 +1,4 @@
-2026-05-10 | Morning Brief
+Thursday, May 14, 2026 | Morning Brief
 Macro Synthesis
 
 OVERNIGHT BOOK IMPACT
@@ -6,15 +6,29 @@ Overnight price action leans toward a benign liquidity backdrop for risk assets 
 
 OVERNIGHT DASHBOARD
 S&P 500 (proxy): 737.62 | +0.83% | 5D ↗
-US 10Y Yield: 4.410% | +5.0bps | 5D →
+Nasdaq 100 (proxy): 711.23 | +2.34% | 5D ↗
 USD/JPY: 156.65 | -0.17% | 5D →
+EUR/USD: 1.178 | +0.50% | 5D ↗
+USD/CNH: 6.795 | -0.19% | 5D ↘
+US 10Y Yield: 4.410% | +5.0bps | 5D →
 Gold (spot): 4,704.1 | +0.12% | 5D ↗
 WTI (front-month): 96.98 | +1.14% | 5D ↘
 VIX: 17.19 | +0.64% | 5D →
-Nasdaq 100 (proxy): 711.23 | +2.34% | 5D ↗
 MOVE Index: 67.25 | -6.91% | 5D ↘
-EUR/USD: 1.178 | +0.50% | 5D ↗
-USD/CNH: 6.795 | -0.19% | 5D ↘
+
+TODAY'S CALENDAR
+00:10 US - Atlanta Fed GDPNow (Q2) (Exp: 3.7%; Prev: 3.7%)
+03:00 US - Consumer Credit (Mar) (Exp: 12.5B; Prev: 8.85B)
+04:30 US - Fed's Balance Sheet (Exp: n/a; Prev: 6700B)
+15:00 EU - ECB President Lagarde Speaks (Exp: n/a; Prev: n/a)
+20:30 US - Average Hourly Earnings (MoM) (Apr) (Exp: 0.3%; Prev: 0.2%)
+20:30 US - Nonfarm Payrolls (Apr) (Exp: 65K; Prev: 178K)
+20:30 US - Unemployment Rate (Apr) (Exp: 4.3%; Prev: 4.3%)
+20:30 US - Private Nonfarm Payrolls (Apr) (Exp: 75K; Prev: 186K)
+
+ONE CHART WORTH SEEING
+One-day moves across the key assets shaping today’s macro tape.
+outputs/samples/2026-05-14/20260514_143006_sample/sample_chart.png
 
 THE 3 THINGS
 1. Liquidity eased, but duration pressure remains
@@ -29,32 +43,18 @@ Adds near-term conviction to the short long-term US duration position into the n
 The key event is 20:30 HKT US payrolls: Nonfarm Payrolls consensus is 65K versus 178K prior, unemployment is seen at 4.3%, and Average Hourly Earnings at 0.3% month on month versus 0.2% prior. After yields rose and rate vol fell overnight, this release is the clearest near-term test of whether growth is slowing fast enough to challenge the book's structural duration view.
 Leaves the short long-term US duration position exposed to today's payrolls surprise and puts the currency diversification overlay in play.
 
-TODAY'S CALENDAR
-00:10 US - Atlanta Fed GDPNow (Q2) (Exp: 3.7%; Prev: 3.7%)
-03:00 US - Consumer Credit (Mar) (Exp: 12.5B; Prev: 8.85B)
-04:30 US - Fed's Balance Sheet (Exp: n/a; Prev: 6700B)
-15:00 EU - ECB President Lagarde Speaks (Exp: n/a; Prev: n/a)
-20:30 US - Average Hourly Earnings (MoM) (Apr) (Exp: 0.3%; Prev: 0.2%)
-20:30 US - Nonfarm Payrolls (Apr) (Exp: 65K; Prev: 178K)
-20:30 US - Unemployment Rate (Apr) (Exp: 4.3%; Prev: 4.3%)
-20:30 US - Private Nonfarm Payrolls (Apr) (Exp: 75K; Prev: 186K)
-
-ONE CHART WORTH SEEING
-One-day moves across the key assets shaping today’s macro tape.
-outputs/samples/2026-05-10/20260510_031831_sample/sample_chart.png
-
 THEME RADAR
-Balance-sheet plumbing is easing conditions at the margin - Federal Reserve
+Balance-sheet plumbing is easing conditions at the margin - Central Bank - Federal Reserve
 https://www.federalreserve.gov/Releases/H41/Current/
 The Fed's H.4.1 is more useful than the headline balance-sheet shrink suggests. Securities held outright fell only 1,624 million dollars on the week, but the important move was in liabilities: reserve balances rose 113,989 million while the Treasury General Account fell 104,168 million. At the same time, MBS holdings declined 6,981 million, so QT is still running through mortgage runoff. The author's point is that this mix can support near-term risk appetite and lower rate vol without changing the medium-term supply burden facing duration.
 Argues for staying with the structural short long-term US duration view even if the next few sessions still look risk-friendly.
 
-The regime shift is from policy path to term premium - Keyrock
+The regime shift is from policy path to term premium - Research - Keyrock
 https://keyrock.com/the-last-dance/
 Keyrock's thesis is that the market is no longer primarily trading the next Fed move; it is repricing the long end around supply, sticky inflation, and capital-intensive AI buildout. The note backs that with March PCE at 0.7% month on month and 3.5% year on year headline, core at 0.3% month on month and 3.2% year on year, and a Fed hold described as unusually split. The author argues gold weakness is tactical and that higher long yields now reflect rebuilding term premium more than changing cut expectations.
 Adds medium-term conviction to the fiscal-dominance case behind the short long-term US duration position and keeps the long metals complex theme intact.
 
-Grains are not delivering a fresh inflation impulse - Agriculture.com
+Grains are not delivering a fresh inflation impulse - News - Agriculture.com
 https://www.agriculture.com/grains-in-the-red-this-morning-or-thursday-may-7-2026-11969207
 The agriculture note is useful mainly as a rejection signal. Soybeans were reported down 10 cents to $11.84 3/4, corn export sales at 1.362 million metric tons were within trade guesses and slightly below the four-week average, and wheat export sales of 78,800 metric tons were down 45% from the four-week average. That is not evidence of a new food-inflation shock. The author's underlying message is that current grain data look mixed to soft rather than supply-constrained.
 Tempers the medium-term inflation case for the Long Agriculture Futures (Grains Complex) position without overturning the longer-term food security theme.

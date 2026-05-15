@@ -19,6 +19,8 @@ def test_app_yaml_loads():
     raw = _load_yaml(CONFIG_DIR / "app.yaml")
     cfg = AppConfig(**raw)
     assert cfg.timezone == "Asia/Hong_Kong"
+    assert cfg.data_cutoff_hkt == "08:00"
+    assert cfg.send_time_hkt == "08:00"
     assert cfg.email_enabled is False
     assert isinstance(cfg.max_discovery_items, int)
     assert isinstance(cfg.max_theme_radar_items, int)
@@ -245,6 +247,8 @@ def test_settings_load_resolves_all_yaml():
     """Settings.load() loads all five YAML files into the expected attributes."""
     settings = Settings.load()
     assert settings.app.timezone == "Asia/Hong_Kong"
+    assert settings.app.data_cutoff_hkt == "08:00"
+    assert settings.app.send_time_hkt == "08:00"
     assert isinstance(settings.portfolio, dict)
     assert isinstance(settings.themes, dict)
     assert isinstance(settings.sources, dict)

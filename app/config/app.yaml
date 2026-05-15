@@ -2,8 +2,8 @@
 # All secrets must come from environment variables, not this file.
 
 timezone: Asia/Hong_Kong
-data_cutoff_hkt: "06:45"
-send_time_hkt: "07:15"
+data_cutoff_hkt: "08:00"
+send_time_hkt: "08:00"
 default_mode: sample
 output_dir: outputs
 cache_dir: .cache

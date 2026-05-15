@@ -26,8 +26,8 @@ class AppConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     timezone: str = "Asia/Hong_Kong"
-    data_cutoff_hkt: str = "06:45"
-    send_time_hkt: str = "07:15"
+    data_cutoff_hkt: str = "08:00"
+    send_time_hkt: str = "08:00"
     default_mode: RunMode = RunMode.SAMPLE
     output_dir: str = "outputs"
     cache_dir: str = ".cache"

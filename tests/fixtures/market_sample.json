@@ -2,7 +2,7 @@
   "_note": "Sample market fixture captured from dry-run artifacts for 2026-05-08. Used for deterministic local/demo mode.",
   "snapshots": [
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "equity",
       "display_name": "S&P 500 (proxy)",
       "five_day_change": 2.3548,
@@ -21,7 +21,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "equity",
       "display_name": "Nasdaq 100 (proxy)",
       "five_day_change": 5.5003,
@@ -40,7 +40,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "equity",
       "display_name": "Euro Stoxx 50 (proxy, USD-based)",
       "five_day_change": 1.6518,
@@ -59,7 +59,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "fx",
       "display_name": "DXY (proxy)",
       "five_day_change": -0.2554,
@@ -78,7 +78,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "fx",
       "display_name": "USD/JPY",
       "five_day_change": -0.242,
@@ -97,7 +97,7 @@
       "warning": "Group move: >= 2 fx/Asia instruments moved negative with at least one breaching the 1.0-sigma threshold"
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "fx",
       "display_name": "EUR/USD",
       "five_day_change": 0.5461,
@@ -116,7 +116,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "fx",
       "display_name": "USD/CNH",
       "five_day_change": -0.5008,
@@ -135,7 +135,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "commodity",
       "display_name": "Gold (spot)",
       "five_day_change": 1.9432,
@@ -154,7 +154,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "commodity",
       "display_name": "Silver (spot)",
       "five_day_change": 5.2056,
@@ -173,7 +173,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "crypto",
       "display_name": "Bitcoin",
       "five_day_change": 2.0748,
@@ -192,7 +192,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "rates",
       "display_name": "US 2Y Yield",
       "five_day_change": 4.0,
@@ -211,7 +211,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "rates",
       "display_name": "US 10Y Yield",
       "five_day_change": 1.0,
@@ -230,7 +230,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "rates",
       "display_name": "German 10Y Bund",
       "five_day_change": null,
@@ -249,7 +249,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "commodity",
       "display_name": "Copper (front-month)",
       "five_day_change": 1.7815,
@@ -268,7 +268,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "commodity",
       "display_name": "WTI (front-month)",
       "five_day_change": -5.3854,
@@ -287,7 +287,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "commodity",
       "display_name": "Brent (front-month)",
       "five_day_change": -5.3388,
@@ -306,7 +306,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "credit",
       "display_name": "ICE BofA US High Yield OAS",
       "five_day_change": 2.0,
@@ -325,7 +325,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "volatility",
       "display_name": "VIX",
       "five_day_change": 1.1772,
@@ -344,7 +344,7 @@
       "warning": null
     },
     {
-      "as_of": "2026-05-08T06:45:00+08:00",
+      "as_of": "2026-05-08T08:00:00+08:00",
       "asset_class": "volatility",
       "display_name": "MOVE Index",
       "five_day_change": -4.488,

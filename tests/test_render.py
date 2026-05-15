@@ -953,7 +953,7 @@ def test_calendar_title_is_mondays_for_weekend_run():
         update={
             "run_metadata": {
                 "brief_date": "2026-05-11T00:00:00+08:00",
-                "data_cutoff_at": "2026-05-10T06:45:00+08:00",  # Sunday
+                "data_cutoff_at": "2026-05-10T08:00:00+08:00",  # Sunday
             }
         }
     )
@@ -969,7 +969,7 @@ def test_calendar_title_is_todays_for_weekday_run():
         update={
             "run_metadata": {
                 "brief_date": "2026-05-08T00:00:00+08:00",
-                "data_cutoff_at": "2026-05-08T06:45:00+08:00",  # Friday
+                "data_cutoff_at": "2026-05-08T08:00:00+08:00",  # Friday
             }
         }
     )
@@ -986,7 +986,7 @@ def test_header_line_includes_weekend_suffix_for_sunday_run():
         update={
             "run_metadata": {
                 "brief_date": "2026-05-11T00:00:00+08:00",
-                "data_cutoff_at": "2026-05-10T06:45:00+08:00",
+                "data_cutoff_at": "2026-05-10T08:00:00+08:00",
             }
         }
     )
@@ -1004,7 +1004,7 @@ def test_header_line_has_no_suffix_for_weekday_run():
         update={
             "run_metadata": {
                 "brief_date": "2026-05-08T00:00:00+08:00",
-                "data_cutoff_at": "2026-05-08T06:45:00+08:00",
+                "data_cutoff_at": "2026-05-08T08:00:00+08:00",
             }
         }
     )

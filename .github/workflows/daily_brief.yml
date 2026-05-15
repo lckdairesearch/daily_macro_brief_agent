@@ -2,8 +2,8 @@ name: Daily Macro Brief
 
 on:
   schedule:
-    # 06:45 HKT Mon–Fri = 22:45 UTC Sun–Thu
-    - cron: "45 22 * * 0-4"
+    # 08:00 HKT Mon–Fri = 00:00 UTC Mon–Fri
+    - cron: "0 0 * * 1-5"
   workflow_dispatch:  # allow manual trigger
 
 jobs:

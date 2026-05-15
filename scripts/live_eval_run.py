@@ -60,7 +60,7 @@ class EvalBrief(BaseModel):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Saved live evaluation run")
     parser.add_argument("--date", default="2026-05-08", help="HKT run date, YYYY-MM-DD")
-    parser.add_argument("--cutoff", default="06:45", help="HKT data cutoff, HH:MM")
+    parser.add_argument("--cutoff", default="08:00", help="HKT data cutoff, HH:MM")
     args = parser.parse_args()
 
     settings = Settings.load()

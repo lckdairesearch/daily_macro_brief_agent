@@ -29,8 +29,8 @@ def main() -> None:
         help=(
             "Optional data cutoff datetime. Naive values are interpreted in the configured "
             "app timezone. A bare date uses the configured morning cutoff time. "
-            "Examples: 2026-05-08, 2026-05-08T06:45, '2026-05-08 06:45', "
-            "2026-05-07T22:45:00Z"
+            "Examples: 2026-05-08, 2026-05-08T08:00, '2026-05-08 08:00', "
+            "2026-05-08T00:00:00Z"
         ),
     )
     args = parser.parse_args()
@@ -83,7 +83,7 @@ def main() -> None:
 def _parse_data_cutoff(
     value: str | None,
     tz: ZoneInfo,
-    default_time_hhmm: str = "06:45",
+    default_time_hhmm: str = "08:00",
 ) -> datetime | None:
     if not value:
         return None
@@ -95,7 +95,7 @@ def _parse_data_cutoff(
         except ValueError as exc:
             raise ValueError(
                 "Invalid --data-cutoff. Use ISO format like 2026-05-08, "
-                "2026-05-08T06:45, or '2026-05-08 06:45'."
+                "2026-05-08T08:00, or '2026-05-08 08:00'."
             ) from exc
         hour, minute = (int(part) for part in default_time_hhmm.split(":"))
         return parsed_date.replace(hour=hour, minute=minute, second=0, microsecond=0, tzinfo=tz)
@@ -108,7 +108,7 @@ def _parse_data_cutoff(
     except ValueError as exc:
         raise ValueError(
             "Invalid --data-cutoff. Use ISO format like 2026-05-08, "
-            "2026-05-08T06:45, or '2026-05-08 06:45'."
+            "2026-05-08T08:00, or '2026-05-08 08:00'."
         ) from exc
 
     if parsed.tzinfo is None:

@@ -1,6 +1,6 @@
 # Daily Macro Brief Agent
 
-A scheduled Python pipeline that pulls real market prices, calendar events, and source evidence overnight, ranks what matters for the book, and uses an LLM to synthesize a grounded macro brief — then validates, renders, and delivers it by email at 07:15 HKT.
+A scheduled Python pipeline that pulls real market prices, calendar events, and source evidence overnight, ranks what matters for the book, and uses an LLM to synthesize a grounded macro brief — then validates, renders, and delivers it by email at 08:00 HKT.
 
 ---
 
@@ -145,7 +145,7 @@ Production email recipients live in `app/config/recipients.yaml`, not in `.env`.
 
 | File | Controls | When to touch it |
 |---|---|---|
-| `app.yaml` | Timezone, cutoff time (06:45 HKT), send time (07:15 HKT), output dir | Rarely |
+| `app.yaml` | Timezone, cutoff time (08:00 HKT), send time (08:00 HKT), output dir | Rarely |
 | `sources.yaml` | LLM model selection, provider toggles, scout on/off switches | When changing models or disabling a scout |
 | `recipients.yaml` | Production email recipient list | When adding/removing recipients |
 | `portfolio.yaml` | Book profile used for evidence relevance ranking | When the book changes |
@@ -167,7 +167,7 @@ make run-sample
 make dry-run
 
 # Dry-run with a specific historical data cutoff
-make dry-run DATA_CUTOFF="2026-05-08T06:45"
+make dry-run DATA_CUTOFF="2026-05-08T08:00"
 
 # Full pipeline with email delivery (requires ENABLE_EMAIL_DELIVERY=true in .env)
 make run-live
@@ -178,13 +178,13 @@ Equivalent direct commands if you prefer:
 ```bash
 .venv/bin/python -m app.main --mode sample
 .venv/bin/python -m app.main --mode dry-run
-.venv/bin/python -m app.main --mode dry-run --data-cutoff "2026-05-08T06:45"
+.venv/bin/python -m app.main --mode dry-run --data-cutoff "2026-05-08T08:00"
 .venv/bin/python -m app.main --mode live
 ```
 
 ### CI/CD
 
-The GitHub Actions workflow (`.github/workflows/daily_brief.yml`) runs at **07:15 HKT Mon–Fri** (23:15 UTC Sun–Thu) and supports manual trigger via `workflow_dispatch`. It runs in live mode and uploads run artifacts for 30 days.
+The GitHub Actions workflow (`.github/workflows/daily_brief.yml`) runs at **08:00 HKT Mon–Fri** (00:00 UTC Mon–Fri) and supports manual trigger via `workflow_dispatch`. It runs in live mode and uploads run artifacts for 30 days.
 
 ---
 
